@@ -1,8 +1,18 @@
 # Waveguide Mode Solver
 
-Browser-based educational full-vector finite-difference eigenmode solver for isotropic dielectric waveguides.
+Browser-based educational full-vector finite-difference eigenmode solver for integrated photonics.
 
-The solver discretizes Maxwell's equations on a transverse Yee grid, solves the coupled eigenproblem for the transverse magnetic field, and reconstructs all six field components. It reports effective index, propagation constant, electric confinement, effective area, polarization fractions, and the relative eigenpair residual.
+It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and reconstructs all six field components. Supported cross-sections are channel, rib, slot and multilayer ridge waveguides.
+
+## Features
+
+- Uniform or center-graded transverse mesh.
+- Real diagonal anisotropy: ε = diag(nₓ², nᵧ², n_z²).
+- Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
+- First-order material absorption from the extinction coefficient κ.
+- Wavelength sweeps with field-overlap mode tracking.
+- Effective index, group index, dispersion, absorption, confinement and effective area.
+- Plotly field maps, transverse cuts, sweep plots and CSV exports.
 
 ## Run locally
 
@@ -11,23 +21,22 @@ pnpm install
 pnpm dev
 ```
 
-## Validation
+## Validate
 
 ```bash
 pnpm test
 pnpm run build
 ```
 
-The automated benchmark compares the fundamental effective index against the reference Yee-grid implementation from WGMODES for a silicon-nitride channel waveguide. Mesh and boundary convergence must still be checked before using a result for device design.
+The tests benchmark the uniform isotropic channel against WGMODES and exercise every geometry, graded meshes, anisotropy, absorption and spectral mode tracking.
 
 ## Numerical scope
 
-- Linear, isotropic, non-magnetic, lossless dielectric materials.
-- Uniform transverse Yee grid with hard outer boundaries.
-- Full-vector solution for `Hx` and `Hy`; the remaining field components follow from the discrete Maxwell curl relations.
-- Arnoldi projection for the largest guided eigenpairs.
-
-The current release does not model anisotropy, material loss, PML boundaries, bends, propagation discontinuities, or radiation loss.
+- Linear, non-magnetic dielectrics with diagonal anisotropy.
+- Hard outer boundaries; padding and mesh convergence remain the user's responsibility.
+- κ is evaluated with a first-order field-energy perturbation. It does not include radiation leakage and is not a complex-eigenvalue solution.
+- dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
+- Group index and dispersion are numerical finite differences and require wavelength-step convergence.
 
 ## Reference
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { solveWaveguide, validateWaveguide, type WaveguideConfig } from "./solver";
+import { solveWaveguide, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
   wavelengthUm: 1.55,
@@ -34,5 +34,39 @@ describe("full-vector finite-difference mode solver", () => {
 
   it("rejects a non-guiding index profile", () => {
     expect(validateWaveguide({ ...benchmark, coreIndex: 1.4, claddingIndex: 1.5 })).not.toHaveLength(0);
+  });
+
+  it("supports graded meshes, diagonal anisotropy, loss and each geometry", () => {
+    const geometries: GeometryType[] = ["channel", "rib", "slot", "multilayer"];
+    for (const geometry of geometries) {
+      const result = solveWaveguide({
+        ...benchmark,
+        geometry,
+        modeCount: 1,
+        meshBias: 1.2,
+        slabHeightUm: 0.15,
+        slotGapUm: 0.12,
+        substrateIndex: 1.44,
+        coreIndexY: 2.02,
+        coreIndexZ: 1.98,
+        coreExtinction: 1e-6,
+      });
+      expect(result.modes.length).toBe(1);
+      expect(result.dxMaxUm).toBeGreaterThan(result.dxUm);
+      expect(result.modes[0].lossDbPerCm).toBeGreaterThan(0);
+    }
+  });
+
+  it("tracks a mode and derives finite group index and dispersion", () => {
+    const sweep = sweepWaveguide({ ...benchmark, modeCount: 2 }, {
+      startWavelengthUm: 1.5,
+      stopWavelengthUm: 1.6,
+      points: 5,
+      modeIndex: 0,
+    });
+    expect(sweep.points).toHaveLength(5);
+    expect(sweep.points.every((point) => Number.isFinite(point.groupIndex))).toBe(true);
+    expect(sweep.points.every((point) => Number.isFinite(point.dispersionPsPerNmKm))).toBe(true);
+    expect(Math.min(...sweep.points.map((point) => point.overlap))).toBeGreaterThan(0.7);
   });
 });
