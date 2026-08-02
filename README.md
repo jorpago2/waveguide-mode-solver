@@ -13,7 +13,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Dispersive material models for LiNbO₃, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
 - MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
 - Editable finite layers below the core with a semi-infinite base substrate.
-- Rotated uniaxial transverse anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, solved with a four-field first-order Maxwell operator.
+- Arbitrarily oriented uniaxial anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, including xz/yz coupling, solved by a WebAssembly four-field first-order Maxwell operator.
 - Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
@@ -26,7 +26,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Solved cross-section inspector with principal-index maps, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
-- Matrix-free shift-invert Arnoldi with BiCGSTAB inner solves, restarted GMRES for non-Hermitian bent-PML systems and residual rejection.
+- Matrix-free shift-invert Arnoldi with BiCGSTAB inner solves, a WebAssembly tensor-operator kernel, restarted GMRES for non-Hermitian bent-PML systems and residual rejection.
 - Solver and sweeps run in a Web Worker so the interface remains responsive.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
 - Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.
@@ -49,11 +49,11 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization, material models, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
+The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, PML, power normalization, material models, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
 
 ## Numerical scope
 
-- Linear, non-magnetic dielectrics. Transverse x–y anisotropy is available for straight, lossless guides when z remains a principal axis; bends, PML and material loss currently require diagonal tensors.
+- Linear, non-magnetic dielectrics. Arbitrary real symmetric permittivity tensors are available for straight, lossless guides with hard boundaries; bends, PML and material loss currently require diagonal tensors.
 - Curved guides must have a constant radius larger than the entire radial half-domain. Varying-radius transitions, Euler bends and longitudinal discontinuities are outside the 2D eigenmode model.
 - Hard-wall and PML outer boundaries are available. Radiation loss requires mesh, padding, PML-thickness and PML-strength convergence checks.
 - The reported GCI applies to effective-index mesh discretization only and is valid only when the three grids converge monotonically in the asymptotic range.

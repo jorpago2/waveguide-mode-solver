@@ -5,6 +5,14 @@ import {
   type MaterialId, type OpticAxis, type SymmetricTensor, type TabulatedMaterialData,
 } from "./materials";
 
+type TensorWasmModule = typeof import("./wasm/tensor.js");
+let tensorWasm: TensorWasmModule | undefined;
+try {
+  tensorWasm = await import("./wasm/tensor.js");
+} catch {
+  // The diagonal and transverse-rotation TypeScript solvers remain available.
+}
+
 export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity" | "poynting";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
 export type BoundaryType = "hard" | "pml";
@@ -135,6 +143,7 @@ export interface SolverResult {
   warnings: string[];
   arnoldiDimension: number;
   formulation: "transverse-h" | "first-order";
+  backend: "TypeScript" | "WebAssembly";
 }
 
 export interface SweepSettings {
@@ -210,6 +219,10 @@ interface Grid {
   epsilonCellZImaginary: Float64Array;
   epsilonCellXY: Float64Array;
   epsilonCellXYImaginary: Float64Array;
+  epsilonCellXZ: Float64Array;
+  epsilonCellXZImaginary: Float64Array;
+  epsilonCellYZ: Float64Array;
+  epsilonCellYZImaginary: Float64Array;
   cellArea: Float64Array;
   coreFraction: Float64Array;
   extinctionCell: Float64Array;
@@ -244,6 +257,7 @@ interface OperatorContext {
   eigenvaluePower: 1 | 2;
   formulation: "transverse-h" | "first-order";
   linearSolver: "bicgstab" | "gmres";
+  solveShifted?: (shift: number, rightHandSide: Float64Array) => Float64Array;
 }
 
 interface RitzPair {
@@ -398,10 +412,10 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
       ...materials.layers.flatMap((material) => [material.nx, material.ny, material.nz]));
     if (coreMaximum <= exteriorMaximum) errors.push("The core must retain a larger principal index than the exterior materials.");
     const hasLongitudinalCoupling = materialList.some((material) => [material.epsilonReal.xz, material.epsilonReal.yz, material.epsilonImaginary.xz, material.epsilonImaginary.yz].some((value) => Math.abs(value) > 1e-12));
-    const hasTransverseRotation = materialList.some((material) => Math.abs(material.epsilonReal.xy) > 1e-12 || Math.abs(material.epsilonImaginary.xy) > 1e-12);
+    const hasOffDiagonalRotation = materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary));
     const hasMaterialLoss = materialList.some((material) => Object.values(material.epsilonImaginary).some((value) => Math.abs(value) > 1e-12));
-    if (hasLongitudinalCoupling) errors.push("The browser solver currently supports rotated anisotropy only in the transverse x–y plane, with z remaining a principal propagation axis.");
-    if (hasTransverseRotation && (hasMaterialLoss || (config.boundary ?? "hard") === "pml")) errors.push("Transversely rotated anisotropy currently requires lossless materials and a hard outer boundary.");
+    if (hasLongitudinalCoupling && !tensorWasm) errors.push("Longitudinal tensor coupling requires WebAssembly support in this browser.");
+    if (hasOffDiagonalRotation && (hasMaterialLoss || (config.boundary ?? "hard") === "pml")) errors.push("Rotated anisotropy currently requires lossless materials and a hard outer boundary.");
     if (bendRadiusUm > 0 && materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary))) {
       errors.push("Rotated off-diagonal anisotropy is currently limited to straight guides; a constant local tensor is not rigorous along a curved crystal path.");
     }
@@ -475,6 +489,7 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
     warnings,
     arnoldiDimension,
     formulation: operator.formulation,
+    backend: operator.formulation === "first-order" && tensorWasm ? "WebAssembly" : "TypeScript",
   };
 }
 
@@ -971,6 +986,10 @@ function createGrid(config: WaveguideConfig): Grid {
   const epsilonCellZImaginary = new Float64Array(nx * ny);
   const epsilonCellXY = new Float64Array(nx * ny);
   const epsilonCellXYImaginary = new Float64Array(nx * ny);
+  const epsilonCellXZ = new Float64Array(nx * ny);
+  const epsilonCellXZImaginary = new Float64Array(nx * ny);
+  const epsilonCellYZ = new Float64Array(nx * ny);
+  const epsilonCellYZImaginary = new Float64Array(nx * ny);
   const epsilonCell = new Float64Array(nx * ny);
   const extinctionCell = new Float64Array(nx * ny);
   const cellArea = new Float64Array(nx * ny);
@@ -995,10 +1014,14 @@ function createGrid(config: WaveguideConfig): Grid {
       epsilonCellY[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.yy, 0);
       epsilonCellZ[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.zz, 0);
       epsilonCellXY[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.xy, 0);
+      epsilonCellXZ[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.xz, 0);
+      epsilonCellYZ[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.yz, 0);
       epsilonCellXImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.xx, 0);
       epsilonCellYImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.yy, 0);
       epsilonCellZImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.zz, 0);
       epsilonCellXYImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.xy, 0);
+      epsilonCellXZImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.xz, 0);
+      epsilonCellYZImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.yz, 0);
       epsilonCell[index] = (epsilonCellX[index] + epsilonCellY[index] + epsilonCellZ[index]) / 3;
       extinctionCell[index] = components.reduce((sum, component) => sum + component.fraction * component.value.k, 0);
       cellArea[index] = dxCell[column] * dyCell[row];
@@ -1084,6 +1107,10 @@ function createGrid(config: WaveguideConfig): Grid {
     epsilonCellZImaginary,
     epsilonCellXY,
     epsilonCellXYImaginary,
+    epsilonCellXZ,
+    epsilonCellXZImaginary,
+    epsilonCellYZ,
+    epsilonCellYZImaginary,
     cellArea,
     coreFraction,
     extinctionCell,
@@ -1201,7 +1228,8 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
 }
 
 function gridHasOffDiagonalTensor(grid: Grid): boolean {
-  return [grid.epsilonCellXY, grid.epsilonCellXYImaginary]
+  return [grid.epsilonCellXY, grid.epsilonCellXYImaginary, grid.epsilonCellXZ,
+    grid.epsilonCellXZImaginary, grid.epsilonCellYZ, grid.epsilonCellYZImaginary]
     .some((component) => component.some((value) => Math.abs(value) > 1e-12));
 }
 
@@ -1211,7 +1239,7 @@ function createTensorOperator(grid: Grid, wavelengthUm: number): OperatorContext
   const hySize = (ny + 1) * nx;
   const physicalVectorSize = 2 * (hxSize + hySize);
   const k0 = 2 * Math.PI / wavelengthUm;
-  const apply = (vector: Float64Array): Float64Array => {
+  const applyTypeScript = (vector: Float64Array): Float64Array => {
     let offset = 0;
     const ex = vector.subarray(offset, offset += hySize);
     const ey = vector.subarray(offset, offset += hxSize);
@@ -1243,7 +1271,23 @@ function createTensorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     output.set(outputHy, offset);
     return output;
   };
-  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab" };
+  let apply = applyTypeScript;
+  if (tensorWasm) {
+    tensorWasm.configureTensorOperator(
+      nx, ny, k0,
+      Float64Array.from(grid.dxCell), Float64Array.from(grid.dyCell),
+      Float64Array.from(grid.dxDual), Float64Array.from(grid.dyDual),
+      grid.epsilonCellX, grid.epsilonCellY, grid.epsilonCellZ,
+      grid.epsilonCellXY, grid.epsilonCellXZ, grid.epsilonCellYZ,
+    );
+    apply = (vector: Float64Array): Float64Array => {
+      return tensorWasm?.applyTensorOperator(vector) ?? applyTypeScript(vector);
+    };
+  }
+  const solveShifted = tensorWasm
+    ? (shift: number, rightHandSide: Float64Array) => tensorWasm?.solveShiftedTensorSystem(rightHandSide, shift, 180, 1e-5) ?? rightHandSide.slice()
+    : undefined;
+  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab", solveShifted };
 }
 
 function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContext {
@@ -1463,6 +1507,7 @@ function addComplexEigenvalueInPlace(target: Float64Array, vector: Float64Array,
 }
 
 function solveShiftedSystem(operator: OperatorContext, shift: number, rightHandSide: Float64Array): Float64Array {
+  if (operator.solveShifted) return operator.solveShifted(shift, rightHandSide);
   if (operator.linearSolver === "gmres") return solveShiftedGmres(operator, shift, rightHandSide);
   const size = rightHandSide.length;
   const solution = new Float64Array(size);
@@ -1606,6 +1651,13 @@ function buildFirstOrderMode(pair: RitzPair, order: number, config: WaveguideCon
   };
 
   const longitudinalPotential = complexSubtract(complexDyOperator(hx, grid), complexDxOperator(hy, grid));
+  const exAtNodes = complexAverage(ex, (part) => averageVerticalEdgesToNodes(part, nx, ny));
+  const eyAtNodes = complexAverage(ey, (part) => averageHorizontalEdgesToNodes(part, nx, ny));
+  const epsilonXZAtNodes = averageCellsToNodes(grid.epsilonCellXZ, nx, ny);
+  const epsilonYZAtNodes = averageCellsToNodes(grid.epsilonCellYZ, nx, ny);
+  const zeroTensorPart = new Float64Array(epsilonXZAtNodes.length);
+  complexAddProductInPlace(longitudinalPotential, exAtNodes, epsilonXZAtNodes, zeroTensorPart, -1);
+  complexAddProductInPlace(longitudinalPotential, eyAtNodes, epsilonYZAtNodes, zeroTensorPart, -1);
   complexMultiplyInPlace(longitudinalPotential, grid.inverseEpsilonZ, grid.inverseEpsilonZImaginary);
   const ez = complexScaleScalar(longitudinalPotential, 0, -1 / k0);
   const hz = complexScaleScalar(complexSubtract(complexBy(ex, grid), complexBx(ey, grid)), 0, 1 / k0);
@@ -2107,6 +2159,47 @@ function averageHorizontal(values: Float64Array, nx: number, ny: number): Float6
   for (let row = 0; row < ny; row += 1) {
     for (let column = 0; column < nx; column += 1) {
       output[cellIndex(row, column, nx)] = (values[row * (nx + 1) + column] + values[row * (nx + 1) + column + 1]) / 2;
+    }
+  }
+  return output;
+}
+
+function averageVerticalEdgesToNodes(values: Float64Array, nx: number, ny: number): Float64Array {
+  const output = new Float64Array((nx + 1) * (ny + 1));
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      const west = values[row * nx + clamp(column - 1, 0, nx - 1)];
+      const east = values[row * nx + clamp(column, 0, nx - 1)];
+      output[row * (nx + 1) + column] = (west + east) / 2;
+    }
+  }
+  return output;
+}
+
+function averageHorizontalEdgesToNodes(values: Float64Array, nx: number, ny: number): Float64Array {
+  const output = new Float64Array((nx + 1) * (ny + 1));
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      const south = values[clamp(row - 1, 0, ny - 1) * (nx + 1) + column];
+      const north = values[clamp(row, 0, ny - 1) * (nx + 1) + column];
+      output[row * (nx + 1) + column] = (south + north) / 2;
+    }
+  }
+  return output;
+}
+
+function averageCellsToNodes(values: Float64Array, nx: number, ny: number): Float64Array {
+  const output = new Float64Array((nx + 1) * (ny + 1));
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      const south = clamp(row - 1, 0, ny - 1);
+      const north = clamp(row, 0, ny - 1);
+      const west = clamp(column - 1, 0, nx - 1);
+      const east = clamp(column, 0, nx - 1);
+      output[row * (nx + 1) + column] = (
+        values[cellIndex(south, west, nx)] + values[cellIndex(south, east, nx)]
+        + values[cellIndex(north, west, nx)] + values[cellIndex(north, east, nx)]
+      ) / 4;
     }
   }
   return output;

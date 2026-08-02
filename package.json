@@ -1,12 +1,13 @@
 {
   "name": "waveguide-mode-solver",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
+    "build:wasm": "asc assembly/tensor.ts --target release",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "pnpm build:wasm && tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run"
   },
@@ -21,6 +22,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
+    "assemblyscript": "^0.28.20",
     "typescript": "7.0.2",
     "vite": "8.2.0",
     "vitest": "4.1.10"

@@ -127,15 +127,26 @@ describe("full-vector finite-difference mode solver", () => {
     }
   }, 10_000);
 
-  it("solves a straight guide with a transversely rotated uniaxial tensor and a tabulated material", () => {
+  it("solves transverse and longitudinally coupled uniaxial tensors in WebAssembly", () => {
     const rotated = solveWaveguide({
       ...benchmark, gridResolution: 24, modeCount: 1, coreIndex: 2.2,
       coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 45, coreOpticAxisAzimuthDeg: 90,
     });
     expect(rotated.formulation).toBe("first-order");
+    expect(rotated.backend).toBe("WebAssembly");
     expect(rotated.modes[0].effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
     expect(rotated.modes[0].residual).toBeLessThan(2e-2);
-    expect(validateWaveguide({ ...benchmark, coreIndex: 2.2, coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 90, coreOpticAxisAzimuthDeg: 45 }).join(" ")).toMatch(/transverse x–y plane/);
+    const longitudinal = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1, coreIndex: 2.2,
+      coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 90, coreOpticAxisAzimuthDeg: 45,
+    });
+    expect(longitudinal.backend).toBe("WebAssembly");
+    expect(longitudinal.modes[0].effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
+    expect(longitudinal.modes[0].residual).toBeLessThan(2e-2);
+    expect(validateWaveguide({
+      ...benchmark, coreIndex: 2.2, coreMaterial: "lithium-niobate",
+      coreOpticAxisTiltDeg: 90, coreOpticAxisAzimuthDeg: 45, boundary: "pml",
+    }).join(" ")).toMatch(/lossless materials and a hard outer boundary/);
     const tabulated = solveWaveguide({
       ...benchmark, gridResolution: 24, modeCount: 1, coreMaterial: "tabulated",
       coreMaterialTable: { name: "measured", wavelengthUm: [1.5, 1.6], refractiveIndex: [2.05, 1.95], extinctionCoefficient: [0, 0] },
