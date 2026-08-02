@@ -3,7 +3,6 @@ import { ModePlot } from "./ModePlot";
 import { GeometryPlot } from "./GeometryPlot";
 import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
-import { parseNumericInput } from "./numericInput";
 import { runSolverWorker } from "./workerClient";
 import { AdvancedAnalyses } from "./AdvancedAnalyses";
 import packageJson from "../package.json";
@@ -573,7 +572,7 @@ function ViewHeading({ eyebrow, title, id, children }: { eyebrow: string; title:
 }
 
 function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} onChange={(event) => onChange(parseNumericInput(event.target.value))} /><small>{unit}</small></div></label>;
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
 }
 
 function MaterialSelect({ label, value, allowTabulated = true, onChange }: { label: string; value: MaterialId; allowTabulated?: boolean; onChange: (value: MaterialId) => void }) {

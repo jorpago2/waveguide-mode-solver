@@ -1744,7 +1744,6 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
   const { grid, hxSize, k0 } = operator;
   const { nx, ny } = grid;
   const betaComplex = complexSquareRoot(pair.eigenvalue, pair.eigenvalueImaginary);
-  const beta = betaComplex.real;
   const imaginaryVector = pair.vectorImaginary ?? new Float64Array(pair.vector.length);
   const hx: ComplexArray = { real: pair.vector.subarray(0, hxSize), imaginary: imaginaryVector.subarray(0, hxSize) };
   const hy: ComplexArray = { real: pair.vector.subarray(hxSize), imaginary: imaginaryVector.subarray(hxSize) };
@@ -2279,10 +2278,6 @@ function deterministicUnitVector(size: number): Float64Array {
 
 function toMatrix(values: Float64Array, nx: number, ny: number): number[][] {
   return Array.from({ length: ny }, (_, row) => Array.from(values.subarray(row * nx, (row + 1) * nx)));
-}
-
-function reciprocal(values: Float64Array): Float64Array {
-  return Float64Array.from(values, (value) => 1 / value);
 }
 
 function add(first: Float64Array, second: Float64Array): Float64Array {

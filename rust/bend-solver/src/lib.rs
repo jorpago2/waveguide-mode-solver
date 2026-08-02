@@ -128,8 +128,3 @@ pub unsafe extern "C" fn solve_factorized(
         0
     })
 }
-
-#[no_mangle]
-pub extern "C" fn clear_factorization() {
-    FACTORIZATION.with(|stored| *stored.borrow_mut() = None);
-}

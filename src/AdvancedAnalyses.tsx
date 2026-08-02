@@ -1,5 +1,4 @@
 import { useState, type FormEvent, type ReactNode } from "react";
-import { parseNumericInput } from "./numericInput";
 import { runSolverWorker } from "./workerClient";
 import { ConvergencePlot, ModeMapPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
@@ -176,7 +175,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
 }
 
 function AnalysisNumber({ label, unit, value, min, max, step, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} onChange={(event) => onChange(parseNumericInput(event.target.value))} /><small>{unit}</small></div></label>;
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
 }
 
 function AnalysisMetric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }

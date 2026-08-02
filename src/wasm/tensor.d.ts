@@ -6,11 +6,6 @@ export declare function __pin(ptr: number): number;
 export declare function __unpin(ptr: number): void;
 export declare function __collect(): void;
 export declare const __rtti_base: number;
-/** assembly/tensor/Float64Array_ID */
-export declare const Float64Array_ID: {
-  /** @type `u32` */
-  get value(): number
-};
 /**
  * assembly/tensor/configureTensorOperator
  * @param nextNx `i32`

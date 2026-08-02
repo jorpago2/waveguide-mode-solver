@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parseNumericInput } from "./numericInput";
 import { NORMALIZED_MODAL_POWER_W, solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
@@ -40,11 +39,6 @@ function horizontalCentroid(field: number[][], xUm: number[]): number {
 }
 
 describe("full-vector finite-difference mode solver", () => {
-  it("allows a numeric input to be cleared before entering a replacement", () => {
-    expect(parseNumericInput("")).toBeNaN();
-    expect(parseNumericInput("0.25")).toBe(0.25);
-  });
-
   it("converges toward the subpixel-interface reference", () => {
     const result = solveWaveguide(benchmark);
     expect(result.modes.length).toBeGreaterThan(0);

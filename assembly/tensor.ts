@@ -26,8 +26,6 @@ let vectorOperatorDirection = new Float64Array(0);
 let vectorOperatorIntermediate = new Float64Array(0);
 let vectorIntermediate = new Float64Array(0);
 
-export const Float64Array_ID = idof<Float64Array>();
-
 @inline
 function cell(row: i32, column: i32): i32 {
   return row * nx + column;

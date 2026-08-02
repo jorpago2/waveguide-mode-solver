@@ -13,10 +13,7 @@ export type SolverWorkerRequest =
   | { kind: "compareWaveguides"; sourceConfig: WaveguideConfig; targetConfig: WaveguideConfig; maximumModes: number }
   | { kind: "modeMap"; config: WaveguideConfig; settings: ModeMapSettings };
 
-self.onmessage = async ({ data }: MessageEvent<{ id?: number; request?: SolverWorkerRequest } | SolverWorkerRequest>) => {
-  const envelope = data as { id?: number; request?: SolverWorkerRequest };
-  const id = envelope.request ? envelope.id : undefined;
-  const request = envelope.request ?? data as SolverWorkerRequest;
+self.onmessage = async ({ data: { id, request } }: MessageEvent<{ id: number; request: SolverWorkerRequest }>) => {
   try {
     const [{ solveWaveguide, sweepGeometry, sweepWaveguide }, { analyzeConvergence, analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides }] = await Promise.all([
       import("./solver"), import("./analysis"),
@@ -30,12 +27,11 @@ self.onmessage = async ({ data }: MessageEvent<{ id?: number; request?: SolverWo
                 : request.kind === "directionalCoupler" ? analyzeDirectionalCoupler(request.config, request.settings)
                   : request.kind === "compareWaveguides" ? compareWaveguides(request.sourceConfig, request.targetConfig, request.maximumModes)
                     : calculateModeMap(request.config, request.settings);
-    if (request.kind === "solve" && id !== undefined) {
+    if (request.kind === "solve") {
       const packed = packSolverResult(result as import("./solver").SolverResult);
       self.postMessage({ id, result: packed.result, packed: true }, { transfer: packed.transfer });
-    } else self.postMessage(id === undefined ? { result } : { id, result });
+    } else self.postMessage({ id, result });
   } catch (error) {
-    const response = { error: error instanceof Error ? error.message : "The solver failed." };
-    self.postMessage(id === undefined ? response : { id, ...response });
+    self.postMessage({ id, error: error instanceof Error ? error.message : "The solver failed." });
   }
 };

@@ -6,7 +6,6 @@ interface BendSolverExports extends WebAssembly.Exports {
   deallocate_u32(pointer: number, capacity: number): void;
   factorize_shifted(size: number, pointers: number, indices: number, real: number, imaginary: number, nonzeros: number, shift: number): number;
   solve_factorized(rightReal: number, rightImaginary: number, outputReal: number, outputImaginary: number, size: number): number;
-  clear_factorization(): void;
 }
 
 const wasmUrl = new URL("./bend_solver.wasm", import.meta.url);

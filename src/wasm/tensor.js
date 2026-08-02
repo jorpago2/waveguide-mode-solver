@@ -17,13 +17,6 @@ async function instantiate(module, imports = {}) {
   const { exports } = await WebAssembly.instantiate(module, adaptedImports);
   const memory = exports.memory || imports.env.memory;
   const adaptedExports = Object.setPrototypeOf({
-    Float64Array_ID: {
-      // assembly/tensor/Float64Array_ID: u32
-      valueOf() { return this.value; },
-      get value() {
-        return exports.Float64Array_ID.value >>> 0;
-      }
-    },
     configureTensorOperator(nextNx, nextNy, nextK0, nextDxCell, nextDyCell, nextDxDual, nextDyDual, epsilonXXCell, epsilonYYCell, epsilonZZCell, epsilonXYCell, epsilonXZCell, epsilonYZCell) {
       // assembly/tensor/configureTensorOperator(i32, i32, f64, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array) => i32
       nextDxCell = __retain(__lowerTypedArray(Float64Array, 4, 3, nextDxCell) || __notnull());
@@ -171,7 +164,6 @@ export const {
   __unpin,
   __collect,
   __rtti_base,
-  Float64Array_ID,
   configureTensorOperator,
   configureVectorOperator,
   applyVectorOperator,
