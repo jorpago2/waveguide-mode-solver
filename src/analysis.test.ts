@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides } from "./analysis";
+import { analyzeConvergence, analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides } from "./analysis";
 import { evaluateMaterial, evaluateMaterialAxes } from "./materials";
 import { solveWaveguide, validateWaveguide, type WaveguideConfig } from "./solver";
 
@@ -51,6 +51,29 @@ describe("photonic design analyses", () => {
     expect(comparison.effectiveIndexMismatch[0][0]).toBeGreaterThan(0);
   });
 
+  it("tracks a mode over three grids and reports mesh uncertainty", () => {
+    const convergence = analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: false });
+    expect(convergence.levels.map((level) => level.resolution)).toEqual([24, 31, 41]);
+    expect(convergence.levels.slice(1).every((level) => level.overlap > 0.8)).toBe(true);
+    expect(convergence.monotonic).toBe(true);
+    expect(convergence.observedOrder).toBeGreaterThan(0);
+    expect(convergence.fineRelativeChangePercent).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(convergence.lossRelativeSpreadPercent)).toBe(true);
+    expect(convergence.gciFinePercent).toBeGreaterThanOrEqual(0);
+    expect(convergence.richardsonEffectiveIndex).toBeGreaterThan(config.claddingIndex);
+    expect(() => analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.1, modeIndex: 0, includePmlSensitivity: false })).toThrow(/refinement ratio/);
+  });
+
+  it("checks PML robustness independently from mesh GCI", () => {
+    const convergence = analyzeConvergence({
+      ...config, modeCount: 1, boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
+    }, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: true });
+    expect(convergence.pmlSensitivity?.points).toHaveLength(4);
+    expect(convergence.pmlSensitivity?.points.slice(1).every((point) => point.error || point.overlap! > 0.8)).toBe(true);
+    expect(Number.isFinite(convergence.pmlSensitivity?.maximumEffectiveIndexChangePercent)).toBe(true);
+    expect(Number.isFinite(convergence.pmlSensitivity?.maximumLossChangePercent)).toBe(true);
+  }, 30_000);
+
   it("computes a bounded Gaussian coupling efficiency", () => {
     const result = solveWaveguide(config);
     const coupling = analyzeGaussianCoupling(result, 0, { waistUm: 1.5, offsetXUm: 0, offsetYUm: 0, polarizationAngleDeg: 0 });
@@ -68,11 +91,12 @@ describe("photonic design analyses", () => {
   });
 
   it("repeats the same tolerance study for a fixed seed", () => {
-    const settings = { widthStdDevNm: 5, heightStdDevNm: 3, gapStdDevNm: 0, coreIndexStdDev: 0.0005, samples: 6, seed: 7, modeIndex: 0 };
-    const first = analyzeTolerances(config, settings);
-    const second = analyzeTolerances(config, settings);
+    const settings = { widthStdDevNm: 5, heightStdDevNm: 3, gapStdDevNm: 0, sidewallAngleStdDevDeg: 0.2, coreIndexStdDev: 0.0005, samples: 6, seed: 7, modeIndex: 0 };
+    const first = analyzeTolerances({ ...config, sidewallAngleDeg: 80 }, settings);
+    const second = analyzeTolerances({ ...config, sidewallAngleDeg: 80 }, settings);
     expect(first.samples).toEqual(second.samples);
     expect(first.effectiveIndex.standardDeviation).toBeGreaterThan(0);
+    expect(first.effectiveIndexSensitivity.some((entry) => entry.parameter === "Sidewall angle")).toBe(true);
   });
 
   it("maps modal cutoff changes over wavelength and width", () => {

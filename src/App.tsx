@@ -242,9 +242,9 @@ export function App() {
 
   function exportSweep() {
     if (!sweepResult) return;
-    const rows = ["wavelength_um,mode_label,near_cutoff,n_eff,n_group,dispersion_ps_nm_km,loss_db_cm,mode_overlap",
+    const rows = ["wavelength_um,mode_label,near_cutoff,n_eff,n_group,dispersion_ps_nm_km,beta2_ps2_km,loss_db_cm,mode_overlap",
       ...sweepResult.points.map((point) => [point.wavelengthUm, point.modeLabel, point.nearCutoff, point.effectiveIndex,
-        point.groupIndex, point.dispersionPsPerNmKm, point.lossDbPerCm, point.overlap].join(","))];
+        point.groupIndex, point.dispersionPsPerNmKm, point.beta2Ps2PerKm, point.lossDbPerCm, point.overlap].join(","))];
     download(rows.join("\n"), "waveguide-dispersion.csv");
   }
 
@@ -387,7 +387,10 @@ export function App() {
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
               <Metric label="Electric confinement" value={`${(mode.electricConfinement * 100).toFixed(1)}%`} />
+              <Metric label="Core power fraction" value={`${(mode.corePowerFraction * 100).toFixed(1)}%`} />
               <Metric label={<>Effective area <i>A</i><sub>eff</sub></>} value={`${mode.effectiveAreaUm2.toFixed(3)} µm²`} />
+              <Metric label="Longitudinal E fraction" value={`${(mode.longitudinalElectricFraction * 100).toFixed(1)}%`} />
+              <Metric label="x-polarized E fraction" value={`${(mode.xPolarizedElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
               <Metric label={<>Imaginary index Im(<i>n</i><sub>eff</sub>)</>} value={mode.effectiveIndexImaginary.toExponential(3)} />
               <Metric label="Normalized power" value={`${mode.modalPowerW.toFixed(3)} W`} />

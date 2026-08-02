@@ -86,6 +86,7 @@ export interface WaveguideMode {
   propagationConstantPerUm: number;
   residual: number;
   electricConfinement: number;
+  corePowerFraction: number;
   effectiveAreaUm2: number;
   longitudinalElectricFraction: number;
   xPolarizedElectricFraction: number;
@@ -123,6 +124,7 @@ export interface SweepPoint {
   effectiveIndex: number;
   groupIndex: number;
   dispersionPsPerNmKm: number;
+  beta2Ps2PerKm: number;
   lossDbPerCm: number;
   overlap: number;
   modeLabel: string;
@@ -421,16 +423,21 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
   const first = derivative(lambda, neff);
   const second = secondDerivative(lambda, neff);
   const speedOfLight = 299_792_458;
-  const points = valid.map((entry, index) => ({
-    wavelengthUm: entry.wavelengthUm,
-    effectiveIndex: entry.mode.effectiveIndex,
-    groupIndex: entry.mode.effectiveIndex - entry.wavelengthUm * first[index],
-    dispersionPsPerNmKm: -(entry.wavelengthUm * 1e12 / speedOfLight) * second[index],
-    lossDbPerCm: entry.mode.lossDbPerCm,
-    overlap: entry.overlap,
-    modeLabel: entry.mode.label,
-    nearCutoff: entry.mode.nearCutoff,
-  }));
+  const points = valid.map((entry, index) => {
+    const dispersionPsPerNmKm = -(entry.wavelengthUm * 1e12 / speedOfLight) * second[index];
+    const wavelengthM = entry.wavelengthUm * 1e-6;
+    return {
+      wavelengthUm: entry.wavelengthUm,
+      effectiveIndex: entry.mode.effectiveIndex,
+      groupIndex: entry.mode.effectiveIndex - entry.wavelengthUm * first[index],
+      dispersionPsPerNmKm,
+      beta2Ps2PerKm: -(wavelengthM ** 2 / (2 * Math.PI * speedOfLight)) * dispersionPsPerNmKm * 1e21,
+      lossDbPerCm: entry.mode.lossDbPerCm,
+      overlap: entry.overlap,
+      modeLabel: entry.mode.label,
+      nearCutoff: entry.mode.nearCutoff,
+    };
+  });
   const warnings: string[] = [];
   if (valid.length < settings.points) warnings.push(`Mode tracking stopped at ${valid.length} of ${settings.points} wavelengths.`);
   if (points.some((point) => point.overlap < 0.75)) warnings.push("A low field overlap indicates a possible mode crossing; inspect that interval.");
@@ -1243,13 +1250,16 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
   const physicalIntensity = new Float64Array(nx * ny);
   const physicalPoynting = new Float64Array(nx * ny);
   let modalPowerW = 0;
+  let corePowerW = 0;
   for (let index = 0; index < physicalIntensity.length; index += 1) {
     physicalIntensity[index] = complexMagnitudeSquaredAt(physicalEx, index) + complexMagnitudeSquaredAt(physicalEy, index) + complexMagnitudeSquaredAt(physicalEz, index);
     physicalPoynting[index] = 0.5 * (
       physicalEx.real[index] * physicalHy.real[index] + physicalEx.imaginary[index] * physicalHy.imaginary[index]
       - physicalEy.real[index] * physicalHx.real[index] - physicalEy.imaginary[index] * physicalHx.imaginary[index]
     );
-    modalPowerW += physicalPoynting[index] * grid.cellArea[index] * 1e-12;
+    const cellPowerW = physicalPoynting[index] * grid.cellArea[index] * 1e-12;
+    modalPowerW += cellPowerW;
+    corePowerW += grid.coreFraction[index] * cellPowerW;
   }
   const fields: Record<FieldComponent, number[][]> = {
     Ex: toMatrix(physicalEx.real, nx, ny),
@@ -1281,6 +1291,7 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
     propagationConstantPerUm: beta,
     residual: pair.residual,
     electricConfinement,
+    corePowerFraction: corePowerW / modalPowerW,
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,
     longitudinalElectricFraction: ezEnergy / electricTotal,
     xPolarizedElectricFraction: exEnergy / transverseElectricEnergy,

@@ -28,8 +28,14 @@ export function SweepPlot({ result }: { result: SweepResult }) {
         hovertemplate: "λ = %{x:.4f} µm<br>D = %{y:.2f} ps/(nm·km)<extra></extra>",
       },
       {
+        type: "scatter", mode: "lines", name: "β<sub>2</sub>", x: wavelength,
+        y: result.points.map((point) => point.beta2Ps2PerKm), xaxis: "x2", yaxis: "y3",
+        line: { color: "#ed6a3a", width: 2, dash: "dash" },
+        hovertemplate: "λ = %{x:.4f} µm<br>β<sub>2</sub> = %{y:.2f} ps²/km<extra></extra>",
+      },
+      {
         type: "scatter", mode: "lines", name: "Loss", x: wavelength,
-        y: result.points.map((point) => point.lossDbPerCm), xaxis: "x2", yaxis: "y3",
+        y: result.points.map((point) => point.lossDbPerCm), xaxis: "x3", yaxis: "y4",
         line: { color: "#b6472d", width: 2, dash: "dot" },
         hovertemplate: "λ = %{x:.4f} µm<br>loss = %{y:.3g} dB/cm<extra></extra>",
       },
@@ -38,13 +44,15 @@ export function SweepPlot({ result }: { result: SweepResult }) {
       font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
-      yaxis: { ...axis, domain: [0.56, 1], title: { text: "Modal index" } },
-      xaxis2: { ...axis, domain: [0, 1], anchor: "y2", matches: "x", title: { text: "Wavelength (µm)" } },
-      yaxis2: { ...axis, domain: [0, 0.38], title: { text: "D (ps/(nm·km))" } },
-      yaxis3: { ...axis, domain: [0, 0.38], title: { text: "Loss (dB/cm)" }, overlaying: "y2", side: "right", showgrid: false },
+      yaxis: { ...axis, domain: [0.69, 1], title: { text: "Modal index" } },
+      xaxis2: { ...axis, domain: [0, 1], anchor: "y2", matches: "x", showticklabels: false },
+      yaxis2: { ...axis, domain: [0.35, 0.58], title: { text: "D (ps/(nm·km))" } },
+      yaxis3: { ...axis, domain: [0.35, 0.58], title: { text: "β₂ (ps²/km)" }, overlaying: "y2", side: "right", showgrid: false },
+      xaxis3: { ...axis, domain: [0, 1], anchor: "y4", matches: "x", title: { text: "Wavelength (µm)" } },
+      yaxis4: { ...axis, domain: [0, 0.2], title: { text: "Loss (dB/cm)" } },
     }, { displaylogo: false, responsive: true, scrollZoom: false });
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
 
-  return <div ref={plotRef} className="sweep-plot" aria-label="Effective index, group index and dispersion wavelength sweep" />;
+  return <div ref={plotRef} className="sweep-plot" aria-label="Effective index, group index, D, beta two and loss wavelength sweep" />;
 }

@@ -54,6 +54,8 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.effectiveIndex).toBeLessThan(benchmark.coreIndex);
     expect(mode.electricConfinement).toBeGreaterThan(0);
     expect(mode.electricConfinement).toBeLessThan(1);
+    expect(mode.corePowerFraction).toBeGreaterThan(0);
+    expect(mode.corePowerFraction).toBeLessThan(1);
     expect(mode.longitudinalElectricFraction).toBeGreaterThanOrEqual(0);
     expect(mode.fields.Ex).toHaveLength(26);
     expect(mode.fields.Ex[0]).toHaveLength(32);
@@ -117,6 +119,9 @@ describe("full-vector finite-difference mode solver", () => {
     expect(sweep.points).toHaveLength(5);
     expect(sweep.points.every((point) => Number.isFinite(point.groupIndex))).toBe(true);
     expect(sweep.points.every((point) => Number.isFinite(point.dispersionPsPerNmKm))).toBe(true);
+    expect(sweep.points.every((point) => Number.isFinite(point.beta2Ps2PerKm))).toBe(true);
+    expect(sweep.points.every((point) => Math.abs(point.beta2Ps2PerKm + (point.wavelengthUm * 1e-6) ** 2
+      * point.dispersionPsPerNmKm * 1e21 / (2 * Math.PI * 299_792_458)) < 1e-10)).toBe(true);
     expect(Math.min(...sweep.points.map((point) => point.overlap))).toBeGreaterThan(0.7);
   });
 

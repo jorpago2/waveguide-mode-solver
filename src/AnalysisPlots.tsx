@@ -1,9 +1,35 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import type { ModeMapResult, ToleranceResult } from "./analysis";
+import type { ConvergenceResult, ModeMapResult, ToleranceResult } from "./analysis";
 
 const axis = { color: "#53636a", gridcolor: "rgba(23,48,58,0.08)", ticks: "outside" as const };
 const plotConfig = { displaylogo: false, responsive: true, scrollZoom: false };
+
+export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
+  const plotRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!plotRef.current) return;
+    const resolutions = result.levels.map((level) => level.resolution);
+    const data: Plotly.Data[] = [
+      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: resolutions, y: result.levels.map((level) => level.effectiveIndex), line: { color: "#087f8c", width: 2.5 }, marker: { size: 8 } },
+      { type: "scatter", mode: "lines+markers", name: "Loss", x: resolutions, y: result.levels.map((level) => level.lossDbPerCm), yaxis: "y2", line: { color: "#ed6a3a", width: 2, dash: "dash" }, marker: { size: 7 } },
+    ];
+    if (result.richardsonEffectiveIndex !== undefined) data.push({
+      type: "scatter", mode: "lines", name: "Richardson n<sub>eff</sub>", x: [resolutions[0], resolutions[2]],
+      y: [result.richardsonEffectiveIndex, result.richardsonEffectiveIndex], line: { color: "#7156a5", width: 1.5, dash: "dot" },
+    });
+    void Plotly.react(plotRef.current, data, {
+      margin: { l: 68, r: 76, t: 38, b: 58 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      legend: { orientation: "h", x: 0, y: 1.12 },
+      xaxis: { ...axis, title: { text: "Nominal grid resolution (cells)" } },
+      yaxis: { ...axis, title: { text: "Effective index" }, tickformat: ".7f" },
+      yaxis2: { ...axis, overlaying: "y", side: "right", title: { text: "Loss (dB/cm)" }, type: result.levels.every((level) => level.lossDbPerCm > 0) ? "log" : "linear", showgrid: false },
+    }, plotConfig);
+    return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
+  }, [result]);
+  return <div ref={plotRef} className="analysis-plot convergence-plot" aria-label="Effective-index and loss convergence with grid refinement" />;
+}
 
 export function TolerancePlot({ result }: { result: ToleranceResult }) {
   const plotRef = useRef<HTMLDivElement>(null);

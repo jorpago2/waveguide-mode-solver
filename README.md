@@ -18,13 +18,15 @@ It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and r
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
 - Wavelength sweeps with field-overlap mode tracking.
 - Width, height and slot-gap sweeps with resampled field-overlap mode tracking.
-- Effective and imaginary index, group index, dispersion, attenuation, confinement and effective area.
+- Effective and imaginary index, group index, D and β₂ dispersion, attenuation, electric and power confinement, polarization fractions and effective area.
 - Complex Poynting-vector normalization to 1 W modal power.
+- Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
+- One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Matrix-free shift-invert Arnoldi with BiCGSTAB inner solves and residual rejection.
 - Solver and sweeps run in a Web Worker so the interface remains responsive.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
-- Seeded Latin-hypercube fabrication-tolerance studies with confidence intervals and correlation-based sensitivity ranking.
+- Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.
 - Gaussian-beam overlap and identical two-guide directional-coupler supermode analysis.
 - Modal power-overlap and effective-index-mismatch matrices between two waveguide cross-sections.
 - Two-dimensional mode-count and effective-index maps for visualizing cutoff regions.
@@ -44,12 +46,13 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization, material models, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison and modal maps.
+The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization, material models, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison and modal maps.
 
 ## Numerical scope
 
 - Linear, non-magnetic dielectrics with diagonal anisotropy.
 - Hard-wall and PML outer boundaries are available. Radiation loss requires mesh, padding, PML-thickness and PML-strength convergence checks.
+- The reported GCI applies to effective-index mesh discretization only and is valid only when the three grids converge monotonically in the asymptotic range.
 - The PML is intended for open-boundary mode studies; a nonzero imaginary effective index alone does not establish that a physical mode is leaky.
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.

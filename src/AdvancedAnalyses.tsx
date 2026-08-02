@@ -1,9 +1,9 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { parseNumericInput } from "./numericInput";
 import { runSolverWorker } from "./workerClient";
-import { ModeMapPlot, TolerancePlot } from "./AnalysisPlots";
+import { ConvergencePlot, ModeMapPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
-  DirectionalCouplerResult, DirectionalCouplerSettings, GaussianCouplingResult, GaussianCouplingSettings,
+  ConvergenceResult, ConvergenceSettings, DirectionalCouplerResult, DirectionalCouplerSettings, GaussianCouplingResult, GaussianCouplingSettings,
   ModeMapParameter, ModeMapResult, ModeMapSettings, ToleranceResult, ToleranceSettings, WaveguideComparisonResult,
 } from "./analysis";
 import type { SolverResult, WaveguideConfig } from "./solver";
@@ -15,7 +15,8 @@ interface Props {
   presets: Record<string, WaveguideConfig>;
 }
 
-const initialTolerance: ToleranceSettings = { widthStdDevNm: 10, heightStdDevNm: 5, gapStdDevNm: 5, coreIndexStdDev: 0.001, samples: 12, seed: 2026, modeIndex: 0 };
+const initialTolerance: ToleranceSettings = { widthStdDevNm: 10, heightStdDevNm: 5, gapStdDevNm: 5, sidewallAngleStdDevDeg: 0, coreIndexStdDev: 0.001, samples: 12, seed: 2026, modeIndex: 0 };
+const initialConvergence: ConvergenceSettings = { coarseResolution: 24, refinementRatio: 1.4, modeIndex: 0, includePmlSensitivity: true };
 const initialGaussian: GaussianCouplingSettings = { waistUm: 1.5, offsetXUm: 0, offsetYUm: 0, polarizationAngleDeg: 0 };
 const initialCoupler: DirectionalCouplerSettings = { gapUm: 0.2, polarization: "quasi-TE" };
 const initialMap: ModeMapSettings = { parameter: "widthUm", startValueUm: 0.5, stopValueUm: 1.5, geometryPoints: 5, startWavelengthUm: 1.45, stopWavelengthUm: 1.65, wavelengthPoints: 5, maximumModes: 4, gridResolution: 24, modeIndex: 0 };
@@ -23,6 +24,8 @@ const initialMap: ModeMapSettings = { parameter: "widthUm", startValueUm: 0.5, s
 export function AdvancedAnalyses({ config, result, selectedMode, presets }: Props) {
   const [active, setActive] = useState<string>();
   const [error, setError] = useState("");
+  const [convergence, setConvergence] = useState(initialConvergence);
+  const [convergenceResult, setConvergenceResult] = useState<ConvergenceResult>();
   const [tolerance, setTolerance] = useState(initialTolerance);
   const [toleranceResult, setToleranceResult] = useState<ToleranceResult>();
   const [gaussian, setGaussian] = useState(initialGaussian);
@@ -34,6 +37,12 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const [targetPreset, setTargetPreset] = useState(Object.keys(presets)[1] ?? Object.keys(presets)[0]);
   const [comparisonModes, setComparisonModes] = useState(3);
   const [comparisonResult, setComparisonResult] = useState<WaveguideComparisonResult>();
+
+  async function runConvergence(event: FormEvent) {
+    event.preventDefault(); setActive("convergence"); setError("");
+    try { setConvergenceResult(await runSolverWorker<ConvergenceResult>({ kind: "convergence", config, settings: { ...convergence, modeIndex: selectedMode } })); }
+    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+  }
 
   async function runTolerance(event: FormEvent) {
     event.preventDefault(); setActive("tolerance"); setError("");
@@ -68,13 +77,47 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const geometry = config.geometry ?? "channel";
   const gapAvailable = geometry === "slot" || geometry === "coupler";
   return <>
+    <section className="sweep-section" aria-labelledby="convergence-title">
+      <div className="panel-heading"><div><span className="step">05</span><h2 id="convergence-title">Numerical convergence</h2></div></div>
+      <p className="section-intro">Track the selected mode over three systematically refined meshes. Richardson extrapolation and the fine-grid GCI are reported only for monotonic convergence.</p>
+      <form className="analysis-controls" onSubmit={runConvergence}>
+        <AnalysisNumber label="Coarse resolution" unit="cells" value={convergence.coarseResolution} min={24} max={56} step={1} onChange={(value) => setConvergence((current) => ({ ...current, coarseResolution: value }))} />
+        <AnalysisNumber label="Refinement ratio" unit="r" value={convergence.refinementRatio} min={1.3} max={2} step={0.05} onChange={(value) => setConvergence((current) => ({ ...current, refinementRatio: value }))} />
+        {(config.boundary ?? "hard") === "pml" && <label className="checkbox-field"><input type="checkbox" checked={convergence.includePmlSensitivity} onChange={(event) => setConvergence((current) => ({ ...current, includePmlSensitivity: event.target.checked }))} /><span>Test PML sensitivity</span></label>}
+        <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "convergence" ? "Verifying…" : "Run convergence"}<span aria-hidden="true">→</span></button>
+      </form>
+      {convergenceResult && <>
+        <div className="analysis-metrics">
+          <AnalysisMetric label="Observed order" value={formatOptional(convergenceResult.observedOrder, 2)} />
+          <AnalysisMetric label="Fine-grid change" value={`${convergenceResult.fineRelativeChangePercent.toPrecision(3)}%`} />
+          <AnalysisMetric label="Fine-grid GCI" value={convergenceResult.gciFinePercent === undefined ? "—" : `${convergenceResult.gciFinePercent.toPrecision(3)}%`} />
+          <AnalysisMetric label="Richardson neff" value={formatOptional(convergenceResult.richardsonEffectiveIndex, 7)} />
+          <AnalysisMetric label="Asymptotic ratio" value={formatOptional(convergenceResult.asymptoticRatio, 3)} />
+          <AnalysisMetric label="GCI status" value={convergenceResult.inAsymptoticRange ? "Asymptotic" : "Not verified"} />
+          <AnalysisMetric label="Loss mesh spread" value={`${convergenceResult.lossRelativeSpreadPercent.toPrecision(3)}%`} />
+        </div>
+        <ConvergencePlot result={convergenceResult} />
+        {convergenceResult.pmlSensitivity && <>
+          <div className="analysis-metrics">
+            <AnalysisMetric label="PML max Δneff" value={formatPercent(convergenceResult.pmlSensitivity.maximumEffectiveIndexChangePercent)} />
+            <AnalysisMetric label="PML max loss change" value={formatPercent(convergenceResult.pmlSensitivity.maximumLossChangePercent)} />
+            <AnalysisMetric label="Failed PML checks" value={String(convergenceResult.pmlSensitivity.failedChecks)} />
+          </div>
+          <div className="comparison-scroll"><table className="comparison-table"><caption>One-at-a-time PML robustness checks on the finest mesh</caption><thead><tr><th>Variation</th><th>Grid</th><th>Padding</th><th>PML thickness</th><th>Strength</th><th>n<sub>eff</sub></th><th>Loss</th><th>Overlap</th></tr></thead><tbody>{convergenceResult.pmlSensitivity.points.map((point) => <tr key={point.name}><th>{point.name}</th><td>{point.resolution}</td><td>{point.paddingUm.toFixed(3)} µm</td><td>{point.thicknessUm.toFixed(3)} µm</td><td>{point.strength.toFixed(2)}</td>{point.error ? <td colSpan={3} className="failed-check">{point.error}</td> : <><td>{point.effectiveIndex!.toFixed(7)}</td><td>{point.lossDbPerCm!.toPrecision(4)} dB/cm</td><td>{(100 * point.overlap!).toFixed(2)}%</td></>}</tr>)}</tbody></table></div>
+        </>}
+        {convergenceResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
+      </>}
+      <p className="limitation">GCI quantifies mesh discretization uncertainty in effective index. PML checks are sensitivity tests, not proof that the computed attenuation is a physical leakage rate.</p>
+    </section>
+
     <section className="sweep-section" aria-labelledby="tolerance-title">
-      <div className="panel-heading"><div><span className="step">05</span><h2 id="tolerance-title">Fabrication tolerances</h2></div></div>
+      <div className="panel-heading"><div><span className="step">06</span><h2 id="tolerance-title">Fabrication tolerances</h2></div></div>
       <p className="section-intro">Run a seeded Latin-hypercube Monte Carlo study. Inputs are independent Gaussian standard deviations.</p>
       <form className="analysis-controls" onSubmit={runTolerance}>
         <AnalysisNumber label="Width σ" unit="nm" value={tolerance.widthStdDevNm} min={0} max={1_000} step={1} onChange={(value) => setTolerance((current) => ({ ...current, widthStdDevNm: value }))} />
         <AnalysisNumber label="Height σ" unit="nm" value={tolerance.heightStdDevNm} min={0} max={1_000} step={1} onChange={(value) => setTolerance((current) => ({ ...current, heightStdDevNm: value }))} />
         {gapAvailable && <AnalysisNumber label="Gap σ" unit="nm" value={tolerance.gapStdDevNm} min={0} max={1_000} step={1} onChange={(value) => setTolerance((current) => ({ ...current, gapStdDevNm: value }))} />}
+        <AnalysisNumber label="Sidewall-angle σ" unit="deg" value={tolerance.sidewallAngleStdDevDeg} min={0} max={20} step={0.1} onChange={(value) => setTolerance((current) => ({ ...current, sidewallAngleStdDevDeg: value }))} />
         <AnalysisNumber label="Core-index σ" unit="n" value={tolerance.coreIndexStdDev} min={0} max={1} step={0.0001} onChange={(value) => setTolerance((current) => ({ ...current, coreIndexStdDev: value }))} />
         <AnalysisNumber label="Samples" unit="runs" value={tolerance.samples} min={6} max={100} step={1} onChange={(value) => setTolerance((current) => ({ ...current, samples: value }))} />
         <AnalysisNumber label="Seed" unit="integer" value={tolerance.seed} min={0} max={2_147_483_647} step={1} onChange={(value) => setTolerance((current) => ({ ...current, seed: value }))} />
@@ -84,7 +127,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section" aria-labelledby="coupling-title">
-      <div className="panel-heading"><div><span className="step">06</span><h2 id="coupling-title">Coupling analysis</h2></div></div>
+      <div className="panel-heading"><div><span className="step">07</span><h2 id="coupling-title">Coupling analysis</h2></div></div>
       <div className="analysis-columns">
         <form className="analysis-card" onSubmit={runGaussian}>
           <h3>Gaussian-beam overlap</h3><p>Approximate butt-coupling overlap with a linearly polarized Gaussian field.</p>
@@ -103,7 +146,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section" aria-labelledby="comparison-title">
-      <div className="panel-heading"><div><span className="step">07</span><h2 id="comparison-title">Cross-section comparison</h2></div></div>
+      <div className="panel-heading"><div><span className="step">08</span><h2 id="comparison-title">Cross-section comparison</h2></div></div>
       <p className="section-intro">Compare modal power overlap between the current guide and a target platform at the current wavelength. This estimates an abrupt interface, not an optimized taper.</p>
       <form className="analysis-controls" onSubmit={runComparison}>
         <label className="select-field">Target preset<select value={targetPreset} onChange={(event) => setTargetPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
@@ -114,7 +157,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section" aria-labelledby="map-title">
-      <div className="panel-heading"><div><span className="step">08</span><h2 id="map-title">Mode map</h2></div></div>
+      <div className="panel-heading"><div><span className="step">09</span><h2 id="map-title">Mode map</h2></div></div>
       <p className="section-intro">Map guided-mode count and the selected effective index versus wavelength and one geometry parameter.</p>
       <form className="analysis-controls" onSubmit={runModeMap}>
         <label className="select-field">Parameter<select value={modeMap.parameter} onChange={(event) => setModeMap((current) => ({ ...current, parameter: event.target.value as ModeMapParameter }))}><option value="widthUm">Core width</option><option value="heightUm">Core height</option>{geometry === "slot" && <option value="slotGapUm">Slot gap</option>}{geometry === "coupler" && <option value="couplerGapUm">Coupler gap</option>}</select></label>
@@ -133,4 +176,6 @@ function AnalysisNumber({ label, unit, value, min, max, step, onChange }: { labe
 }
 
 function AnalysisMetric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
+function formatOptional(value: number | undefined, digits: number): string { return value === undefined ? "—" : value.toFixed(digits); }
+function formatPercent(value: number | undefined): string { return value === undefined ? "—" : `${value.toPrecision(3)}%`; }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : "The analysis failed."; }

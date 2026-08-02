@@ -45,10 +45,63 @@ export interface WaveguideComparisonResult {
   wavelengthUm: number;
 }
 
+export interface ConvergenceSettings {
+  coarseResolution: number;
+  refinementRatio: number;
+  modeIndex: number;
+  includePmlSensitivity: boolean;
+}
+
+export interface ConvergenceLevel {
+  name: "Coarse" | "Medium" | "Fine";
+  resolution: number;
+  spacingUm: number;
+  effectiveIndex: number;
+  lossDbPerCm: number;
+  residual: number;
+  overlap: number;
+  modeLabel: string;
+}
+
+export interface PmlSensitivityPoint {
+  name: string;
+  resolution: number;
+  paddingUm: number;
+  thicknessUm: number;
+  strength: number;
+  effectiveIndex?: number;
+  lossDbPerCm?: number;
+  overlap?: number;
+  error?: string;
+}
+
+export interface PmlSensitivityResult {
+  points: PmlSensitivityPoint[];
+  maximumEffectiveIndexChangePercent?: number;
+  maximumLossChangePercent?: number;
+  failedChecks: number;
+  gridLimited: boolean;
+}
+
+export interface ConvergenceResult {
+  levels: ConvergenceLevel[];
+  monotonic: boolean;
+  observedOrder?: number;
+  richardsonEffectiveIndex?: number;
+  gciFinePercent?: number;
+  asymptoticRatio?: number;
+  inAsymptoticRange: boolean;
+  fineRelativeChangePercent: number;
+  lossRelativeSpreadPercent: number;
+  pmlSensitivity?: PmlSensitivityResult;
+  warnings: string[];
+}
+
 export interface ToleranceSettings {
   widthStdDevNm: number;
   heightStdDevNm: number;
   gapStdDevNm: number;
+  sidewallAngleStdDevDeg: number;
   coreIndexStdDev: number;
   samples: number;
   seed: number;
@@ -59,6 +112,7 @@ export interface ToleranceSample {
   widthUm: number;
   heightUm: number;
   gapUm: number;
+  sidewallAngleDeg: number;
   coreIndexOffset: number;
   effectiveIndex: number;
   electricConfinement: number;
@@ -178,16 +232,114 @@ export function compareWaveguides(sourceConfig: WaveguideConfig, targetConfig: W
   };
 }
 
+export function analyzeConvergence(config: WaveguideConfig, settings: ConvergenceSettings): ConvergenceResult {
+  if (!Number.isInteger(settings.coarseResolution) || settings.coarseResolution < 24) {
+    throw new Error("Coarse resolution must be an integer of at least 24 cells.");
+  }
+  if (!Number.isFinite(settings.refinementRatio) || settings.refinementRatio < 1.3 || settings.refinementRatio > 2) {
+    throw new Error("The refinement ratio must be between 1.3 and 2.0.");
+  }
+  if (!Number.isInteger(settings.modeIndex) || settings.modeIndex < 0 || settings.modeIndex >= PARAMETER_MAXIMUMS.modeCount) {
+    throw new Error("The selected convergence mode is invalid.");
+  }
+  const resolutions = [
+    settings.coarseResolution,
+    Math.round(settings.coarseResolution * settings.refinementRatio),
+    Math.round(settings.coarseResolution * settings.refinementRatio ** 2),
+  ];
+  if (resolutions[2] > PARAMETER_MAXIMUMS.gridResolution) {
+    throw new Error(`The finest grid exceeds ${PARAMETER_MAXIMUMS.gridResolution} cells; reduce the coarse resolution or refinement ratio.`);
+  }
+  if (new Set(resolutions).size !== 3) throw new Error("The refinement settings must produce three distinct grids.");
+
+  const modeCount = Math.max(config.modeCount, settings.modeIndex + 2);
+  const solved = resolutions.map((gridResolution) => solveWaveguide({ ...config, gridResolution, modeCount }));
+  const tracked: WaveguideMode[] = [];
+  const first = solved[0].modes[settings.modeIndex];
+  if (!first) throw new Error("The selected mode was not found on the coarse grid.");
+  tracked.push(first);
+  for (let index = 1; index < solved.length; index += 1) {
+    const candidates = solved[index].modes.map((mode) => ({
+      mode,
+      overlap: resampledModeOverlap(solved[index - 1], tracked[index - 1], solved[index], mode),
+    })).sort((left, right) => right.overlap - left.overlap);
+    if (!candidates[0]) throw new Error(`The selected mode was not found on the ${index === 1 ? "medium" : "fine"} grid.`);
+    tracked.push(candidates[0].mode);
+  }
+
+  const levels = solved.map((result, index): ConvergenceLevel => ({
+    name: (["Coarse", "Medium", "Fine"] as const)[index],
+    resolution: resolutions[index],
+    spacingUm: Math.sqrt(result.dxUm * result.dyUm),
+    effectiveIndex: tracked[index].effectiveIndex,
+    lossDbPerCm: tracked[index].lossDbPerCm,
+    residual: tracked[index].residual,
+    overlap: index === 0 ? 1 : resampledModeOverlap(solved[index - 1], tracked[index - 1], result, tracked[index]),
+    modeLabel: tracked[index].label,
+  }));
+  const [coarse, medium, fine] = levels;
+  const coarseDifference = coarse.effectiveIndex - medium.effectiveIndex;
+  const fineDifference = medium.effectiveIndex - fine.effectiveIndex;
+  const monotonic = coarseDifference * fineDifference > 0;
+  const observedOrder = monotonic ? observedConvergenceOrder(fine, medium, coarse) : undefined;
+  const fineRatio = medium.spacingUm / fine.spacingUm;
+  const coarseRatio = coarse.spacingUm / medium.spacingUm;
+  const denominator = observedOrder === undefined ? undefined : fineRatio ** observedOrder - 1;
+  const richardsonEffectiveIndex = denominator && Math.abs(denominator) > 1e-12
+    ? fine.effectiveIndex + (fine.effectiveIndex - medium.effectiveIndex) / denominator
+    : undefined;
+  const gciFinePercent = denominator && Math.abs(denominator) > 1e-12
+    ? 125 * Math.abs((fine.effectiveIndex - medium.effectiveIndex) / fine.effectiveIndex) / Math.abs(denominator)
+    : undefined;
+  const coarseDenominator = observedOrder === undefined ? undefined : coarseRatio ** observedOrder - 1;
+  const gciCoarsePercent = coarseDenominator && Math.abs(coarseDenominator) > 1e-12
+    ? 125 * Math.abs((coarse.effectiveIndex - medium.effectiveIndex) / medium.effectiveIndex) / Math.abs(coarseDenominator)
+    : undefined;
+  const asymptoticRatio = observedOrder !== undefined && gciFinePercent && gciCoarsePercent
+    ? gciCoarsePercent / (fineRatio ** observedOrder * gciFinePercent)
+    : undefined;
+  const inAsymptoticRange = observedOrder !== undefined && observedOrder >= 1.5 && observedOrder <= 2.5
+    && asymptoticRatio !== undefined && Math.abs(asymptoticRatio - 1) <= 0.1;
+  const lossValues = levels.map((level) => level.lossDbPerCm);
+  const meanLoss = lossValues.reduce((sum, value) => sum + value, 0) / lossValues.length;
+  const lossRelativeSpreadPercent = 100 * (Math.max(...lossValues) - Math.min(...lossValues)) / Math.max(Math.abs(meanLoss), 1e-30);
+  const warnings: string[] = [];
+  if (!monotonic) warnings.push("Effective index converges non-monotonically; Richardson extrapolation and GCI are not applicable.");
+  else if (observedOrder === undefined) warnings.push("An observed convergence order could not be fitted to these grids.");
+  else if (observedOrder < 1.5 || observedOrder > 2.5) warnings.push("The observed order differs materially from the expected second-order trend; pre-asymptotic behavior or error cancellation is likely.");
+  else if (!inAsymptoticRange) warnings.push("The three grids are not demonstrably in the asymptotic range; refine further before quoting the GCI.");
+  if (Math.min(levels[1].overlap, levels[2].overlap) < 0.8) warnings.push("Modal overlap falls below 80% during refinement; inspect possible mode switching.");
+
+  const pmlSensitivity = (config.boundary ?? "hard") === "pml" && settings.includePmlSensitivity
+    ? analyzePmlSensitivity({ ...config, gridResolution: fine.resolution, modeCount }, solved[2], tracked[2])
+    : undefined;
+  if (pmlSensitivity?.failedChecks) warnings.push(`${pmlSensitivity.failedChecks} PML robustness check${pmlSensitivity.failedChecks === 1 ? "" : "s"} failed to return the tracked mode.`);
+  if (pmlSensitivity?.gridLimited) warnings.push("The boundary-distance check reached the 96-cell grid limit, so its mesh spacing is not held exactly constant.");
+  return {
+    levels,
+    monotonic,
+    observedOrder,
+    richardsonEffectiveIndex,
+    gciFinePercent,
+    asymptoticRatio,
+    inAsymptoticRange,
+    fineRelativeChangePercent: 100 * Math.abs(fine.effectiveIndex - medium.effectiveIndex) / Math.abs(fine.effectiveIndex),
+    lossRelativeSpreadPercent,
+    pmlSensitivity,
+    warnings,
+  };
+}
+
 export function analyzeTolerances(config: WaveguideConfig, settings: ToleranceSettings): ToleranceResult {
   if (!Number.isInteger(settings.samples) || settings.samples < 6 || settings.samples > 100) throw new Error("Tolerance samples must be an integer between 6 and 100.");
   if (!Number.isInteger(settings.seed) || settings.seed < 0 || settings.seed > 2_147_483_647) throw new Error("Seed must be a non-negative 32-bit integer.");
-  const deviations = [settings.widthStdDevNm, settings.heightStdDevNm, settings.gapStdDevNm, settings.coreIndexStdDev];
+  const deviations = [settings.widthStdDevNm, settings.heightStdDevNm, settings.gapStdDevNm, settings.sidewallAngleStdDevDeg, settings.coreIndexStdDev];
   if (deviations.some((value) => !Number.isFinite(value) || value < 0)) throw new Error("Tolerance standard deviations must be finite and non-negative.");
   const nominalResult = solveWaveguide({ ...config, modeCount: Math.max(config.modeCount, settings.modeIndex + 2) });
   const nominalMode = nominalResult.modes[settings.modeIndex];
   if (!nominalMode) throw new Error("The selected nominal mode is unavailable.");
   const random = seededRandom(settings.seed);
-  const dimensions = latinGaussianSamples(settings.samples, 4, random);
+  const dimensions = latinGaussianSamples(settings.samples, 5, random);
   const samples: ToleranceSample[] = [];
   let failedSamples = 0;
   for (let index = 0; index < settings.samples; index += 1) {
@@ -195,9 +347,10 @@ export function analyzeTolerances(config: WaveguideConfig, settings: ToleranceSe
     const heightUm = config.heightUm + dimensions[1][index] * settings.heightStdDevNm / 1_000;
     const nominalGap = (config.geometry ?? "channel") === "coupler" ? (config.couplerGapUm ?? 0) : (config.slotGapUm ?? 0);
     const gapUm = nominalGap + dimensions[2][index] * settings.gapStdDevNm / 1_000;
-    const coreIndexOffset = dimensions[3][index] * settings.coreIndexStdDev;
+    const sidewallAngleDeg = (config.sidewallAngleDeg ?? 90) + dimensions[3][index] * settings.sidewallAngleStdDevDeg;
+    const coreIndexOffset = dimensions[4][index] * settings.coreIndexStdDev;
     const sampledConfig: WaveguideConfig = {
-      ...config, widthUm, heightUm, coreIndexOffset,
+      ...config, widthUm, heightUm, sidewallAngleDeg, coreIndexOffset,
       coreIndex: config.coreIndex,
       modeCount: Math.max(config.modeCount, settings.modeIndex + 2),
       ...((config.geometry ?? "channel") === "slot" ? { slotGapUm: gapUm } : {}),
@@ -210,7 +363,7 @@ export function analyzeTolerances(config: WaveguideConfig, settings: ToleranceSe
         .sort((first, second) => second.overlap - first.overlap);
       const tracked = ranked[0];
       if (!tracked) { failedSamples += 1; continue; }
-      samples.push({ widthUm, heightUm, gapUm, coreIndexOffset, effectiveIndex: tracked.mode.effectiveIndex,
+      samples.push({ widthUm, heightUm, gapUm, sidewallAngleDeg, coreIndexOffset, effectiveIndex: tracked.mode.effectiveIndex,
         electricConfinement: tracked.mode.electricConfinement, effectiveAreaUm2: tracked.mode.effectiveAreaUm2,
         lossDbPerCm: tracked.mode.lossDbPerCm, overlap: tracked.overlap });
     } catch { failedSamples += 1; }
@@ -227,6 +380,7 @@ export function analyzeTolerances(config: WaveguideConfig, settings: ToleranceSe
       { parameter: "Width", values: samples.map((sample) => sample.widthUm) },
       { parameter: "Height", values: samples.map((sample) => sample.heightUm) },
       ...(settings.gapStdDevNm > 0 ? [{ parameter: "Gap", values: samples.map((sample) => sample.gapUm) }] : []),
+      ...(settings.sidewallAngleStdDevDeg > 0 ? [{ parameter: "Sidewall angle", values: samples.map((sample) => sample.sidewallAngleDeg) }] : []),
       { parameter: "Core index", values: samples.map((sample) => sample.coreIndexOffset) },
     ].map((entry) => ({ parameter: entry.parameter, correlation: correlation(entry.values, samples.map((sample) => sample.effectiveIndex)) }))
       .filter((entry) => Number.isFinite(entry.correlation))
@@ -264,6 +418,93 @@ export function calculateModeMap(config: WaveguideConfig, settings: ModeMapSetti
   }
   const warnings = clipped ? ["At least one cell reached the requested mode limit; increase Maximum modes to rule out clipping."] : [];
   return { parameter: settings.parameter, valuesUm, wavelengthsUm, modeCount, effectiveIndex, warnings };
+}
+
+function observedConvergenceOrder(fine: ConvergenceLevel, medium: ConvergenceLevel, coarse: ConvergenceLevel): number | undefined {
+  const target = Math.abs((coarse.effectiveIndex - medium.effectiveIndex) / (medium.effectiveIndex - fine.effectiveIndex));
+  const ratioAt = (order: number) => Math.abs(
+    (coarse.spacingUm ** order - medium.spacingUm ** order)
+    / (medium.spacingUm ** order - fine.spacingUm ** order),
+  );
+  let lower = 0.05;
+  let upper = 20;
+  let lowerError = ratioAt(lower) - target;
+  const upperError = ratioAt(upper) - target;
+  if (!Number.isFinite(target) || lowerError * upperError > 0) return undefined;
+  for (let iteration = 0; iteration < 60; iteration += 1) {
+    const midpoint = (lower + upper) / 2;
+    const midpointError = ratioAt(midpoint) - target;
+    if (Math.abs(midpointError) < 1e-10) return midpoint;
+    if (lowerError * midpointError <= 0) upper = midpoint;
+    else { lower = midpoint; lowerError = midpointError; }
+  }
+  return (lower + upper) / 2;
+}
+
+function analyzePmlSensitivity(config: WaveguideConfig, baselineResult: SolverResult, baselineMode: WaveguideMode): PmlSensitivityResult {
+  const thickness = config.pmlThicknessUm ?? config.paddingUm * 0.6;
+  const strength = config.pmlStrength ?? 4;
+  const boundaryPadding = Math.min(PARAMETER_MAXIMUMS.dimensionUm, config.paddingUm * 1.25);
+  const requestedBoundaryResolution = Math.round(
+    config.gridResolution * domainSpan(config, boundaryPadding) / domainSpan(config, config.paddingUm),
+  );
+  const boundaryResolution = Math.min(PARAMETER_MAXIMUMS.gridResolution, requestedBoundaryResolution);
+  const variants: Array<{ name: string; config: WaveguideConfig }> = [
+    { name: "Baseline", config },
+    { name: "+25% boundary distance", config: { ...config, paddingUm: boundaryPadding, pmlThicknessUm: thickness, gridResolution: boundaryResolution } },
+    { name: "+10% PML thickness", config: { ...config, pmlThicknessUm: Math.min(config.paddingUm * 0.9, thickness * 1.1) } },
+    { name: "+25% PML strength", config: { ...config, pmlStrength: Math.min(50, strength * 1.25) } },
+  ];
+  const points = variants.map((variant, index): PmlSensitivityPoint => {
+    const parameters = {
+      name: variant.name,
+      resolution: variant.config.gridResolution,
+      paddingUm: variant.config.paddingUm,
+      thicknessUm: variant.config.pmlThicknessUm ?? variant.config.paddingUm * 0.6,
+      strength: variant.config.pmlStrength ?? 4,
+    };
+    try {
+      const result = index === 0 ? baselineResult : solveWaveguide(variant.config);
+      const mode = index === 0 ? baselineMode : result.modes.map((candidate) => ({
+        candidate,
+        overlap: resampledModeOverlap(baselineResult, baselineMode, result, candidate),
+      })).sort((left, right) => right.overlap - left.overlap)[0]?.candidate;
+      if (!mode) return { ...parameters, error: "Tracked mode not found" };
+      return {
+        ...parameters,
+        effectiveIndex: mode.effectiveIndex,
+        lossDbPerCm: mode.lossDbPerCm,
+        overlap: index === 0 ? 1 : resampledModeOverlap(baselineResult, baselineMode, result, mode),
+      };
+    } catch (error) {
+      return { ...parameters, error: error instanceof Error ? error.message : "Solver failed" };
+    }
+  });
+  const baseline = points[0];
+  const valid = points.slice(1).filter((point) => point.effectiveIndex !== undefined && point.lossDbPerCm !== undefined);
+  const effectiveIndexChanges = valid.map((point) => (
+    100 * Math.abs(point.effectiveIndex! - baseline.effectiveIndex!) / Math.abs(baseline.effectiveIndex!)
+  ));
+  const lossChanges = valid.map((point) => (
+    100 * Math.abs(point.lossDbPerCm! - baseline.lossDbPerCm!) / Math.max(Math.abs(baseline.lossDbPerCm!), 1e-30)
+  ));
+  return {
+    points,
+    maximumEffectiveIndexChangePercent: effectiveIndexChanges.length > 0 ? Math.max(...effectiveIndexChanges) : undefined,
+    maximumLossChangePercent: lossChanges.length > 0 ? Math.max(...lossChanges) : undefined,
+    failedChecks: points.filter((point) => point.error).length,
+    gridLimited: boundaryResolution < requestedBoundaryResolution,
+  };
+}
+
+function domainSpan(config: WaveguideConfig, paddingUm: number): number {
+  const geometry = config.geometry ?? "channel";
+  const etchedHeight = geometry === "rib" ? config.heightUm - (config.slabHeightUm ?? config.heightUm / 2) : config.heightUm;
+  const expansion = geometry === "slot" ? 0 : etchedHeight / Math.tan((config.sidewallAngleDeg ?? 90) * Math.PI / 180);
+  const coreSpan = geometry === "coupler"
+    ? 2 * config.widthUm + (config.couplerGapUm ?? config.widthUm / 2) + 2 * expansion
+    : config.widthUm + 2 * expansion;
+  return Math.max(coreSpan + 2 * paddingUm, config.heightUm + 2 * paddingUm);
 }
 
 function horizontalParity(mode: WaveguideMode): number {
