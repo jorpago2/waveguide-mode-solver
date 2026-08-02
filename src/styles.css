@@ -127,7 +127,7 @@ main { width: min(1480px, calc(100% - 40px)); margin: 0 auto; }
 
 .control-panel { padding: 24px; }
 .results-panel { min-width: 0; padding: 24px; }
-.select-field { margin-top: 15px; }
+.select-field { margin-top: 15px; display: grid; gap: 7px; color: #53666c; font-size: 0.76rem; font-weight: 600; }
 
 .panel-heading {
   display: flex;
@@ -153,6 +153,7 @@ select, input {
 }
 select { padding: 0 11px; }
 input { padding: 0 48px 0 11px; }
+input:disabled { color: #61777d; cursor: not-allowed; opacity: 0.72; }
 select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,127,140,0.12); }
 
 .form-grid { margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 13px 10px; }
@@ -236,6 +237,9 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .advanced-controls { margin-top: 18px; padding-top: 14px; border-top: 1px solid #dce5e2; }
 .advanced-controls summary { color: #31515a; cursor: pointer; font-size: 0.76rem; font-weight: 700; }
 .advanced-controls > p { margin: 14px 0 0; color: #78898d; font-size: 0.68rem; line-height: 1.5; }
+.material-selectors { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 9px; }
+.material-selectors .select-field { margin-top: 0; }
+.material-sources a { color: var(--teal); font-weight: 700; }
 
 .sweep-section {
   margin-top: 18px;
@@ -248,6 +252,25 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .sweep-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
 .sweep-controls .solve-button { margin-top: 0; }
 .sweep-plot { width: 100%; min-height: 540px; }
+.section-intro { margin: 8px 0 18px; max-width: 760px; color: #6b7e83; font-size: 0.78rem; line-height: 1.55; }
+.analysis-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; align-items: end; }
+.analysis-controls .select-field { margin-top: 0; }
+.analysis-controls .solve-button { margin-top: 0; }
+.analysis-controls.compact { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+.analysis-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.analysis-card { padding: 20px; background: #f5f8f6; border: 1px solid #dce5e2; border-radius: 13px; }
+.analysis-card h3 { margin: 0 0 7px; color: #18343d; font-size: 1rem; }
+.analysis-card > p { min-height: 2.8em; margin: 0 0 16px; color: #708287; font-size: 0.73rem; line-height: 1.5; }
+.inline-result { margin-top: 14px; padding: 13px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; background: #e4f5f1; border-radius: 10px; }
+.inline-result strong { color: #0c5964; font-size: 1.25rem; }
+.inline-result span { color: #5f767b; font-size: 0.72rem; text-align: right; }
+.analysis-metrics { margin: 18px 0 4px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1px; overflow: hidden; background: #dce5e2; border: 1px solid #dce5e2; border-radius: 12px; }
+.analysis-metrics > div { padding: 12px 14px; display: grid; gap: 4px; background: #f8faf8; }
+.analysis-metrics span { color: #78898d; font-size: 0.67rem; }
+.analysis-metrics strong { color: #17313a; font-size: 0.92rem; }
+.analysis-plot { width: 100%; min-height: 430px; }
+.mode-map-plot { min-height: 520px; }
+.analysis-error { margin: 18px 0; }
 
 .validation-section { margin: 18px 0 42px; display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 18px; }
 .method-card, .checks-card { padding: clamp(24px, 3vw, 36px); }
@@ -299,6 +322,7 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .control-panel, .results-panel { padding: 18px; }
   .field-plot { min-height: 390px; }
   .sweep-section { padding: 18px; }
+  .analysis-columns { grid-template-columns: 1fr; }
   footer { align-items: flex-start; flex-direction: column; }
 }
 
@@ -314,6 +338,9 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .field-toolbar button { min-width: 35px; padding-inline: 7px; }
   .sweep-controls { grid-template-columns: 1fr; }
   .sweep-plot { min-height: 480px; }
+  .analysis-controls.compact { grid-template-columns: 1fr; }
+  .analysis-card { padding: 16px; }
+  .analysis-plot, .mode-map-plot { min-height: 680px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

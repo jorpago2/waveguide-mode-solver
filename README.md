@@ -17,6 +17,10 @@ It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and r
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Matrix-free shift-invert Arnoldi with BiCGSTAB inner solves and residual rejection.
 - Solver and sweeps run in a Web Worker so the interface remains responsive.
+- Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
+- Seeded Latin-hypercube fabrication-tolerance studies with confidence intervals and correlation-based sensitivity ranking.
+- Gaussian-beam overlap and identical two-guide directional-coupler supermode analysis.
+- Two-dimensional mode-count and effective-index maps for visualizing cutoff regions.
 
 ## Run locally
 
@@ -32,7 +36,7 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization and spectral/geometrical mode tracking.
+The tests exercise subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization, material models, seeded tolerances, coupling and modal maps.
 
 ## Numerical scope
 
@@ -41,10 +45,14 @@ The tests exercise subpixel convergence, the finest supported grid, every geomet
 - The PML is intended for open-boundary mode studies; a nonzero imaginary effective index alone does not establish that a physical mode is leaky.
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.
+- Library materials are isotropic reference models. Deposited-film composition, temperature and process variation require custom measured data.
+- Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
 
 ## Reference
 
 A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modesolver for Anisotropic Dielectric Waveguides,” *Journal of Lightwave Technology* 26(11), 1423–1431 (2008). [doi:10.1109/JLT.2008.923643](https://doi.org/10.1109/JLT.2008.923643)
+
+Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), and [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823).
 
 ## License
 

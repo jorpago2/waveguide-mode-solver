@@ -1,7 +1,8 @@
 import { EigenvalueDecomposition, Matrix } from "ml-matrix";
+import { evaluateMaterial, materialDefinition, type MaterialId } from "./materials";
 
 export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity" | "poynting";
-export type GeometryType = "channel" | "rib" | "slot" | "multilayer";
+export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
 export type BoundaryType = "hard" | "pml";
 
 export const PARAMETER_MAXIMUMS = {
@@ -46,6 +47,11 @@ export interface WaveguideConfig {
   boundary?: BoundaryType;
   pmlThicknessUm?: number;
   pmlStrength?: number;
+  coreMaterial?: MaterialId;
+  claddingMaterial?: MaterialId;
+  substrateMaterial?: MaterialId;
+  couplerGapUm?: number;
+  coreIndexOffset?: number;
 }
 
 export interface WaveguideMode {
@@ -101,7 +107,7 @@ export interface SweepResult {
   warnings: string[];
 }
 
-export type GeometrySweepParameter = "widthUm" | "heightUm" | "slotGapUm";
+export type GeometrySweepParameter = "widthUm" | "heightUm" | "slotGapUm" | "couplerGapUm";
 
 export interface GeometrySweepSettings {
   parameter: GeometrySweepParameter;
@@ -213,7 +219,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.coreIndexY, config.coreIndexZ, config.claddingIndexY, config.claddingIndexZ,
     config.coreExtinction, config.claddingExtinction, config.substrateIndex, config.substrateIndexY, config.substrateIndexZ,
     config.substrateExtinction, config.coreDispersionPerUm, config.claddingDispersionPerUm,
-    config.substrateDispersionPerUm, config.meshBias,
+    config.substrateDispersionPerUm, config.meshBias, config.coreIndexOffset,
   ].every((value) => value === undefined || Number.isFinite(value));
   if (!finiteOptional) errors.push("Optional material and mesh values must be finite.");
   if ([config.coreExtinction ?? 0, config.claddingExtinction ?? 0, config.substrateExtinction ?? 0]
@@ -240,10 +246,25 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if ((config.geometry ?? "channel") === "slot" && ((config.slotGapUm ?? 0) <= 0 || (config.slotGapUm ?? 0) >= config.widthUm)) {
     errors.push("Slot gap must be positive and smaller than the total core width.");
   }
+  if ((config.geometry ?? "channel") === "coupler" && (!Number.isFinite(config.couplerGapUm) || (config.couplerGapUm ?? 0) <= 0 || (config.couplerGapUm ?? 0) > PARAMETER_MAXIMUMS.dimensionUm)) {
+    errors.push(`Coupler gap must be positive and no larger than ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
+  }
   if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 1 || (config.substrateIndex ?? 0) > PARAMETER_MAXIMUMS.refractiveIndex)) {
     errors.push(`Substrate index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
-  if (finiteOptional) {
+  let materialModelsValid = true;
+  const selectedMaterialIds = new Set([config.coreMaterial, config.claddingMaterial,
+    ...((config.geometry ?? "channel") === "multilayer" ? [config.substrateMaterial] : [])]);
+  for (const materialId of selectedMaterialIds) {
+    if (materialId && materialId !== "custom") {
+      const material = materialDefinition(materialId);
+      if (config.wavelengthUm < material.minimumWavelengthUm || config.wavelengthUm > material.maximumWavelengthUm) {
+        errors.push(`${material.name} is valid from ${material.minimumWavelengthUm} to ${material.maximumWavelengthUm} µm.`);
+        materialModelsValid = false;
+      }
+    }
+  }
+  if (finiteOptional && materialModelsValid) {
     const materials = materialValues(config);
     const indices = Object.values(materials).flatMap((material) => [material.nx, material.ny, material.nz]);
     if (indices.some((value) => value < 1 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
@@ -372,8 +393,11 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
   if (settings.parameter === "slotGapUm" && (config.geometry ?? "channel") !== "slot") {
     throw new Error("Slot-gap sweeps require the slot geometry.");
   }
-  const currentValue = settings.parameter === "slotGapUm"
-    ? (config.slotGapUm ?? config.widthUm / 5)
+  if (settings.parameter === "couplerGapUm" && (config.geometry ?? "channel") !== "coupler") {
+    throw new Error("Coupler-gap sweeps require the coupler geometry.");
+  }
+  const currentValue = settings.parameter === "slotGapUm" ? (config.slotGapUm ?? config.widthUm / 5)
+    : settings.parameter === "couplerGapUm" ? (config.couplerGapUm ?? config.widthUm / 2)
     : config[settings.parameter];
   const values = Array.from({ length: settings.points }, (_, index) => (
     settings.startValueUm + index * (settings.stopValueUm - settings.startValueUm) / (settings.points - 1)
@@ -428,16 +452,16 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
 function materialValues(config: WaveguideConfig) {
   const reference = config.materialReferenceWavelengthUm ?? config.wavelengthUm;
   const offset = config.wavelengthUm - reference;
-  const values = (base: number, ny: number | undefined, nz: number | undefined, k: number | undefined, slope: number | undefined) => ({
-    nx: base + (slope ?? 0) * offset,
-    ny: (ny ?? base) + (slope ?? 0) * offset,
-    nz: (nz ?? base) + (slope ?? 0) * offset,
+  const values = (materialId: MaterialId | undefined, base: number, ny: number | undefined, nz: number | undefined, k: number | undefined, slope: number | undefined, indexOffset = 0) => ({
+    nx: (materialId && materialId !== "custom" ? evaluateMaterial(materialId, config.wavelengthUm) : base + (slope ?? 0) * offset) + indexOffset,
+    ny: (materialId && materialId !== "custom" ? evaluateMaterial(materialId, config.wavelengthUm) : (ny ?? base) + (slope ?? 0) * offset) + indexOffset,
+    nz: (materialId && materialId !== "custom" ? evaluateMaterial(materialId, config.wavelengthUm) : (nz ?? base) + (slope ?? 0) * offset) + indexOffset,
     k: k ?? 0,
   });
   return {
-    core: values(config.coreIndex, config.coreIndexY, config.coreIndexZ, config.coreExtinction, config.coreDispersionPerUm),
-    cladding: values(config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm),
-    substrate: values(config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm),
+    core: values(config.coreMaterial, config.coreIndex, config.coreIndexY, config.coreIndexZ, config.coreExtinction, config.coreDispersionPerUm, config.coreIndexOffset ?? 0),
+    cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm),
+    substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm),
   };
 }
 
@@ -463,6 +487,10 @@ function regionFractions(x0: number, x1: number, y0: number, y1: number, config:
     const gap = config.slotGapUm ?? config.widthUm / 5;
     core = rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, -gap / 2, coreBottom, coreTop)
       + rectangleFraction(x0, x1, y0, y1, gap / 2, config.widthUm / 2, coreBottom, coreTop);
+  } else if (geometry === "coupler") {
+    const gap = config.couplerGapUm ?? config.widthUm / 2;
+    core = rectangleFraction(x0, x1, y0, y1, -gap / 2 - config.widthUm, -gap / 2, coreBottom, coreTop)
+      + rectangleFraction(x0, x1, y0, y1, gap / 2, gap / 2 + config.widthUm, coreBottom, coreTop);
   } else {
     core = rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, config.widthUm / 2, coreBottom, coreTop);
   }
@@ -520,7 +548,7 @@ function modeOverlap(first: WaveguideMode, second: WaveguideMode): number {
   return Math.abs(numerator) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
 }
 
-function resampledModeOverlap(
+export function resampledModeOverlap(
   firstResult: SolverResult,
   first: WaveguideMode,
   secondResult: SolverResult,
@@ -581,7 +609,8 @@ function secondDerivative(x: number[], y: number[]): number[] {
 }
 
 function createGrid(config: WaveguideConfig): Grid {
-  const domainWidth = config.widthUm + 2 * config.paddingUm;
+  const coreSpan = (config.geometry ?? "channel") === "coupler" ? 2 * config.widthUm + (config.couplerGapUm ?? config.widthUm / 2) : config.widthUm;
+  const domainWidth = coreSpan + 2 * config.paddingUm;
   const domainHeight = config.heightUm + 2 * config.paddingUm;
   const nominalStep = Math.max(domainWidth, domainHeight) / config.gridResolution;
   const nx = Math.max(12, Math.round(domainWidth / nominalStep));

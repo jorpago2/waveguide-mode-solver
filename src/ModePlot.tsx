@@ -138,6 +138,13 @@ function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
       rectangle(gap / 2, config.widthUm / 2, -config.heightUm / 2, config.heightUm / 2),
     ];
   }
+  if (geometry === "coupler") {
+    const gap = config.couplerGapUm ?? config.widthUm / 2;
+    return [
+      rectangle(-gap / 2 - config.widthUm, -gap / 2, -config.heightUm / 2, config.heightUm / 2),
+      rectangle(gap / 2, gap / 2 + config.widthUm, -config.heightUm / 2, config.heightUm / 2),
+    ];
+  }
   if (geometry === "rib") {
     const slabTop = -config.heightUm / 2 + (config.slabHeightUm ?? config.heightUm / 2);
     return [

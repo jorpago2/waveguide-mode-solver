@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import type { GeometrySweepResult } from "./solver";
 
-const parameterLabels = { widthUm: "Core width", heightUm: "Core height", slotGapUm: "Slot gap" };
+const parameterLabels = { widthUm: "Core width", heightUm: "Core height", slotGapUm: "Slot gap", couplerGapUm: "Coupler gap" };
 
 export function GeometrySweepPlot({ result }: { result: GeometrySweepResult }) {
   const plotRef = useRef<HTMLDivElement>(null);

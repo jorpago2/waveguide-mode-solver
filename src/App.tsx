@@ -4,6 +4,8 @@ import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
 import { parseNumericInput } from "./numericInput";
 import { runSolverWorker } from "./workerClient";
+import { AdvancedAnalyses } from "./AdvancedAnalyses";
+import { MATERIALS, evaluateMaterial, materialDefinition, type MaterialId } from "./materials";
 import {
   validateWaveguide,
   PARAMETER_MAXIMUMS,
@@ -33,17 +35,21 @@ const common = {
   boundary: "hard" as const,
   pmlThicknessUm: 0.6,
   pmlStrength: 4,
+  coreMaterial: "custom" as MaterialId,
+  claddingMaterial: "custom" as MaterialId,
+  substrateMaterial: "custom" as MaterialId,
+  couplerGapUm: 0.2,
 };
 
 const presets: Record<string, WaveguideConfig> = {
   "Silicon nitride": {
     ...common, wavelengthUm: 1.55, widthUm: 1, heightUm: 0.4, coreIndex: 2,
-    claddingIndex: 1.444, substrateIndex: 1.444, paddingUm: 1.2, gridResolution: 40, modeCount: 3,
+    claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon-nitride", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 1.2, gridResolution: 40, modeCount: 3,
   },
   Silicon: {
     ...common, wavelengthUm: 1.55, widthUm: 0.45, heightUm: 0.22, slabHeightUm: 0.09,
     slotGapUm: 0.08, coreIndex: 3.476, claddingIndex: 1.444,
-    substrateIndex: 1.444, paddingUm: 0.8, gridResolution: 52, modeCount: 2,
+    substrateIndex: 1.444, coreMaterial: "silicon", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 52, modeCount: 2,
   },
   Polymer: {
     ...common, wavelengthUm: 1.55, widthUm: 2, heightUm: 1.2, slabHeightUm: 0.5,
@@ -108,6 +114,10 @@ export function App() {
     if (preset) setDraft({ ...preset });
   }
 
+  function updateMaterial(materialKey: "coreMaterial" | "claddingMaterial" | "substrateMaterial", indexKey: "coreIndex" | "claddingIndex" | "substrateIndex", materialId: MaterialId) {
+    setDraft((current) => ({ ...current, [materialKey]: materialId, [indexKey]: displayMaterialIndex(materialId, current.wavelengthUm, current[indexKey] ?? current.claddingIndex) }));
+  }
+
   async function solve(event: FormEvent) {
     event.preventDefault();
     const errors = validateWaveguide(draft);
@@ -122,7 +132,11 @@ export function App() {
         setSelectedMode(0);
         setSweepResult(undefined);
         setGeometrySweepResult(undefined);
-        if ((draft.geometry ?? "channel") !== "slot") setGeometrySweep((current) => current.parameter === "slotGapUm" ? { ...current, parameter: "widthUm" } : current);
+        setGeometrySweep((current) => (
+          (current.parameter === "slotGapUm" && (draft.geometry ?? "channel") !== "slot")
+          || (current.parameter === "couplerGapUm" && (draft.geometry ?? "channel") !== "coupler")
+            ? { ...current, parameter: "widthUm" } : current
+        ));
         setMessage(`${next.modes.length} guided mode${next.modes.length === 1 ? "" : "s"} found on a ${next.nx} × ${next.ny} Yee grid.`);
     } catch (caught) {
         setError(caught instanceof Error ? caught.message : "The mode solve failed.");
@@ -201,7 +215,7 @@ export function App() {
       <section className="intro" aria-labelledby="page-title">
         <p className="eyebrow">Integrated photonics · educational solver</p>
         <h1 id="page-title">Inspect and sweep complete vector modes.</h1>
-        <p>Model channel, rib, slot and multilayer waveguides with graded meshes, anisotropic materials and wavelength-dependent loss and dispersion.</p>
+        <p>Model, validate and explore channel, rib, slot, coupler and multilayer waveguides with dispersive materials, fabrication tolerances and coupling analysis.</p>
       </section>
 
       <div className="workspace">
@@ -210,32 +224,38 @@ export function App() {
           <form onSubmit={solve} noValidate>
             <label>Platform preset<select defaultValue="Silicon nitride" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
             <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => ({ ...current, geometry: event.target.value as GeometryType }))}>
-              <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="multilayer">Multilayer ridge</option>
+              <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option>
             </select></label>
+            <div className="material-selectors">
+              <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />
+              <MaterialSelect label="Cladding material" value={draft.claddingMaterial ?? "custom"} onChange={(value) => updateMaterial("claddingMaterial", "claddingIndex", value)} />
+              {(draft.geometry ?? "channel") === "multilayer" && <MaterialSelect label="Substrate material" value={draft.substrateMaterial ?? "custom"} onChange={(value) => updateMaterial("substrateMaterial", "substrateIndex", value)} />}
+            </div>
             <div className="form-grid">
               <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
-              <NumberField label="Core width" unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
+              <NumberField label={(draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
               <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
               <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
               {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
               {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
+              {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
               {(draft.geometry ?? "channel") === "multilayer" && <NumberField label="Substrate n" unit="n" value={draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndex", v)} />}
-              <NumberField label="Core nₓ" unit="n" value={draft.coreIndex} min={1.01} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("coreIndex", v)} />
-              <NumberField label="Cladding nₓ" unit="n" value={draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("claddingIndex", v)} />
+              <NumberField label="Core nₓ" unit="n" value={displayMaterialIndex(draft.coreMaterial, draft.wavelengthUm, draft.coreIndex)} min={1.01} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndex", v)} />
+              <NumberField label="Cladding nₓ" unit="n" value={displayMaterialIndex(draft.claddingMaterial, draft.wavelengthUm, draft.claddingIndex)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndex", v)} />
               <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={PARAMETER_MAXIMUMS.gridResolution} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
               <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={PARAMETER_MAXIMUMS.modeCount} step={1} onChange={(v) => updateNumber("modeCount", v)} />
             </div>
             <details className="advanced-controls">
               <summary>Materials & mesh</summary>
               <div className="form-grid">
-                <NumberField label="Core nᵧ" unit="n" value={draft.coreIndexY ?? draft.coreIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("coreIndexY", v)} />
-                <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={draft.coreIndexZ ?? draft.coreIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("coreIndexZ", v)} />
-                <NumberField label="Cladding nᵧ" unit="n" value={draft.claddingIndexY ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("claddingIndexY", v)} />
-                <NumberField label={<>Cladding n<sub>z</sub></>} unit="n" value={draft.claddingIndexZ ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("claddingIndexZ", v)} />
+                <NumberField label="Core nᵧ" unit="n" value={(draft.coreMaterial ?? "custom") === "custom" ? (draft.coreIndexY ?? draft.coreIndex) : displayMaterialIndex(draft.coreMaterial, draft.wavelengthUm, draft.coreIndex)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexY", v)} />
+                <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={(draft.coreMaterial ?? "custom") === "custom" ? (draft.coreIndexZ ?? draft.coreIndex) : displayMaterialIndex(draft.coreMaterial, draft.wavelengthUm, draft.coreIndex)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexZ", v)} />
+                <NumberField label="Cladding nᵧ" unit="n" value={(draft.claddingMaterial ?? "custom") === "custom" ? (draft.claddingIndexY ?? draft.claddingIndex) : displayMaterialIndex(draft.claddingMaterial, draft.wavelengthUm, draft.claddingIndex)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndexY", v)} />
+                <NumberField label={<>Cladding n<sub>z</sub></>} unit="n" value={(draft.claddingMaterial ?? "custom") === "custom" ? (draft.claddingIndexZ ?? draft.claddingIndex) : displayMaterialIndex(draft.claddingMaterial, draft.wavelengthUm, draft.claddingIndex)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndexZ", v)} />
                 <NumberField label="Core κ" unit="Im(n)" value={draft.coreExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("coreExtinction", v)} />
                 <NumberField label="Cladding κ" unit="Im(n)" value={draft.claddingExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("claddingExtinction", v)} />
-                <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />
-                <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
+                <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />
+                <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
                 {(draft.geometry ?? "channel") === "multilayer" && <>
                   <NumberField label="Substrate nᵧ" unit="n" value={draft.substrateIndexY ?? draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndexY", v)} />
                   <NumberField label={<>Substrate n<sub>z</sub></>} unit="n" value={draft.substrateIndexZ ?? draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndexZ", v)} />
@@ -250,6 +270,7 @@ export function App() {
                   <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
                 </>}
               </div>
+              <MaterialSources config={draft} />
               <p>Diagonal complex tensor ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²]. The PML uses cubic complex-coordinate stretching; dn/dλ is linear around the reference wavelength.</p>
             </details>
             <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
@@ -293,6 +314,7 @@ export function App() {
         <form className="sweep-controls" onSubmit={runGeometrySweep}>
           <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => ({ ...current, parameter: event.target.value as GeometrySweepParameter }))}>
             <option value="widthUm">Core width</option><option value="heightUm">Core height</option>{(config.geometry ?? "channel") === "slot" && <option value="slotGapUm">Slot gap</option>}
+            {(config.geometry ?? "channel") === "coupler" && <option value="couplerGapUm">Coupler gap</option>}
           </select></label>
           <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
           <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
@@ -303,6 +325,8 @@ export function App() {
         {geometrySweepResult && <><GeometrySweepPlot result={geometrySweepResult} />{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
 
+      <AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} />
+
       <section className="validation-section">
         <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>The solver discretizes Maxwell’s equations on a transverse Yee grid and solves the coupled eigenproblem for <i>H</i><sub>x</sub> and <i>H</i><sub>y</sub>. Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation"><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></div><p className="limitation">Scope: linear, non-magnetic dielectrics with diagonal anisotropy. Use the stretched-coordinate PML and repeat padding, PML and mesh sweeps before interpreting leakage or material attenuation quantitatively.</p></div>
         <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
@@ -312,8 +336,25 @@ export function App() {
   </div>;
 }
 
-function NumberField({ label, unit, value, min, max, step, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} onChange={(event) => onChange(parseNumericInput(event.target.value))} /><small>{unit}</small></div></label>;
+function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} onChange={(event) => onChange(parseNumericInput(event.target.value))} /><small>{unit}</small></div></label>;
+}
+
+function MaterialSelect({ label, value, onChange }: { label: string; value: MaterialId; onChange: (value: MaterialId) => void }) {
+  return <label className="select-field">{label}<select value={value} onChange={(event) => onChange(event.target.value as MaterialId)}>{MATERIALS.map((material) => <option value={material.id} key={material.id}>{material.name}</option>)}</select></label>;
+}
+
+function MaterialSources({ config }: { config: WaveguideConfig }) {
+  const selected = [...new Set([config.coreMaterial, config.claddingMaterial, config.substrateMaterial])]
+    .filter((id): id is MaterialId => Boolean(id && id !== "custom"))
+    .map(materialDefinition);
+  if (selected.length === 0) return null;
+  return <p className="material-sources">Models: {selected.map((material, index) => <span key={material.id}>{index > 0 && " · "}{material.sourceUrl ? <a href={material.sourceUrl} target="_blank" rel="noreferrer">{material.sourceLabel}</a> : material.name} ({material.minimumWavelengthUm}–{material.maximumWavelengthUm} µm)</span>)}</p>;
+}
+
+function displayMaterialIndex(materialId: MaterialId | undefined, wavelengthUm: number, fallback: number): number {
+  if (!materialId || materialId === "custom") return fallback;
+  try { return evaluateMaterial(materialId, wavelengthUm); } catch { return fallback; }
 }
 
 function Metric({ label, value }: { label: ReactNode; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
