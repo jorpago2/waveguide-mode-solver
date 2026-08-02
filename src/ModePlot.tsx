@@ -17,7 +17,8 @@ const labels: Record<FieldComponent, string> = {
   Hx: "H<sub>x</sub>",
   Hy: "H<sub>y</sub>",
   Hz: "H<sub>z</sub>",
-  intensity: "Normalized |E|²",
+  intensity: "|E|² (V²/m²)",
+  poynting: "S<sub>z</sub> (W/m²)",
 };
 
 const plainLabels: Record<FieldComponent, string> = {
@@ -27,7 +28,14 @@ const plainLabels: Record<FieldComponent, string> = {
   Hx: "H x",
   Hy: "H y",
   Hz: "H z",
-  intensity: "normalized electric-field intensity",
+  intensity: "electric-field intensity",
+  poynting: "longitudinal Poynting vector",
+};
+
+const units: Record<FieldComponent, string> = {
+  Ex: "V/m", Ey: "V/m", Ez: "V/m",
+  Hx: "A/m", Hy: "A/m", Hz: "A/m",
+  intensity: "V²/m²", poynting: "W/m²",
 };
 
 export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
@@ -38,6 +46,8 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
     if (!fieldRef.current || !cutRef.current) return;
     const signedField = component !== "intensity";
     const z = mode.fields[component];
+    const values = z.flat();
+    const maximum = Math.max(...values.map((value) => Math.abs(value)), Number.EPSILON);
     const commonConfig = { displaylogo: false, responsive: true, scrollZoom: false };
     const axisStyle = {
       color: "#53636a",
@@ -51,8 +61,8 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       x: xUm,
       y: yUm,
       z,
-      zmin: signedField ? -1 : 0,
-      zmax: 1,
+      zmin: signedField ? -maximum : 0,
+      zmax: maximum,
       zmid: signedField ? 0 : undefined,
       colorscale: signedField ? "RdBu" : "Viridis",
       colorbar: {
@@ -60,7 +70,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
         thickness: 12,
         len: 0.82,
       },
-      hovertemplate: "x = %{x:.3f} µm<br>y = %{y:.3f} µm<br>value = %{z:.4f}<extra></extra>",
+      hovertemplate: `x = %{x:.3f} µm<br>y = %{y:.3f} µm<br>value = %{z:.4g} ${units[component]}<extra></extra>`,
     } as unknown as Plotly.Data;
     void Plotly.react(fieldRef.current, [heatmap], {
       margin: { l: 58, r: 36, t: 18, b: 52 },
@@ -82,7 +92,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
         x: xUm,
         y: z[centerRow],
         line: { color: "#087f8c", width: 2.5 },
-        hovertemplate: "x = %{x:.3f} µm<br>value = %{y:.4f}<extra>horizontal</extra>",
+        hovertemplate: `x = %{x:.3f} µm<br>value = %{y:.4g} ${units[component]}<extra>horizontal</extra>`,
       },
       {
         type: "scatter",
@@ -91,7 +101,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
         x: yUm,
         y: z.map((row) => row[centerColumn]),
         line: { color: "#ed6a3a", width: 2.5, dash: "dash" },
-        hovertemplate: "y = %{x:.3f} µm<br>value = %{y:.4f}<extra>vertical</extra>",
+        hovertemplate: `y = %{x:.3f} µm<br>value = %{y:.4g} ${units[component]}<extra>vertical</extra>`,
       },
     ], {
       margin: { l: 56, r: 20, t: 18, b: 50 },
@@ -100,7 +110,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
-      yaxis: { ...axisStyle, title: { text: labels[component] }, range: signedField ? [-1.08, 1.08] : [0, 1.04] },
+      yaxis: { ...axisStyle, title: { text: labels[component] }, range: signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
     }, commonConfig);
 
     return () => {

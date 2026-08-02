@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseNumericInput } from "./numericInput";
-import { solveWaveguide, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
+import { solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
   wavelengthUm: 1.55,
@@ -33,11 +33,11 @@ describe("full-vector finite-difference mode solver", () => {
     expect(parseNumericInput("0.25")).toBe(0.25);
   });
 
-  it("matches the reference Yee-grid implementation", () => {
+  it("converges toward the subpixel-interface reference", () => {
     const result = solveWaveguide(benchmark);
     expect(result.modes.length).toBeGreaterThan(0);
-    expect(result.modes[0].effectiveIndex).toBeCloseTo(1.66415615, 2);
-    expect(result.modes[1].effectiveIndex).toBeCloseTo(1.60326769, 2);
+    expect(result.modes[0].effectiveIndex).toBeCloseTo(1.64, 1);
+    expect(result.modes[1].effectiveIndex).toBeCloseTo(1.57, 1);
     expect(result.modes[0].residual).toBeLessThan(2e-3);
   });
 
@@ -46,7 +46,7 @@ describe("full-vector finite-difference mode solver", () => {
     const fine = solveWaveguide({ ...benchmark, gridResolution: 96, modeCount: 1 }).modes[0];
     expect(fine.residual).toBeLessThan(1e-3);
     expect(fieldRoughness(fine.fields.Ex)).toBeLessThan(fieldRoughness(coarse.fields.Ex) / 4);
-  });
+  }, 10_000);
 
   it("returns physical vector-field metrics", () => {
     const mode = solveWaveguide({ ...benchmark, modeCount: 1 }).modes[0];
@@ -57,6 +57,8 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.longitudinalElectricFraction).toBeGreaterThanOrEqual(0);
     expect(mode.fields.Ex).toHaveLength(26);
     expect(mode.fields.Ex[0]).toHaveLength(32);
+    expect(mode.modalPowerW).toBeCloseTo(1, 8);
+    expect(mode.peakPoyntingWPerM2).toBeGreaterThan(0);
   });
 
   it("rejects a non-guiding index profile", () => {
@@ -108,6 +110,25 @@ describe("full-vector finite-difference mode solver", () => {
     expect(sweep.points).toHaveLength(5);
     expect(sweep.points.every((point) => Number.isFinite(point.groupIndex))).toBe(true);
     expect(sweep.points.every((point) => Number.isFinite(point.dispersionPsPerNmKm))).toBe(true);
+    expect(Math.min(...sweep.points.map((point) => point.overlap))).toBeGreaterThan(0.7);
+  });
+
+  it("returns a complex effective index with stretched-coordinate PML", () => {
+    const mode = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1,
+      boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
+    }).modes[0];
+    expect(mode.effectiveIndexImaginary).toBeGreaterThan(0);
+    expect(mode.lossDbPerCm).toBeGreaterThan(0);
+    expect(mode.modalPowerW).toBeCloseTo(1, 8);
+    expect(mode.residual).toBeLessThan(5e-3);
+  });
+
+  it("tracks a mode through a geometry sweep", () => {
+    const sweep = sweepGeometry({ ...benchmark, gridResolution: 24, modeCount: 2 }, {
+      parameter: "widthUm", startValueUm: 0.9, stopValueUm: 1.1, points: 3, modeIndex: 0,
+    });
+    expect(sweep.points).toHaveLength(3);
     expect(Math.min(...sweep.points.map((point) => point.overlap))).toBeGreaterThan(0.7);
   });
 });

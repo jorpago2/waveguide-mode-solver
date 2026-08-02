@@ -209,9 +209,8 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .mode-tabs button span { font-size: 0.78rem; font-weight: 700; }
 .mode-tabs button small { color: #7d8c90; font-size: 0.67rem; }
 
-.metrics { margin: 18px 0; display: grid; grid-template-columns: repeat(5, minmax(110px, 1fr)); border: 1px solid #dce5e2; border-radius: 12px; overflow: hidden; }
-.metric { min-width: 0; padding: 13px 15px; display: grid; gap: 5px; border-right: 1px solid #dce5e2; }
-.metric:last-child { border-right: 0; }
+.metrics { margin: 18px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 1px; background: #dce5e2; border: 1px solid #dce5e2; border-radius: 12px; overflow: hidden; }
+.metric { min-width: 0; padding: 13px 15px; display: grid; gap: 5px; background: #fbfcfa; }
 .metric span { color: #78898d; font-size: 0.67rem; white-space: nowrap; }
 .metric strong { overflow: hidden; color: #17313a; font: 700 clamp(0.9rem, 1.4vw, 1.08rem)/1.2 Inter, Aptos, ui-sans-serif, system-ui, sans-serif; text-overflow: ellipsis; }
 
@@ -246,7 +245,7 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.sweep-controls { display: grid; grid-template-columns: repeat(3, minmax(130px, 190px)) minmax(150px, 1fr); gap: 12px; align-items: end; }
+.sweep-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
 .sweep-controls .solve-button { margin-top: 0; }
 .sweep-plot { width: 100%; min-height: 540px; }
 
@@ -287,9 +286,6 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .field-plot { min-height: 480px; }
   .cut-plot { min-height: 260px; }
   .metrics { grid-template-columns: 1fr 1fr; }
-  .metric:nth-child(2) { border-right: 0; }
-  .metric:nth-child(-n+2) { border-bottom: 1px solid #dce5e2; }
-  .metric:nth-child(4) { border-right: 0; }
   .sweep-controls { grid-template-columns: 1fr 1fr; }
 }
 
@@ -313,8 +309,6 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .intro h1 { letter-spacing: -0.045em; }
   .form-grid { grid-template-columns: 1fr 1fr; }
   .metrics { grid-template-columns: 1fr; }
-  .metric { border-right: 0; border-bottom: 1px solid #dce5e2; }
-  .metric:last-child { border-bottom: 0; }
   .field-plot { min-height: 330px; }
   .field-toolbar { gap: 5px; }
   .field-toolbar button { min-width: 35px; padding-inline: 7px; }

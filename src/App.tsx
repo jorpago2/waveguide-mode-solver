@@ -1,14 +1,17 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ModePlot } from "./ModePlot";
 import { SweepPlot } from "./SweepPlot";
+import { GeometrySweepPlot } from "./GeometrySweepPlot";
 import { parseNumericInput } from "./numericInput";
+import { runSolverWorker } from "./workerClient";
 import {
-  solveWaveguide,
-  sweepWaveguide,
   validateWaveguide,
   PARAMETER_MAXIMUMS,
   type FieldComponent,
   type GeometryType,
+  type GeometrySweepParameter,
+  type GeometrySweepResult,
+  type GeometrySweepSettings,
   type SolverResult,
   type SweepResult,
   type SweepSettings,
@@ -27,6 +30,9 @@ const common = {
   substrateDispersionPerUm: 0,
   materialReferenceWavelengthUm: 1.55,
   meshBias: 0,
+  boundary: "hard" as const,
+  pmlThicknessUm: 0.6,
+  pmlStrength: 4,
 };
 
 const presets: Record<string, WaveguideConfig> = {
@@ -48,26 +54,31 @@ const presets: Record<string, WaveguideConfig> = {
 
 const initialConfig = presets["Silicon nitride"];
 const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm: 1.65, points: 9, modeIndex: 0 };
-const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity"];
+const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
+const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity", "poynting"];
 const fieldLabels: Record<FieldComponent, ReactNode> = {
   Ex: <>E<sub>x</sub></>, Ey: <>E<sub>y</sub></>, Ez: <>E<sub>z</sub></>,
-  Hx: <>H<sub>x</sub></>, Hy: <>H<sub>y</sub></>, Hz: <>H<sub>z</sub></>, intensity: "|E|²",
+  Hx: <>H<sub>x</sub></>, Hy: <>H<sub>y</sub></>, Hz: <>H<sub>z</sub></>, intensity: "|E|²", poynting: <>S<sub>z</sub></>,
 };
 
 export function App() {
   const [draft, setDraft] = useState<WaveguideConfig>(initialConfig);
   const [config, setConfig] = useState<WaveguideConfig>(initialConfig);
-  const [result, setResult] = useState<SolverResult>(() => solveWaveguide(initialConfig));
+  const [result, setResult] = useState<SolverResult>();
   const [selectedMode, setSelectedMode] = useState(0);
   const [component, setComponent] = useState<FieldComponent>("Ex");
   const [sweepSettings, setSweepSettings] = useState(initialSweep);
   const [sweepResult, setSweepResult] = useState<SweepResult>();
-  const [message, setMessage] = useState("Full-vector solution ready.");
+  const [geometrySweep, setGeometrySweep] = useState(initialGeometrySweep);
+  const [geometrySweepResult, setGeometrySweepResult] = useState<GeometrySweepResult>();
+  const [message, setMessage] = useState("Solving the default full-vector mode…");
   const [sweepMessage, setSweepMessage] = useState("Choose a wavelength range to calculate dispersion.");
+  const [geometrySweepMessage, setGeometrySweepMessage] = useState("Sweep a device dimension while tracking the selected mode.");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const mode = result.modes[selectedMode] ?? result.modes[0];
-  const validation = useMemo(() => mode ? [
+  const [busy, setBusy] = useState(true);
+  const initialized = useRef(false);
+  const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
+  const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.effectiveIndex > config.claddingIndex },
     { label: "Eigenpair residual", pass: mode.residual < 2e-3 },
     { label: "Core sampled", pass: Math.min(
@@ -75,6 +86,18 @@ export function App() {
       result.yUm.filter((y) => Math.abs(y) <= config.heightUm / 2).length,
     ) >= 8 },
   ] : [], [config, mode, result]);
+
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    void runSolverWorker<SolverResult>({ kind: "solve", config: initialConfig })
+      .then((initialResult) => {
+        setResult(initialResult);
+        setMessage(`${initialResult.modes.length} guided mode${initialResult.modes.length === 1 ? "" : "s"} found on a ${initialResult.nx} × ${initialResult.ny} Yee grid.`);
+      })
+      .catch((caught) => { setError(caught instanceof Error ? caught.message : "The initial mode solve failed."); setMessage("Solve failed."); })
+      .finally(() => setBusy(false));
+  }, []);
 
   function updateNumber(key: keyof WaveguideConfig, value: number) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -85,53 +108,66 @@ export function App() {
     if (preset) setDraft({ ...preset });
   }
 
-  function solve(event: FormEvent) {
+  async function solve(event: FormEvent) {
     event.preventDefault();
     const errors = validateWaveguide(draft);
     if (errors.length > 0) { setError(errors.join(" ")); return; }
     setError("");
     setBusy(true);
     setMessage("Solving the vector eigenproblem…");
-    window.setTimeout(() => {
-      try {
-        const next = solveWaveguide(draft);
+    try {
+        const next = await runSolverWorker<SolverResult>({ kind: "solve", config: draft });
         setConfig({ ...draft });
         setResult(next);
         setSelectedMode(0);
         setSweepResult(undefined);
+        setGeometrySweepResult(undefined);
+        if ((draft.geometry ?? "channel") !== "slot") setGeometrySweep((current) => current.parameter === "slotGapUm" ? { ...current, parameter: "widthUm" } : current);
         setMessage(`${next.modes.length} guided mode${next.modes.length === 1 ? "" : "s"} found on a ${next.nx} × ${next.ny} Yee grid.`);
-      } catch (caught) {
+    } catch (caught) {
         setError(caught instanceof Error ? caught.message : "The mode solve failed.");
         setMessage("Solve failed.");
-      } finally { setBusy(false); }
-    }, 20);
+    } finally { setBusy(false); }
   }
 
-  function runSweep(event: FormEvent) {
+  async function runSweep(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError("");
     setSweepMessage("Tracking the mode across wavelength…");
-    window.setTimeout(() => {
-      try {
-        const next = sweepWaveguide(config, { ...sweepSettings, modeIndex: selectedMode });
+    try {
+        const next = await runSolverWorker<SweepResult>({ kind: "wavelengthSweep", config, settings: { ...sweepSettings, modeIndex: selectedMode } });
         setSweepResult(next);
         setSweepMessage(`${next.points.length} wavelengths solved with field-overlap mode tracking.`);
-      } catch (caught) {
+    } catch (caught) {
         setError(caught instanceof Error ? caught.message : "The wavelength sweep failed.");
         setSweepMessage("Sweep failed.");
-      } finally { setBusy(false); }
-    }, 20);
+    } finally { setBusy(false); }
+  }
+
+  async function runGeometrySweep(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setGeometrySweepMessage("Tracking the mode across geometry…");
+    try {
+      const next = await runSolverWorker<GeometrySweepResult>({ kind: "geometrySweep", config, settings: { ...geometrySweep, modeIndex: selectedMode } });
+      setGeometrySweepResult(next);
+      setGeometrySweepMessage(`${next.points.length} geometries solved with resampled field-overlap tracking.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The geometry sweep failed.");
+      setGeometrySweepMessage("Geometry sweep failed.");
+    } finally { setBusy(false); }
   }
 
   function exportField() {
-    if (!mode) return;
-    const rows = ["x_um,y_um,Ex,Ey,Ez,Hx,Hy,Hz,normalized_E2"];
+    if (!mode || !result) return;
+    const rows = ["x_um,y_um,Ex_V_m,Ey_V_m,Ez_V_m,Hx_A_m,Hy_A_m,Hz_A_m,E2_V2_m2,Sz_W_m2"];
     for (let row = 0; row < result.yUm.length; row += 1) {
       for (let column = 0; column < result.xUm.length; column += 1) {
         rows.push([result.xUm[column], result.yUm[row], mode.fields.Ex[row][column], mode.fields.Ey[row][column],
           mode.fields.Ez[row][column], mode.fields.Hx[row][column], mode.fields.Hy[row][column],
-          mode.fields.Hz[row][column], mode.fields.intensity[row][column]].join(","));
+          mode.fields.Hz[row][column], mode.fields.intensity[row][column], mode.fields.poynting[row][column]].join(","));
       }
     }
     download(rows.join("\n"), `waveguide-${mode.id.toLowerCase()}-${config.wavelengthUm.toFixed(3)}um.csv`);
@@ -143,6 +179,14 @@ export function App() {
       ...sweepResult.points.map((point) => [point.wavelengthUm, point.effectiveIndex, point.groupIndex,
         point.dispersionPsPerNmKm, point.lossDbPerCm, point.overlap].join(","))];
     download(rows.join("\n"), "waveguide-dispersion.csv");
+  }
+
+  function exportGeometrySweep() {
+    if (!geometrySweepResult) return;
+    const rows = ["value_um,n_eff,confinement,effective_area_um2,loss_db_cm,mode_overlap",
+      ...geometrySweepResult.points.map((point) => [point.valueUm, point.effectiveIndex, point.electricConfinement,
+        point.effectiveAreaUm2, point.lossDbPerCm, point.overlap].join(","))];
+    download(rows.join("\n"), `waveguide-${geometrySweepResult.parameter}-sweep.csv`);
   }
 
   return <div className="app-shell">
@@ -200,8 +244,13 @@ export function App() {
                 </>}
                 <NumberField label="Reference λ" unit="µm" value={draft.materialReferenceWavelengthUm ?? draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("materialReferenceWavelengthUm", v)} />
                 <NumberField label="Mesh bias" unit={`0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} onChange={(v) => updateNumber("meshBias", v)} />
+                <label className="select-field">Outer boundary<select value={draft.boundary ?? "hard"} onChange={(event) => setDraft((current) => ({ ...current, boundary: event.target.value as "hard" | "pml" }))}><option value="hard">Hard wall</option><option value="pml">PML (open)</option></select></label>
+                {(draft.boundary ?? "hard") === "pml" && <>
+                  <NumberField label="PML thickness" unit="µm" value={draft.pmlThicknessUm ?? draft.paddingUm * 0.6} min={0.01} max={Math.max(0.02, draft.paddingUm - 0.01)} step={0.05} onChange={(v) => updateNumber("pmlThicknessUm", v)} />
+                  <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
+                </>}
               </div>
-              <p>Real diagonal tensor ε = diag(nₓ², nᵧ², n_z²). κ is included as a first-order modal-loss perturbation; dn/dλ is linear around the reference wavelength.</p>
+              <p>Diagonal complex tensor ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²]. The PML uses cubic complex-coordinate stretching; dn/dλ is linear around the reference wavelength.</p>
             </details>
             <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
             <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}
@@ -210,14 +259,16 @@ export function App() {
 
         <section className="results-panel" aria-labelledby="results-title">
           <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Mode explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
-          {mode ? <>
+          {mode && result ? <>
             <div className="mode-tabs" role="tablist" aria-label="Guided modes">{result.modes.map((item, index) => <button type="button" role="tab" aria-selected={selectedMode === index} className={selectedMode === index ? "active" : ""} key={`${item.id}-${index}`} onClick={() => setSelectedMode(index)}><span>{item.polarization}</span><small><i>n</i><sub>eff</sub> {item.effectiveIndex.toFixed(5)}</small></button>)}</div>
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
               <Metric label="Electric confinement" value={`${(mode.electricConfinement * 100).toFixed(1)}%`} />
               <Metric label={<>Effective area <i>A</i><sub>eff</sub></>} value={`${mode.effectiveAreaUm2.toFixed(3)} µm²`} />
-              <Metric label="Material loss" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
+              <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
+              <Metric label={<>Imaginary index Im(<i>n</i><sub>eff</sub>)</>} value={mode.effectiveIndexImaginary.toExponential(3)} />
+              <Metric label="Normalized power" value={`${mode.modalPowerW.toFixed(3)} W`} />
             </div>
             <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{fieldLabels[field]}</button>)}</div>
             <ModePlot component={component} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} />
@@ -237,9 +288,24 @@ export function App() {
         {sweepResult && <><SweepPlot result={sweepResult} />{sweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
 
+      <section className="sweep-section">
+        <div className="panel-heading"><div><span className="step">04</span><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
+        <form className="sweep-controls" onSubmit={runGeometrySweep}>
+          <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => ({ ...current, parameter: event.target.value as GeometrySweepParameter }))}>
+            <option value="widthUm">Core width</option><option value="heightUm">Core height</option>{(config.geometry ?? "channel") === "slot" && <option value="slotGapUm">Slot gap</option>}
+          </select></label>
+          <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
+          <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
+          <NumberField label="Samples" unit="points" value={geometrySweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={1} onChange={(value) => setGeometrySweep((current) => ({ ...current, points: value }))} />
+          <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
+        </form>
+        <p className="status" aria-live="polite">{geometrySweepMessage}</p>
+        {geometrySweepResult && <><GeometrySweepPlot result={geometrySweepResult} />{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+      </section>
+
       <section className="validation-section">
-        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>The solver discretizes Maxwell’s equations on a transverse Yee grid and solves the coupled eigenproblem for <i>H</i><sub>x</sub> and <i>H</i><sub>y</sub>. Nonuniform finite differences sample the core more densely when mesh bias is enabled.</p><div className="equation"><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></div><p className="limitation">Scope: linear, non-magnetic dielectrics with diagonal anisotropy and hard outer boundaries. Material loss is perturbative, not a complex-eigenvalue or radiation-loss solution.</p></div>
-        <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
+        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>The solver discretizes Maxwell’s equations on a transverse Yee grid and solves the coupled eigenproblem for <i>H</i><sub>x</sub> and <i>H</i><sub>y</sub>. Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation"><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></div><p className="limitation">Scope: linear, non-magnetic dielectrics with diagonal anisotropy. Use the stretched-coordinate PML and repeat padding, PML and mesh sweeps before interpreting leakage or material attenuation quantitatively.</p></div>
+        <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
       </section>
     </main>
     <footer><span>Waveguide Mode Solver</span><span>Built for photonics education · Check mesh, boundary and sweep convergence before design use.</span></footer>

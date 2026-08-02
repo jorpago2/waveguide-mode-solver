@@ -1,7 +1,8 @@
 import { EigenvalueDecomposition, Matrix } from "ml-matrix";
 
-export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity";
+export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity" | "poynting";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer";
+export type BoundaryType = "hard" | "pml";
 
 export const PARAMETER_MAXIMUMS = {
   wavelengthUm: 1_000,
@@ -42,6 +43,9 @@ export interface WaveguideConfig {
   substrateDispersionPerUm?: number;
   materialReferenceWavelengthUm?: number;
   meshBias?: number;
+  boundary?: BoundaryType;
+  pmlThicknessUm?: number;
+  pmlStrength?: number;
 }
 
 export interface WaveguideMode {
@@ -49,6 +53,7 @@ export interface WaveguideMode {
   order: number;
   polarization: "quasi-TE" | "quasi-TM";
   effectiveIndex: number;
+  effectiveIndexImaginary: number;
   propagationConstantPerUm: number;
   residual: number;
   electricConfinement: number;
@@ -56,6 +61,8 @@ export interface WaveguideMode {
   longitudinalElectricFraction: number;
   xPolarizedElectricFraction: number;
   lossDbPerCm: number;
+  modalPowerW: number;
+  peakPoyntingWPerM2: number;
   fields: Record<FieldComponent, number[][]>;
 }
 
@@ -94,6 +101,31 @@ export interface SweepResult {
   warnings: string[];
 }
 
+export type GeometrySweepParameter = "widthUm" | "heightUm" | "slotGapUm";
+
+export interface GeometrySweepSettings {
+  parameter: GeometrySweepParameter;
+  startValueUm: number;
+  stopValueUm: number;
+  points: number;
+  modeIndex: number;
+}
+
+export interface GeometrySweepPoint {
+  valueUm: number;
+  effectiveIndex: number;
+  electricConfinement: number;
+  effectiveAreaUm2: number;
+  lossDbPerCm: number;
+  overlap: number;
+}
+
+export interface GeometrySweepResult {
+  parameter: GeometrySweepParameter;
+  points: GeometrySweepPoint[];
+  warnings: string[];
+}
+
 interface Grid {
   nx: number;
   ny: number;
@@ -107,13 +139,26 @@ interface Grid {
   y: number[];
   epsilonCell: Float64Array;
   cellArea: Float64Array;
-  region: Uint8Array;
+  coreFraction: Float64Array;
   extinctionCell: Float64Array;
   epsilonX: Float64Array;
   epsilonY: Float64Array;
   inverseEpsilonX: Float64Array;
   inverseEpsilonY: Float64Array;
   inverseEpsilonZ: Float64Array;
+  epsilonXImaginary: Float64Array;
+  epsilonYImaginary: Float64Array;
+  inverseEpsilonXImaginary: Float64Array;
+  inverseEpsilonYImaginary: Float64Array;
+  inverseEpsilonZImaginary: Float64Array;
+  inverseStretchXCellReal: Float64Array;
+  inverseStretchXCellImaginary: Float64Array;
+  inverseStretchXNodeReal: Float64Array;
+  inverseStretchXNodeImaginary: Float64Array;
+  inverseStretchYCellReal: Float64Array;
+  inverseStretchYCellImaginary: Float64Array;
+  inverseStretchYNodeReal: Float64Array;
+  inverseStretchYNodeImaginary: Float64Array;
 }
 
 interface OperatorContext {
@@ -122,12 +167,20 @@ interface OperatorContext {
   hxSize: number;
   hySize: number;
   apply: (vector: Float64Array) => Float64Array;
+  complex: boolean;
 }
 
 interface RitzPair {
   eigenvalue: number;
+  eigenvalueImaginary: number;
   vector: Float64Array;
+  vectorImaginary?: Float64Array;
   residual: number;
+}
+
+interface ComplexArray {
+  real: Float64Array;
+  imaginary: Float64Array;
 }
 
 export function validateWaveguide(config: WaveguideConfig): string[] {
@@ -176,6 +229,11 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     errors.push(`Material reference wavelength must be between 0.2 and ${PARAMETER_MAXIMUMS.wavelengthUm} µm.`);
   }
   if ((config.meshBias ?? 0) < 0 || (config.meshBias ?? 0) > PARAMETER_MAXIMUMS.meshBias) errors.push(`Mesh bias must be between 0 and ${PARAMETER_MAXIMUMS.meshBias}.`);
+  if ((config.boundary ?? "hard") === "pml") {
+    const thickness = config.pmlThicknessUm ?? config.paddingUm * 0.6;
+    if (!(thickness > 0 && thickness < config.paddingUm)) errors.push("PML thickness must be positive and smaller than the cladding padding.");
+    if (!Number.isFinite(config.pmlStrength ?? 4) || (config.pmlStrength ?? 4) <= 0 || (config.pmlStrength ?? 4) > 50) errors.push("PML strength must be between 0 and 50.");
+  }
   if ((config.geometry ?? "channel") === "rib" && ((config.slabHeightUm ?? 0) <= 0 || (config.slabHeightUm ?? 0) >= config.heightUm)) {
     errors.push("Rib slab height must be positive and smaller than the total core height.");
   }
@@ -205,8 +263,8 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
   const operator = createVectorOperator(grid, config.wavelengthUm);
   const requestedRitzPairs = Math.max(config.modeCount * 3, 8);
   const arnoldiDimension = Math.min(
-    operator.hxSize + operator.hySize - 1,
-    Math.max(58, config.modeCount * 22, Math.ceil(config.gridResolution * (2 + (config.meshBias ?? 0)))),
+    (operator.hxSize + operator.hySize) * (operator.complex ? 2 : 1) - 1,
+    Math.max(operator.complex ? 24 : 16, config.modeCount * (operator.complex ? 10 : 6)),
   );
   const pairs = solveLargestEigenpairs(operator, arnoldiDimension, requestedRitzPairs, config);
   const { exteriorIndex, maximumIndex } = guidanceBounds(config);
@@ -304,6 +362,69 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
   return { points, warnings };
 }
 
+export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSettings): GeometrySweepResult {
+  if (!(settings.startValueUm > 0 && settings.stopValueUm > settings.startValueUm && settings.stopValueUm <= PARAMETER_MAXIMUMS.dimensionUm)) {
+    throw new Error(`Geometry sweep limits must be positive, ordered and no larger than ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
+  }
+  if (!Number.isInteger(settings.points) || settings.points < 3 || settings.points > PARAMETER_MAXIMUMS.sweepPoints) {
+    throw new Error(`Geometry sweep points must be an integer between 3 and ${PARAMETER_MAXIMUMS.sweepPoints}.`);
+  }
+  if (settings.parameter === "slotGapUm" && (config.geometry ?? "channel") !== "slot") {
+    throw new Error("Slot-gap sweeps require the slot geometry.");
+  }
+  const currentValue = settings.parameter === "slotGapUm"
+    ? (config.slotGapUm ?? config.widthUm / 5)
+    : config[settings.parameter];
+  const values = Array.from({ length: settings.points }, (_, index) => (
+    settings.startValueUm + index * (settings.stopValueUm - settings.startValueUm) / (settings.points - 1)
+  ));
+  const anchor = values.reduce((best, value, index) => (
+    Math.abs(value - currentValue) < Math.abs(values[best] - currentValue) ? index : best
+  ), 0);
+  const tracked: Array<{ result: SolverResult; mode: WaveguideMode; overlap: number } | undefined> = new Array(settings.points);
+  const solveAt = (index: number) => {
+    const nextConfig = { ...config, [settings.parameter]: values[index] };
+    const errors = validateWaveguide(nextConfig);
+    if (errors.length > 0) return undefined;
+    return solveWaveguide(nextConfig);
+  };
+  const anchorResult = solveAt(anchor);
+  if (!anchorResult?.modes.length) throw new Error("No guided mode exists at the geometry-sweep anchor.");
+  tracked[anchor] = {
+    result: anchorResult,
+    mode: anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)],
+    overlap: 1,
+  };
+
+  for (const direction of [1, -1]) {
+    for (let index = anchor + direction; index >= 0 && index < values.length; index += direction) {
+      const previous = tracked[index - direction];
+      const candidateResult = solveAt(index);
+      if (!previous || !candidateResult?.modes.length) break;
+      const ranked = candidateResult.modes.map((mode) => ({
+        result: candidateResult,
+        mode,
+        overlap: resampledModeOverlap(previous.result, previous.mode, candidateResult, mode),
+      })).sort((first, second) => second.overlap - first.overlap);
+      tracked[index] = ranked[0];
+    }
+  }
+
+  const points = tracked.map((entry, index) => entry && ({
+    valueUm: values[index],
+    effectiveIndex: entry.mode.effectiveIndex,
+    electricConfinement: entry.mode.electricConfinement,
+    effectiveAreaUm2: entry.mode.effectiveAreaUm2,
+    lossDbPerCm: entry.mode.lossDbPerCm,
+    overlap: entry.overlap,
+  })).filter(Boolean) as GeometrySweepPoint[];
+  if (points.length < 3) throw new Error("The selected mode could not be tracked across at least three geometry values.");
+  const warnings: string[] = [];
+  if (points.length < settings.points) warnings.push(`Mode tracking stopped at ${points.length} of ${settings.points} geometry values.`);
+  if (points.some((point) => point.overlap < 0.75)) warnings.push("A low field overlap indicates a possible mode crossing; inspect that interval.");
+  return { parameter: settings.parameter, points, warnings };
+}
+
 function materialValues(config: WaveguideConfig) {
   const reference = config.materialReferenceWavelengthUm ?? config.wavelengthUm;
   const offset = config.wavelengthUm - reference;
@@ -329,20 +450,35 @@ function guidanceBounds(config: WaveguideConfig): { exteriorIndex: number; maxim
   };
 }
 
-function regionAt(x: number, y: number, config: WaveguideConfig): 0 | 1 | 2 {
+function regionFractions(x0: number, x1: number, y0: number, y1: number, config: WaveguideConfig): { core: number; substrate: number } {
   const geometry = config.geometry ?? "channel";
-  const insideHeight = Math.abs(y) <= config.heightUm / 2;
+  const coreBottom = -config.heightUm / 2;
+  const coreTop = config.heightUm / 2;
+  let core = 0;
   if (geometry === "rib") {
-    const slabTop = -config.heightUm / 2 + (config.slabHeightUm ?? config.heightUm / 2);
-    if ((insideHeight && Math.abs(x) <= config.widthUm / 2) || (y >= -config.heightUm / 2 && y <= slabTop)) return 1;
+    const slabTop = coreBottom + (config.slabHeightUm ?? config.heightUm / 2);
+    core = rectangleFraction(x0, x1, y0, y1, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, coreBottom, slabTop)
+      + rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, config.widthUm / 2, slabTop, coreTop);
   } else if (geometry === "slot") {
     const gap = config.slotGapUm ?? config.widthUm / 5;
-    if (insideHeight && Math.abs(x) >= gap / 2 && Math.abs(x) <= config.widthUm / 2) return 1;
-  } else if (Math.abs(x) <= config.widthUm / 2 && insideHeight) {
-    return 1;
+    core = rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, -gap / 2, coreBottom, coreTop)
+      + rectangleFraction(x0, x1, y0, y1, gap / 2, config.widthUm / 2, coreBottom, coreTop);
+  } else {
+    core = rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, config.widthUm / 2, coreBottom, coreTop);
   }
-  if (geometry === "multilayer" && y < -config.heightUm / 2) return 2;
-  return 0;
+  const substrate = geometry === "multilayer"
+    ? rectangleFraction(x0, x1, y0, y1, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, coreBottom)
+    : 0;
+  return { core: clamp(core, 0, 1), substrate: clamp(substrate, 0, 1) };
+}
+
+function rectangleFraction(
+  x0: number, x1: number, y0: number, y1: number,
+  rectangleX0: number, rectangleX1: number, rectangleY0: number, rectangleY1: number,
+): number {
+  const overlapX = Math.max(0, Math.min(x1, rectangleX1) - Math.max(x0, rectangleX0));
+  const overlapY = Math.max(0, Math.min(y1, rectangleY1) - Math.max(y0, rectangleY0));
+  return overlapX * overlapY / ((x1 - x0) * (y1 - y0));
 }
 
 function stretchedEdges(length: number, cells: number, bias: number): number[] {
@@ -384,6 +520,53 @@ function modeOverlap(first: WaveguideMode, second: WaveguideMode): number {
   return Math.abs(numerator) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
 }
 
+function resampledModeOverlap(
+  firstResult: SolverResult,
+  first: WaveguideMode,
+  secondResult: SolverResult,
+  second: WaveguideMode,
+): number {
+  let numerator = 0;
+  let firstNorm = 0;
+  let secondNorm = 0;
+  for (const component of ["Ex", "Ey", "Ez"] as const) {
+    for (let row = 0; row < firstResult.yUm.length; row += 1) {
+      for (let column = 0; column < firstResult.xUm.length; column += 1) {
+        const a = first.fields[component][row][column];
+        const b = bilinearSample(second.fields[component], secondResult.xUm, secondResult.yUm,
+          firstResult.xUm[column], firstResult.yUm[row]);
+        if (b === undefined) continue;
+        numerator += a * b;
+        firstNorm += a * a;
+        secondNorm += b * b;
+      }
+    }
+  }
+  return Math.abs(numerator) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
+}
+
+function bilinearSample(field: number[][], x: number[], y: number[], sampleX: number, sampleY: number): number | undefined {
+  const column = lowerIndex(x, sampleX);
+  const row = lowerIndex(y, sampleY);
+  if (column < 0 || row < 0 || column + 1 >= x.length || row + 1 >= y.length) return undefined;
+  const tx = (sampleX - x[column]) / (x[column + 1] - x[column]);
+  const ty = (sampleY - y[row]) / (y[row + 1] - y[row]);
+  const lower = field[row][column] * (1 - tx) + field[row][column + 1] * tx;
+  const upper = field[row + 1][column] * (1 - tx) + field[row + 1][column + 1] * tx;
+  return lower * (1 - ty) + upper * ty;
+}
+
+function lowerIndex(values: number[], target: number): number {
+  let low = 0;
+  let high = values.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    if (values[middle] <= target) low = middle + 1;
+    else high = middle - 1;
+  }
+  return high;
+}
+
 function derivative(x: number[], y: number[]): number[] {
   return y.map((_, index) => {
     if (index === 0) return (y[1] - y[0]) / (x[1] - x[0]);
@@ -416,46 +599,57 @@ function createGrid(config: WaveguideConfig): Grid {
   const epsilonCellX = new Float64Array(nx * ny);
   const epsilonCellY = new Float64Array(nx * ny);
   const epsilonCellZ = new Float64Array(nx * ny);
+  const epsilonCellXImaginary = new Float64Array(nx * ny);
+  const epsilonCellYImaginary = new Float64Array(nx * ny);
+  const epsilonCellZImaginary = new Float64Array(nx * ny);
   const epsilonCell = new Float64Array(nx * ny);
   const extinctionCell = new Float64Array(nx * ny);
   const cellArea = new Float64Array(nx * ny);
-  const region = new Uint8Array(nx * ny);
+  const coreFraction = new Float64Array(nx * ny);
   const material = materialValues(config);
 
   for (let row = 0; row < ny; row += 1) {
     for (let column = 0; column < nx; column += 1) {
       const index = cellIndex(row, column, nx);
-      const materialRegion = regionAt(x[column], y[row], config);
-      const values = materialRegion === 1 ? material.core : materialRegion === 2 ? material.substrate : material.cladding;
-      region[index] = materialRegion;
-      epsilonCellX[index] = values.nx ** 2;
-      epsilonCellY[index] = values.ny ** 2;
-      epsilonCellZ[index] = values.nz ** 2;
+      const fractions = regionFractions(xEdges[column], xEdges[column + 1], yEdges[row], yEdges[row + 1], config);
+      const claddingFraction = Math.max(0, 1 - fractions.core - fractions.substrate);
+      coreFraction[index] = fractions.core;
+      epsilonCellX[index] = fractions.core * (material.core.nx ** 2 - material.core.k ** 2) + fractions.substrate * (material.substrate.nx ** 2 - material.substrate.k ** 2) + claddingFraction * (material.cladding.nx ** 2 - material.cladding.k ** 2);
+      epsilonCellY[index] = fractions.core * (material.core.ny ** 2 - material.core.k ** 2) + fractions.substrate * (material.substrate.ny ** 2 - material.substrate.k ** 2) + claddingFraction * (material.cladding.ny ** 2 - material.cladding.k ** 2);
+      epsilonCellZ[index] = fractions.core * (material.core.nz ** 2 - material.core.k ** 2) + fractions.substrate * (material.substrate.nz ** 2 - material.substrate.k ** 2) + claddingFraction * (material.cladding.nz ** 2 - material.cladding.k ** 2);
+      epsilonCellXImaginary[index] = 2 * (fractions.core * material.core.nx * material.core.k + fractions.substrate * material.substrate.nx * material.substrate.k + claddingFraction * material.cladding.nx * material.cladding.k);
+      epsilonCellYImaginary[index] = 2 * (fractions.core * material.core.ny * material.core.k + fractions.substrate * material.substrate.ny * material.substrate.k + claddingFraction * material.cladding.ny * material.cladding.k);
+      epsilonCellZImaginary[index] = 2 * (fractions.core * material.core.nz * material.core.k + fractions.substrate * material.substrate.nz * material.substrate.k + claddingFraction * material.cladding.nz * material.cladding.k);
       epsilonCell[index] = (epsilonCellX[index] + epsilonCellY[index] + epsilonCellZ[index]) / 3;
-      extinctionCell[index] = values.k;
+      extinctionCell[index] = fractions.core * material.core.k + fractions.substrate * material.substrate.k + claddingFraction * material.cladding.k;
       cellArea[index] = dxCell[column] * dyCell[row];
     }
   }
 
   const epsilonX = new Float64Array((ny + 1) * nx);
+  const epsilonXImaginary = new Float64Array((ny + 1) * nx);
   for (let row = 0; row <= ny; row += 1) {
     for (let column = 0; column < nx; column += 1) {
       const south = epsilonCellX[cellIndex(clamp(row - 1, 0, ny - 1), column, nx)];
       const north = epsilonCellX[cellIndex(clamp(row, 0, ny - 1), column, nx)];
       epsilonX[row * nx + column] = (south + north) / 2;
+      epsilonXImaginary[row * nx + column] = (epsilonCellXImaginary[cellIndex(clamp(row - 1, 0, ny - 1), column, nx)] + epsilonCellXImaginary[cellIndex(clamp(row, 0, ny - 1), column, nx)]) / 2;
     }
   }
 
   const epsilonY = new Float64Array(ny * (nx + 1));
+  const epsilonYImaginary = new Float64Array(ny * (nx + 1));
   for (let row = 0; row < ny; row += 1) {
     for (let column = 0; column <= nx; column += 1) {
       const west = epsilonCellY[cellIndex(row, clamp(column - 1, 0, nx - 1), nx)];
       const east = epsilonCellY[cellIndex(row, clamp(column, 0, nx - 1), nx)];
       epsilonY[row * (nx + 1) + column] = (west + east) / 2;
+      epsilonYImaginary[row * (nx + 1) + column] = (epsilonCellYImaginary[cellIndex(row, clamp(column - 1, 0, nx - 1), nx)] + epsilonCellYImaginary[cellIndex(row, clamp(column, 0, nx - 1), nx)]) / 2;
     }
   }
 
   const inverseEpsilonZ = new Float64Array((ny + 1) * (nx + 1));
+  const inverseEpsilonZImaginary = new Float64Array((ny + 1) * (nx + 1));
   for (let row = 0; row <= ny; row += 1) {
     for (let column = 0; column <= nx; column += 1) {
       const south = clamp(row - 1, 0, ny - 1);
@@ -468,9 +662,26 @@ function createGrid(config: WaveguideConfig): Grid {
         + epsilonCellZ[cellIndex(north, west, nx)]
         + epsilonCellZ[cellIndex(north, east, nx)]
       ) / 4;
-      inverseEpsilonZ[row * (nx + 1) + column] = 1 / average;
+      const averageImaginary = (
+        epsilonCellZImaginary[cellIndex(south, west, nx)]
+        + epsilonCellZImaginary[cellIndex(south, east, nx)]
+        + epsilonCellZImaginary[cellIndex(north, west, nx)]
+        + epsilonCellZImaginary[cellIndex(north, east, nx)]
+      ) / 4;
+      const denominator = average ** 2 + averageImaginary ** 2;
+      inverseEpsilonZ[row * (nx + 1) + column] = average / denominator;
+      inverseEpsilonZImaginary[row * (nx + 1) + column] = -averageImaginary / denominator;
     }
   }
+
+  const inverseEpsilonX = complexReciprocal(epsilonX, epsilonXImaginary);
+  const inverseEpsilonY = complexReciprocal(epsilonY, epsilonYImaginary);
+  const pmlThickness = (config.boundary ?? "hard") === "pml" ? (config.pmlThicknessUm ?? config.paddingUm * 0.6) : 0;
+  const pmlStrength = config.pmlStrength ?? 4;
+  const xCellStretch = stretchProfile(x, domainWidth / 2, pmlThickness, pmlStrength);
+  const yCellStretch = stretchProfile(y, domainHeight / 2, pmlThickness, pmlStrength);
+  const xNodeStretch = stretchProfile(xEdges, domainWidth / 2, pmlThickness, pmlStrength);
+  const yNodeStretch = stretchProfile(yEdges, domainHeight / 2, pmlThickness, pmlStrength);
 
   return {
     nx,
@@ -485,14 +696,52 @@ function createGrid(config: WaveguideConfig): Grid {
     y,
     epsilonCell,
     cellArea,
-    region,
+    coreFraction,
     extinctionCell,
     epsilonX,
     epsilonY,
-    inverseEpsilonX: reciprocal(epsilonX),
-    inverseEpsilonY: reciprocal(epsilonY),
+    inverseEpsilonX: inverseEpsilonX.real,
+    inverseEpsilonY: inverseEpsilonY.real,
     inverseEpsilonZ,
+    epsilonXImaginary,
+    epsilonYImaginary,
+    inverseEpsilonXImaginary: inverseEpsilonX.imaginary,
+    inverseEpsilonYImaginary: inverseEpsilonY.imaginary,
+    inverseEpsilonZImaginary,
+    inverseStretchXCellReal: xCellStretch.real,
+    inverseStretchXCellImaginary: xCellStretch.imaginary,
+    inverseStretchXNodeReal: xNodeStretch.real,
+    inverseStretchXNodeImaginary: xNodeStretch.imaginary,
+    inverseStretchYCellReal: yCellStretch.real,
+    inverseStretchYCellImaginary: yCellStretch.imaginary,
+    inverseStretchYNodeReal: yNodeStretch.real,
+    inverseStretchYNodeImaginary: yNodeStretch.imaginary,
   };
+}
+
+function complexReciprocal(real: Float64Array, imaginary: Float64Array): { real: Float64Array; imaginary: Float64Array } {
+  const outputReal = new Float64Array(real.length);
+  const outputImaginary = new Float64Array(real.length);
+  for (let index = 0; index < real.length; index += 1) {
+    const denominator = real[index] ** 2 + imaginary[index] ** 2;
+    outputReal[index] = real[index] / denominator;
+    outputImaginary[index] = -imaginary[index] / denominator;
+  }
+  return { real: outputReal, imaginary: outputImaginary };
+}
+
+function stretchProfile(coordinates: number[], halfDomain: number, thickness: number, strength: number): { real: Float64Array; imaginary: Float64Array } {
+  const real = new Float64Array(coordinates.length).fill(1);
+  const imaginary = new Float64Array(coordinates.length);
+  if (thickness <= 0) return { real, imaginary };
+  for (let index = 0; index < coordinates.length; index += 1) {
+    const depth = Math.max(0, Math.abs(coordinates[index]) - (halfDomain - thickness)) / thickness;
+    const damping = strength * depth ** 3;
+    const denominator = 1 + damping ** 2;
+    real[index] = 1 / denominator;
+    imaginary[index] = -damping / denominator;
+  }
+  return { real, imaginary };
 }
 
 function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext {
@@ -502,7 +751,7 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
   const k0 = (2 * Math.PI) / wavelengthUm;
   const inverseK0Squared = 1 / k0 ** 2;
 
-  const apply = (vector: Float64Array): Float64Array => {
+  const applyReal = (vector: Float64Array): Float64Array => {
     const hx = vector.subarray(0, hxSize);
     const hy = vector.subarray(hxSize);
     const transverseDivergence = add(bx(hx, nx, ny, dxCell), by(hy, nx, ny, dyCell));
@@ -526,8 +775,36 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     output.set(outputHy, hxSize);
     return output;
   };
+  const complex = grid.epsilonXImaginary.some((value) => value !== 0)
+    || grid.epsilonYImaginary.some((value) => value !== 0)
+    || grid.inverseStretchXCellImaginary.some((value) => value !== 0)
+    || grid.inverseStretchYCellImaginary.some((value) => value !== 0);
+  const apply = complex ? (vector: Float64Array): Float64Array => {
+    const vectorSize = hxSize + hySize;
+    const hx = complexSlice(vector, 0, hxSize, vectorSize);
+    const hy = complexSlice(vector, hxSize, vectorSize, vectorSize);
+    const transverseDivergence = complexAdd(
+      complexBx(hx, grid), complexBy(hy, grid),
+    );
+    const longitudinalCurl = complexSubtract(
+      complexDyOperator(hx, grid), complexDxOperator(hy, grid),
+    );
+    complexMultiplyInPlace(longitudinalCurl, grid.inverseEpsilonZ, grid.inverseEpsilonZImaginary);
+    const correction = complexSubtract(
+      complexBx(complexAy(longitudinalCurl, grid), grid),
+      complexBy(complexAx(longitudinalCurl, grid), grid),
+    );
+    complexAddScaledInPlace(transverseDivergence, correction, inverseK0Squared);
+    const outputHx = complexCx(transverseDivergence, grid);
+    const outputHy = complexCy(transverseDivergence, grid);
+    complexAddProductInPlace(outputHx, complexAy(longitudinalCurl, grid), epsilonY, grid.epsilonYImaginary, 1);
+    complexAddProductInPlace(outputHy, complexAx(longitudinalCurl, grid), epsilonX, grid.epsilonXImaginary, -1);
+    complexAddProductInPlace(outputHx, hx, epsilonY, grid.epsilonYImaginary, k0 ** 2);
+    complexAddProductInPlace(outputHy, hy, epsilonX, grid.epsilonXImaginary, k0 ** 2);
+    return complexJoin(outputHx, outputHy);
+  } : applyReal;
 
-  return { grid, k0, hxSize, hySize, apply };
+  return { grid, k0, hxSize, hySize, apply, complex };
 }
 
 function solveLargestEigenpairs(
@@ -536,16 +813,18 @@ function solveLargestEigenpairs(
   requestedPairs: number,
   config: WaveguideConfig,
 ): RitzPair[] {
-  const vectorSize = operator.hxSize + operator.hySize;
-  const shift = 6 / operator.grid.dx ** 2 + 6 / operator.grid.dy ** 2 + (operator.k0 * config.coreIndex) ** 2;
+  const physicalVectorSize = operator.hxSize + operator.hySize;
+  const vectorSize = physicalVectorSize * (operator.complex ? 2 : 1);
+  const { exteriorIndex, maximumIndex } = guidanceBounds(config);
+  const targetIndex = 0.55 * maximumIndex + 0.45 * exteriorIndex;
+  const shift = (operator.k0 * targetIndex) ** 2;
   const basis: Float64Array[] = [];
   const hessenberg = Array.from({ length: arnoldiDimension + 1 }, () => new Float64Array(arnoldiDimension));
   let vector = deterministicUnitVector(vectorSize);
 
   for (let column = 0; column < arnoldiDimension; column += 1) {
     basis.push(vector);
-    const product = operator.apply(vector);
-    addScaledInPlace(product, vector, shift);
+    const product = solveShiftedSystem(operator, shift, vector);
 
     for (let row = 0; row <= column; row += 1) {
       const projection = dot(basis[row], product);
@@ -574,21 +853,45 @@ function solveLargestEigenpairs(
   const candidates: RitzPair[] = [];
 
   for (let column = 0; column < dimension; column += 1) {
-    if (Math.abs(decomposition.imaginaryEigenvalues[column]) > 1e-7) continue;
-    const eigenvalue = decomposition.realEigenvalues[column] - shift;
+    const inverseReal = decomposition.realEigenvalues[column];
+    const inverseImaginary = decomposition.imaginaryEigenvalues[column];
+    if (!operator.complex && Math.abs(inverseImaginary) > 1e-7) continue;
+    if (operator.complex && inverseImaginary < -1e-10) continue;
+    const inverseMagnitudeSquared = inverseReal ** 2 + inverseImaginary ** 2;
+    if (inverseMagnitudeSquared < 1e-24) continue;
+    const eigenvalue = shift + inverseReal / inverseMagnitudeSquared;
+    const eigenvalueImaginary = -inverseImaginary / inverseMagnitudeSquared;
     if (!(eigenvalue > 0)) continue;
-    const ritzVector = new Float64Array(vectorSize);
+    const ritzBlockReal = new Float64Array(vectorSize);
+    const ritzBlockImaginary = new Float64Array(vectorSize);
     for (let basisIndex = 0; basisIndex < dimension; basisIndex += 1) {
-      addScaledInPlace(ritzVector, basis[basisIndex], eigenvectors.get(basisIndex, column));
+      addScaledInPlace(ritzBlockReal, basis[basisIndex], eigenvectors.get(basisIndex, column));
+      if (Math.abs(inverseImaginary) > 1e-10 && column + 1 < dimension) {
+        addScaledInPlace(ritzBlockImaginary, basis[basisIndex], eigenvectors.get(basisIndex, column + 1));
+      }
     }
-    const vectorNorm = norm(ritzVector);
+    const ritzVector = operator.complex ? new Float64Array(physicalVectorSize) : ritzBlockReal;
+    const ritzVectorImaginary = operator.complex ? new Float64Array(physicalVectorSize) : undefined;
+    if (operator.complex && ritzVectorImaginary) {
+      for (let index = 0; index < physicalVectorSize; index += 1) {
+        ritzVector[index] = 0.5 * (ritzBlockReal[index] - ritzBlockImaginary[physicalVectorSize + index]);
+        ritzVectorImaginary[index] = 0.5 * (ritzBlockImaginary[index] + ritzBlockReal[physicalVectorSize + index]);
+      }
+    }
+    const vectorNorm = Math.sqrt(norm(ritzVector) ** 2 + (ritzVectorImaginary ? norm(ritzVectorImaginary) ** 2 : 0));
     if (vectorNorm < 1e-12) continue;
     multiplyScalarInPlace(ritzVector, 1 / vectorNorm);
-    const residualVector = operator.apply(ritzVector);
-    addScaledInPlace(residualVector, ritzVector, -eigenvalue);
+    if (ritzVectorImaginary) multiplyScalarInPlace(ritzVectorImaginary, 1 / vectorNorm);
+    const residualInput = operator.complex
+      ? complexBlock(ritzVector, ritzVectorImaginary as Float64Array)
+      : ritzVector;
+    const residualVector = operator.apply(residualInput);
+    addComplexEigenvalueInPlace(residualVector, residualInput, eigenvalue, eigenvalueImaginary, operator.complex);
     candidates.push({
       eigenvalue,
+      eigenvalueImaginary,
       vector: ritzVector,
+      vectorImaginary: ritzVectorImaginary,
       residual: norm(residualVector) / Math.max(Math.abs(eigenvalue), 1),
     });
   }
@@ -598,37 +901,104 @@ function solveLargestEigenpairs(
     .slice(0, requestedPairs);
 }
 
+function complexBlock(real: Float64Array, imaginary: Float64Array): Float64Array {
+  const output = new Float64Array(2 * real.length);
+  output.set(real);
+  output.set(imaginary, real.length);
+  return output;
+}
+
+function addComplexEigenvalueInPlace(target: Float64Array, vector: Float64Array, real: number, imaginary: number, complex: boolean): void {
+  if (!complex) { addScaledInPlace(target, vector, -real); return; }
+  const size = vector.length / 2;
+  for (let index = 0; index < size; index += 1) {
+    target[index] -= real * vector[index] - imaginary * vector[size + index];
+    target[size + index] -= imaginary * vector[index] + real * vector[size + index];
+  }
+}
+
+function solveShiftedSystem(operator: OperatorContext, shift: number, rightHandSide: Float64Array): Float64Array {
+  const size = rightHandSide.length;
+  const solution = new Float64Array(size);
+  let residual = rightHandSide.slice();
+  const shadow = residual.slice();
+  let direction: Float64Array = new Float64Array(size);
+  let operatorDirection: Float64Array = new Float64Array(size);
+  let rhoPrevious = 1;
+  let alpha = 1;
+  let omega = 1;
+  const tolerance = 1e-5 * Math.max(norm(rightHandSide), 1);
+
+  const applyShifted = (vector: Float64Array) => {
+    const output = operator.apply(vector);
+    addScaledInPlace(output, vector, -shift);
+    return output;
+  };
+
+  for (let iteration = 0; iteration < 180; iteration += 1) {
+    const rho = dot(shadow, residual);
+    if (Math.abs(rho) < 1e-30) break;
+    const beta = (rho / rhoPrevious) * (alpha / omega);
+    for (let index = 0; index < size; index += 1) {
+      direction[index] = residual[index] + beta * (direction[index] - omega * operatorDirection[index]);
+    }
+    operatorDirection = applyShifted(direction);
+    const denominator = dot(shadow, operatorDirection);
+    if (Math.abs(denominator) < 1e-30) break;
+    alpha = rho / denominator;
+    const intermediate = residual.slice();
+    addScaledInPlace(intermediate, operatorDirection, -alpha);
+    if (norm(intermediate) <= tolerance) {
+      addScaledInPlace(solution, direction, alpha);
+      return solution;
+    }
+    const operatorIntermediate = applyShifted(intermediate);
+    const omegaDenominator = dot(operatorIntermediate, operatorIntermediate);
+    if (omegaDenominator < 1e-30) break;
+    omega = dot(operatorIntermediate, intermediate) / omegaDenominator;
+    addScaledInPlace(solution, direction, alpha);
+    addScaledInPlace(solution, intermediate, omega);
+    residual = intermediate;
+    addScaledInPlace(residual, operatorIntermediate, -omega);
+    if (norm(residual) <= tolerance) return solution;
+    if (Math.abs(omega) < 1e-30) break;
+    rhoPrevious = rho;
+  }
+  return solution;
+}
+
 function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, operator: OperatorContext): WaveguideMode {
   const { grid, hxSize, k0 } = operator;
-  const { nx, ny, dxCell, dyCell, dxDual, dyDual } = grid;
-  const beta = Math.sqrt(pair.eigenvalue);
-  const hx = pair.vector.subarray(0, hxSize);
-  const hy = pair.vector.subarray(hxSize);
-  const transverseDivergence = add(bx(hx, nx, ny, dxCell), by(hy, nx, ny, dyCell));
-  const longitudinalCurl = subtract(dyOperator(hx, nx, ny, dyDual), dxOperator(hy, nx, ny, dxDual));
-  multiplyInPlace(longitudinalCurl, grid.inverseEpsilonZ);
-  const correction = subtract(
-    bx(ay(longitudinalCurl, nx, ny, dyCell), nx, ny, dxCell),
-    by(ax(longitudinalCurl, nx, ny, dxCell), nx, ny, dyCell),
-  );
-  addScaledInPlace(transverseDivergence, correction, 1 / k0 ** 2);
-  const hz = scale(transverseDivergence, 1 / beta);
-  const ex = subtract(scale(hy, beta), cy(hz, nx, ny, dyDual));
-  multiplyInPlace(ex, grid.inverseEpsilonX);
-  multiplyScalarInPlace(ex, 1 / k0);
-  const ey = add(scale(hx, -beta), cx(hz, nx, ny, dxDual));
-  multiplyInPlace(ey, grid.inverseEpsilonY);
-  multiplyScalarInPlace(ey, 1 / k0);
-  const ez = scale(longitudinalCurl, -1 / k0);
+  const { nx, ny } = grid;
+  const betaComplex = complexSquareRoot(pair.eigenvalue, pair.eigenvalueImaginary);
+  const beta = betaComplex.real;
+  const imaginaryVector = pair.vectorImaginary ?? new Float64Array(pair.vector.length);
+  const hx: ComplexArray = { real: pair.vector.subarray(0, hxSize), imaginary: imaginaryVector.subarray(0, hxSize) };
+  const hy: ComplexArray = { real: pair.vector.subarray(hxSize), imaginary: imaginaryVector.subarray(hxSize) };
+  const transverseDivergence = complexAdd(complexBx(hx, grid), complexBy(hy, grid));
+  const longitudinalCurl = complexSubtract(complexDyOperator(hx, grid), complexDxOperator(hy, grid));
+  complexMultiplyInPlace(longitudinalCurl, grid.inverseEpsilonZ, grid.inverseEpsilonZImaginary);
+  const correction = complexSubtract(complexBx(complexAy(longitudinalCurl, grid), grid), complexBy(complexAx(longitudinalCurl, grid), grid));
+  complexAddScaledInPlace(transverseDivergence, correction, 1 / k0 ** 2);
+  const hz = complexDivideScalar(transverseDivergence, betaComplex.real, betaComplex.imaginary);
+  const ex = complexSubtract(complexScaleScalar(hy, betaComplex.real, betaComplex.imaginary), complexCy(hz, grid));
+  complexMultiplyInPlace(ex, grid.inverseEpsilonX, grid.inverseEpsilonXImaginary);
+  complexMultiplyScalarInPlace(ex, 1 / k0);
+  const ey = complexAdd(complexScaleScalar(hx, -betaComplex.real, -betaComplex.imaginary), complexCx(hz, grid));
+  complexMultiplyInPlace(ey, grid.inverseEpsilonY, grid.inverseEpsilonYImaginary);
+  complexMultiplyScalarInPlace(ey, 1 / k0);
+  const ez = complexScaleScalar(longitudinalCurl, -1 / k0, 0);
 
-  const collocatedEx = averageVertical(ex, nx, ny);
-  const collocatedEy = averageHorizontal(ey, nx, ny);
-  const collocatedEz = averageNodes(ez, nx, ny);
-  const collocatedHx = averageHorizontal(hx, nx, ny);
-  const collocatedHy = averageVertical(hy, nx, ny);
+  const collocatedEx = complexAverage(ex, (part) => averageVertical(part, nx, ny));
+  const collocatedEy = complexAverage(ey, (part) => averageHorizontal(part, nx, ny));
+  const collocatedEz = complexAverage(ez, (part) => averageNodes(part, nx, ny));
+  const collocatedHx = complexAverage(hx, (part) => averageHorizontal(part, nx, ny));
+  const collocatedHy = complexAverage(hy, (part) => averageVertical(part, nx, ny));
   const collocatedHz = hz;
+  rotateComplexFields([collocatedEx, collocatedEy, collocatedEz, collocatedHx, collocatedHy, collocatedHz]);
   const electricIntensity = new Float64Array(nx * ny);
   const magneticIntensity = new Float64Array(nx * ny);
+  const rawPoynting = new Float64Array(nx * ny);
   let electricTotal = 0;
   let electricCore = 0;
   let electricSquared = 0;
@@ -638,35 +1008,61 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
   let lossWeightedEnergy = 0;
 
   for (let index = 0; index < electricIntensity.length; index += 1) {
-    const e2 = collocatedEx[index] ** 2 + collocatedEy[index] ** 2 + collocatedEz[index] ** 2;
-    const h2 = collocatedHx[index] ** 2 + collocatedHy[index] ** 2 + collocatedHz[index] ** 2;
+    const e2 = complexMagnitudeSquaredAt(collocatedEx, index) + complexMagnitudeSquaredAt(collocatedEy, index) + complexMagnitudeSquaredAt(collocatedEz, index);
+    const h2 = complexMagnitudeSquaredAt(collocatedHx, index) + complexMagnitudeSquaredAt(collocatedHy, index) + complexMagnitudeSquaredAt(collocatedHz, index);
     electricIntensity[index] = e2;
     magneticIntensity[index] = h2;
+    rawPoynting[index] = 0.5 * (
+      collocatedEx.real[index] * collocatedHy.real[index] + collocatedEx.imaginary[index] * collocatedHy.imaginary[index]
+      - collocatedEy.real[index] * collocatedHx.real[index] - collocatedEy.imaginary[index] * collocatedHx.imaginary[index]
+    );
     const area = grid.cellArea[index];
     electricTotal += e2 * area;
     electricSquared += e2 ** 2 * area;
-    exEnergy += collocatedEx[index] ** 2 * area;
-    eyEnergy += collocatedEy[index] ** 2 * area;
-    ezEnergy += collocatedEz[index] ** 2 * area;
+    exEnergy += complexMagnitudeSquaredAt(collocatedEx, index) * area;
+    eyEnergy += complexMagnitudeSquaredAt(collocatedEy, index) * area;
+    ezEnergy += complexMagnitudeSquaredAt(collocatedEz, index) * area;
     lossWeightedEnergy += grid.extinctionCell[index] * grid.epsilonCell[index] * e2 * area;
-    if (grid.region[index] === 1) electricCore += grid.epsilonCell[index] * e2 * area;
+    electricCore += grid.coreFraction[index] * grid.epsilonCell[index] * e2 * area;
   }
   let weightedElectricTotal = 0;
   for (let index = 0; index < electricIntensity.length; index += 1) {
     weightedElectricTotal += grid.epsilonCell[index] * electricIntensity[index] * grid.cellArea[index];
   }
 
-  const eScale = 1 / Math.sqrt(Math.max(...electricIntensity));
-  const hScale = 1 / Math.sqrt(Math.max(...magneticIntensity));
-  const normalizedIntensity = scale(electricIntensity, 1 / Math.max(...electricIntensity));
+  const vacuumImpedanceOhm = 376.730313668;
+  let powerForUnitMagneticFieldW = 0;
+  for (let index = 0; index < rawPoynting.length; index += 1) {
+    powerForUnitMagneticFieldW += vacuumImpedanceOhm * rawPoynting[index] * grid.cellArea[index] * 1e-12;
+  }
+  const hScale = 1 / Math.sqrt(Math.max(Math.abs(powerForUnitMagneticFieldW), 1e-30));
+  const eScale = vacuumImpedanceOhm * hScale * Math.sign(powerForUnitMagneticFieldW || 1);
+  const physicalEx = complexScaleScalar(collocatedEx, eScale, 0);
+  const physicalEy = complexScaleScalar(collocatedEy, eScale, 0);
+  const physicalEz = complexScaleScalar(collocatedEz, eScale, 0);
+  const physicalHx = complexScaleScalar(collocatedHx, hScale, 0);
+  const physicalHy = complexScaleScalar(collocatedHy, hScale, 0);
+  const physicalHz = complexScaleScalar(collocatedHz, hScale, 0);
+  const physicalIntensity = new Float64Array(nx * ny);
+  const physicalPoynting = new Float64Array(nx * ny);
+  let modalPowerW = 0;
+  for (let index = 0; index < physicalIntensity.length; index += 1) {
+    physicalIntensity[index] = complexMagnitudeSquaredAt(physicalEx, index) + complexMagnitudeSquaredAt(physicalEy, index) + complexMagnitudeSquaredAt(physicalEz, index);
+    physicalPoynting[index] = 0.5 * (
+      physicalEx.real[index] * physicalHy.real[index] + physicalEx.imaginary[index] * physicalHy.imaginary[index]
+      - physicalEy.real[index] * physicalHx.real[index] - physicalEy.imaginary[index] * physicalHx.imaginary[index]
+    );
+    modalPowerW += physicalPoynting[index] * grid.cellArea[index] * 1e-12;
+  }
   const fields: Record<FieldComponent, number[][]> = {
-    Ex: toMatrix(scale(collocatedEx, eScale), nx, ny),
-    Ey: toMatrix(scale(collocatedEy, eScale), nx, ny),
-    Ez: toMatrix(scale(collocatedEz, eScale), nx, ny),
-    Hx: toMatrix(scale(collocatedHx, hScale), nx, ny),
-    Hy: toMatrix(scale(collocatedHy, hScale), nx, ny),
-    Hz: toMatrix(scale(collocatedHz, hScale), nx, ny),
-    intensity: toMatrix(normalizedIntensity, nx, ny),
+    Ex: toMatrix(physicalEx.real, nx, ny),
+    Ey: toMatrix(physicalEy.real, nx, ny),
+    Ez: toMatrix(physicalEz.real, nx, ny),
+    Hx: toMatrix(physicalHx.real, nx, ny),
+    Hy: toMatrix(physicalHy.real, nx, ny),
+    Hz: toMatrix(physicalHz.real, nx, ny),
+    intensity: toMatrix(physicalIntensity, nx, ny),
+    poynting: toMatrix(physicalPoynting, nx, ny),
   };
   const transverseElectricEnergy = exEnergy + eyEnergy;
   const polarization = exEnergy >= eyEnergy ? "quasi-TE" : "quasi-TM";
@@ -676,16 +1072,27 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
     order,
     polarization,
     effectiveIndex: beta / k0,
+    effectiveIndexImaginary: Math.abs(betaComplex.imaginary / k0),
     propagationConstantPerUm: beta,
     residual: pair.residual,
     electricConfinement: electricCore / weightedElectricTotal,
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,
     longitudinalElectricFraction: ezEnergy / electricTotal,
     xPolarizedElectricFraction: exEnergy / transverseElectricEnergy,
-    lossDbPerCm: (4 * Math.PI * 10_000 * 10 / Math.log(10) / config.wavelengthUm)
-      * (lossWeightedEnergy / Math.max(weightedElectricTotal, 1e-30)),
+    lossDbPerCm: operator.complex
+      ? (20 / Math.log(10)) * Math.abs(betaComplex.imaginary) * 10_000
+      : (4 * Math.PI * 10_000 * 10 / Math.log(10) / config.wavelengthUm)
+        * (lossWeightedEnergy / Math.max(weightedElectricTotal, 1e-30)),
+    modalPowerW,
+    peakPoyntingWPerM2: Math.max(...physicalPoynting),
     fields,
   };
+}
+
+function complexSquareRoot(real: number, imaginary: number): { real: number; imaginary: number } {
+  const magnitude = Math.hypot(real, imaginary);
+  const rootReal = Math.sqrt(Math.max(0, (magnitude + real) / 2));
+  return { real: rootReal, imaginary: Math.sign(imaginary || 1) * Math.sqrt(Math.max(0, (magnitude - real) / 2)) };
 }
 
 function ax(nodes: Float64Array, nx: number, ny: number, dx: number[]): Float64Array {
@@ -774,6 +1181,143 @@ function dyOperator(edges: Float64Array, nx: number, ny: number, dy: number[]): 
     }
   }
   return output;
+}
+
+function complexSlice(vector: Float64Array, start: number, length: number, vectorSize: number): ComplexArray {
+  return { real: vector.subarray(start, start + length), imaginary: vector.subarray(vectorSize + start, vectorSize + start + length) };
+}
+
+function complexJoin(first: ComplexArray, second: ComplexArray): Float64Array {
+  const vectorSize = first.real.length + second.real.length;
+  const output = new Float64Array(2 * vectorSize);
+  output.set(first.real, 0);
+  output.set(second.real, first.real.length);
+  output.set(first.imaginary, vectorSize);
+  output.set(second.imaginary, vectorSize + first.real.length);
+  return output;
+}
+
+function complexAdd(first: ComplexArray, second: ComplexArray): ComplexArray {
+  return { real: add(first.real, second.real), imaginary: add(first.imaginary, second.imaginary) };
+}
+
+function complexSubtract(first: ComplexArray, second: ComplexArray): ComplexArray {
+  return { real: subtract(first.real, second.real), imaginary: subtract(first.imaginary, second.imaginary) };
+}
+
+function complexAddScaledInPlace(target: ComplexArray, source: ComplexArray, factor: number): void {
+  addScaledInPlace(target.real, source.real, factor);
+  addScaledInPlace(target.imaginary, source.imaginary, factor);
+}
+
+function complexScaleScalar(values: ComplexArray, real: number, imaginary: number): ComplexArray {
+  const output = { real: values.real.slice(), imaginary: values.imaginary.slice() };
+  for (let index = 0; index < output.real.length; index += 1) {
+    const nextReal = values.real[index] * real - values.imaginary[index] * imaginary;
+    output.imaginary[index] = values.real[index] * imaginary + values.imaginary[index] * real;
+    output.real[index] = nextReal;
+  }
+  return output;
+}
+
+function complexDivideScalar(values: ComplexArray, real: number, imaginary: number): ComplexArray {
+  const denominator = real ** 2 + imaginary ** 2;
+  return complexScaleScalar(values, real / denominator, -imaginary / denominator);
+}
+
+function complexMultiplyScalarInPlace(values: ComplexArray, factor: number): void {
+  multiplyScalarInPlace(values.real, factor);
+  multiplyScalarInPlace(values.imaginary, factor);
+}
+
+function complexAverage(values: ComplexArray, average: (part: Float64Array) => Float64Array): ComplexArray {
+  return { real: average(values.real), imaginary: average(values.imaginary) };
+}
+
+function complexMagnitudeSquaredAt(values: ComplexArray, index: number): number {
+  return values.real[index] ** 2 + values.imaginary[index] ** 2;
+}
+
+function rotateComplexFields(fields: ComplexArray[]): void {
+  const reference = fields[0];
+  let peak = 0;
+  for (let index = 1; index < reference.real.length; index += 1) {
+    if (complexMagnitudeSquaredAt(reference, index) > complexMagnitudeSquaredAt(reference, peak)) peak = index;
+  }
+  const phase = Math.atan2(reference.imaginary[peak], reference.real[peak]);
+  const cosine = Math.cos(phase);
+  const sine = Math.sin(phase);
+  for (const field of fields) {
+    for (let index = 0; index < field.real.length; index += 1) {
+      const nextReal = field.real[index] * cosine + field.imaginary[index] * sine;
+      field.imaginary[index] = field.imaginary[index] * cosine - field.real[index] * sine;
+      field.real[index] = nextReal;
+    }
+  }
+}
+
+function complexMultiplyInPlace(target: ComplexArray, real: Float64Array, imaginary: Float64Array): void {
+  for (let index = 0; index < target.real.length; index += 1) {
+    const nextReal = target.real[index] * real[index] - target.imaginary[index] * imaginary[index];
+    target.imaginary[index] = target.real[index] * imaginary[index] + target.imaginary[index] * real[index];
+    target.real[index] = nextReal;
+  }
+}
+
+function complexAddProductInPlace(target: ComplexArray, source: ComplexArray, real: Float64Array, imaginary: Float64Array, factor: number): void {
+  for (let index = 0; index < target.real.length; index += 1) {
+    target.real[index] += factor * (source.real[index] * real[index] - source.imaginary[index] * imaginary[index]);
+    target.imaginary[index] += factor * (source.real[index] * imaginary[index] + source.imaginary[index] * real[index]);
+  }
+}
+
+function complexDerivative(
+  values: ComplexArray,
+  derivative: (part: Float64Array) => Float64Array,
+  stretchReal: Float64Array,
+  stretchImaginary: Float64Array,
+  stretchIndex: (index: number) => number,
+): ComplexArray {
+  const output = { real: derivative(values.real), imaginary: derivative(values.imaginary) };
+  for (let index = 0; index < output.real.length; index += 1) {
+    const factor = stretchIndex(index);
+    const nextReal = output.real[index] * stretchReal[factor] - output.imaginary[index] * stretchImaginary[factor];
+    output.imaginary[index] = output.real[index] * stretchImaginary[factor] + output.imaginary[index] * stretchReal[factor];
+    output.real[index] = nextReal;
+  }
+  return output;
+}
+
+function complexAx(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => ax(part, grid.nx, grid.ny, grid.dxCell), grid.inverseStretchXCellReal, grid.inverseStretchXCellImaginary, (index) => index % grid.nx);
+}
+
+function complexAy(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => ay(part, grid.nx, grid.ny, grid.dyCell), grid.inverseStretchYCellReal, grid.inverseStretchYCellImaginary, (index) => Math.floor(index / (grid.nx + 1)));
+}
+
+function complexBx(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => bx(part, grid.nx, grid.ny, grid.dxCell), grid.inverseStretchXCellReal, grid.inverseStretchXCellImaginary, (index) => index % grid.nx);
+}
+
+function complexBy(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => by(part, grid.nx, grid.ny, grid.dyCell), grid.inverseStretchYCellReal, grid.inverseStretchYCellImaginary, (index) => Math.floor(index / grid.nx));
+}
+
+function complexCx(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => cx(part, grid.nx, grid.ny, grid.dxDual), grid.inverseStretchXNodeReal, grid.inverseStretchXNodeImaginary, (index) => index % (grid.nx + 1));
+}
+
+function complexCy(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => cy(part, grid.nx, grid.ny, grid.dyDual), grid.inverseStretchYNodeReal, grid.inverseStretchYNodeImaginary, (index) => Math.floor(index / grid.nx));
+}
+
+function complexDxOperator(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => dxOperator(part, grid.nx, grid.ny, grid.dxDual), grid.inverseStretchXNodeReal, grid.inverseStretchXNodeImaginary, (index) => index % (grid.nx + 1));
+}
+
+function complexDyOperator(values: ComplexArray, grid: Grid): ComplexArray {
+  return complexDerivative(values, (part) => dyOperator(part, grid.nx, grid.ny, grid.dyDual), grid.inverseStretchYNodeReal, grid.inverseStretchYNodeImaginary, (index) => Math.floor(index / (grid.nx + 1)));
 }
 
 function averageVertical(values: Float64Array, nx: number, ny: number): Float64Array {
