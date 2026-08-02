@@ -186,13 +186,16 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.residual).toBeLessThan(5e-3);
   });
 
-  it("recovers the straight-guide limit with the cylindrical full-vector operator", () => {
+  it("recovers the straight-guide limit with the radial-transformed bend operator", () => {
     const straight = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1 }).modes[0];
-    const bent = solveWaveguide({
+    const bentResult = solveWaveguide({
       ...benchmark, gridResolution: 24, modeCount: 1,
       bendRadiusUm: 100_000, bendDirection: "positive-x",
-    }).modes[0];
+    });
+    const bent = bentResult.modes[0];
     expect(bent).toBeDefined();
+    expect(bentResult.formulation).toBe("transverse-e");
+    expect(bentResult.backend).toBe("Sparse LU");
     expect(bent.effectiveIndex).toBeCloseTo(straight.effectiveIndex, 2);
     expect(bent.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(bent.residual).toBeLessThan(5e-3);
@@ -213,6 +216,21 @@ describe("full-vector finite-difference mode solver", () => {
     expect(positiveCentroid).toBeCloseTo(-negativeCentroid, 2);
     expect(Math.abs(positiveCentroid)).toBeGreaterThan(1e-3);
   }, 10_000);
+
+  it("retains a converged modal profile on a refined bend mesh", () => {
+    const coarse = solveWaveguide({
+      ...benchmark, gridResolution: 32, modeCount: 1,
+      bendRadiusUm: 10, bendDirection: "positive-x",
+    }).modes[0];
+    const fine = solveWaveguide({
+      ...benchmark, gridResolution: 48, modeCount: 1,
+      bendRadiusUm: 10, bendDirection: "positive-x",
+    }).modes[0];
+    expect(fine).toBeDefined();
+    expect(Math.abs(fine.effectiveIndex - coarse.effectiveIndex)).toBeLessThan(0.02);
+    expect(fine.residual).toBeLessThan(5e-3);
+    expect(fieldRoughness(fine.fields.Ex)).toBeLessThan(fieldRoughness(coarse.fields.Ex));
+  }, 20_000);
 
   it("extracts bend radiation loss with a cylindrical stretched-coordinate PML", () => {
     const mode = solveWaveguide({

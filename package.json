@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "mathjs": "^15.2.0",
     "ml-matrix": "6.14.0",
     "plotly.js-cartesian-dist-min": "^3.7.0",
     "react": "19.2.8",

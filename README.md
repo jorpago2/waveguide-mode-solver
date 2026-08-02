@@ -17,7 +17,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
-- Rigorous constant-radius bends in local cylindrical coordinates, retaining the metric factor 1 + x/R in the six-component Maxwell eigenproblem.
+- Rigorous constant-radius bends using Tidy3D's radial coordinate-transformation strategy: the metric factor 1 + x/R enters the material operators, a reduced transverse-electric eigenproblem is solved, and all six fields are reconstructed.
 - Wavelength sweeps with field-overlap mode tracking.
 - Width, height, slot-gap and bend-radius sweeps with resampled field-overlap mode tracking.
 - Effective and imaginary index, group index, D and β₂ dispersion, attenuation, electric and power confinement, polarization fractions and effective area.
@@ -26,7 +26,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Solved cross-section inspector with principal-index maps, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
-- Matrix-free shift-invert Arnoldi with adaptively preconditioned BiCGSTAB inner solves, SIMD WebAssembly kernels for diagonal and tensor operators, restarted GMRES for non-Hermitian bent-PML systems and residual rejection.
+- Shift-invert Arnoldi with reusable sparse LU for transformed bend operators, adaptively preconditioned BiCGSTAB for straight guides, SIMD WebAssembly kernels for diagonal and tensor operators, and residual rejection.
 - Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
 - Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.
@@ -70,7 +70,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 
 A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modesolver for Anisotropic Dielectric Waveguides,” *Journal of Lightwave Technology* 26(11), 1423–1431 (2008). [doi:10.1109/JLT.2008.923643](https://doi.org/10.1109/JLT.2008.923643)
 
-The curved formulation follows the local-cylindrical full-vector finite-difference method and cylindrical PML treatment in J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848), and J. Xiao and X. Sun, “A modified full-vectorial finite-difference beam propagation method based on the H-field equations and the cylindrical coordinate system,” *Optics Express* 20, 21583–21597 (2012), [doi:10.1364/OE.20.021583](https://doi.org/10.1364/OE.20.021583).
+The curved formulation follows the radial coordinate transformation and reduced diagonal-material mode operator in the open-source [Tidy3D mode solver](https://github.com/flexcompute/tidy3d/blob/develop/tidy3d/components/mode/solver.py) and [radial transform](https://github.com/flexcompute/tidy3d/blob/develop/tidy3d/components/mode/transforms.py). Its cylindrical finite-difference basis is described by J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848).
 
 Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), and [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068).
 
