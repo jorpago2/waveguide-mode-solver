@@ -61,7 +61,8 @@ describe("full-vector finite-difference mode solver", () => {
   }, 10_000);
 
   it("returns physical vector-field metrics", () => {
-    const mode = solveWaveguide({ ...benchmark, modeCount: 1 }).modes[0];
+    const result = solveWaveguide({ ...benchmark, modeCount: 1 });
+    const mode = result.modes[0];
     expect(mode.effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
     expect(mode.effectiveIndex).toBeLessThan(benchmark.coreIndex);
     expect(mode.electricConfinement).toBeGreaterThan(0);
@@ -73,6 +74,10 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.fields.Ex[0]).toHaveLength(32);
     expect(mode.modalPowerW).toBeCloseTo(1, 8);
     expect(mode.peakPoyntingWPerM2).toBeGreaterThan(0);
+    expect(result.xEdgesUm).toHaveLength(result.nx + 1);
+    expect(result.yEdgesUm).toHaveLength(result.ny + 1);
+    expect(result.refractiveIndex.x).toHaveLength(result.ny);
+    expect(Math.max(...result.refractiveIndex.x.flat())).toBeGreaterThan(Math.min(...result.refractiveIndex.x.flat()));
   });
 
   it("rejects a non-guiding index profile", () => {

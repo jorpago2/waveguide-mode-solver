@@ -232,6 +232,11 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
   font-size: 0.72rem;
 }
 .field-toolbar button.active { color: #fff; background: var(--teal); border-color: var(--teal); }
+.result-view-tabs { margin-bottom: 18px; }
+.geometry-toolbar .checkbox-field { min-height: 30px; padding: 3px 9px; }
+.geometry-toolbar > small { margin-left: auto; color: #76878b; font-size: 0.7rem; }
+.geometry-plot { width: 100%; min-height: 520px; }
+.plot-note { margin: 0 4px; color: #74868a; font-size: 0.7rem; line-height: 1.5; }
 
 .plots { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.8fr); gap: 10px; }
 .field-plot, .cut-plot { width: 100%; min-height: 430px; }
@@ -343,6 +348,7 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .workspace, .validation-section { grid-template-columns: 1fr; }
   .control-panel, .results-panel { padding: 18px; }
   .field-plot { min-height: 390px; }
+  .geometry-plot { min-height: 430px; }
   .sweep-section { padding: 18px; }
   .analysis-columns { grid-template-columns: 1fr; }
   footer { align-items: flex-start; flex-direction: column; }
@@ -356,6 +362,7 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .form-grid { grid-template-columns: 1fr 1fr; }
   .metrics { grid-template-columns: 1fr; }
   .field-plot { min-height: 330px; }
+  .geometry-plot { min-height: 350px; }
   .field-toolbar { gap: 5px; }
   .field-toolbar button { min-width: 35px; padding-inline: 7px; }
   .sweep-controls { grid-template-columns: 1fr; }

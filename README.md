@@ -24,6 +24,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
+- Solved cross-section inspector with principal-index maps, actual nonuniform mesh boundaries and PML-onset markers.
 - Matrix-free shift-invert Arnoldi with BiCGSTAB inner solves, restarted GMRES for non-Hermitian bent-PML systems and residual rejection.
 - Solver and sweeps run in a Web Worker so the interface remains responsive.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.

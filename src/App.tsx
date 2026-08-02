@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { ModePlot } from "./ModePlot";
+import { GeometryPlot } from "./GeometryPlot";
 import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
 import { parseNumericInput } from "./numericInput";
@@ -112,6 +113,7 @@ export function App() {
   const [result, setResult] = useState<SolverResult>();
   const [selectedMode, setSelectedMode] = useState(0);
   const [component, setComponent] = useState<FieldComponent>("Ex");
+  const [resultView, setResultView] = useState<"mode" | "geometry">("mode");
   const [sweepSettings, setSweepSettings] = useState(initialSweep);
   const [sweepResult, setSweepResult] = useState<SweepResult>();
   const [geometrySweep, setGeometrySweep] = useState(initialGeometrySweep);
@@ -390,8 +392,10 @@ export function App() {
         </aside>
 
         <section className="results-panel" aria-labelledby="results-title">
-          <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Mode explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
-          {mode && result ? <>
+          <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
+          {result ? <>
+            <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} className={resultView === "mode" ? "active" : ""} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} className={resultView === "geometry" ? "active" : ""} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
+            {resultView === "geometry" ? <GeometryPlot config={config} result={result} /> : mode ? <>
             <div className="mode-tabs" role="tablist" aria-label="Guided modes">{result.modes.map((item, index) => <button type="button" role="tab" aria-selected={selectedMode === index} className={selectedMode === index ? "active" : ""} key={`${item.id}-${index}`} onClick={() => setSelectedMode(index)}><span>{item.label} · {item.polarization}</span><small><i>n</i><sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</small></button>)}</div>
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
@@ -410,7 +414,8 @@ export function App() {
             </div>
             <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
             <ModePlot component={component} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} />
-          </> : <div className="empty-state">No guided mode was found. Increase the core size or index contrast.</div>}
+            </> : <div className="empty-state">No guided mode was found. Inspect the structure and mesh, then increase the core size or index contrast.</div>}
+          </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
         </section>
       </div>
 

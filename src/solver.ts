@@ -108,6 +108,9 @@ export interface SolverResult {
   modes: WaveguideMode[];
   xUm: number[];
   yUm: number[];
+  xEdgesUm: number[];
+  yEdgesUm: number[];
+  refractiveIndex: Record<"x" | "y" | "z", number[][]>;
   nx: number;
   ny: number;
   dxUm: number;
@@ -181,7 +184,14 @@ interface Grid {
   x: number[];
   xNodes: number[];
   y: number[];
+  yNodes: number[];
   epsilonCell: Float64Array;
+  epsilonCellX: Float64Array;
+  epsilonCellY: Float64Array;
+  epsilonCellZ: Float64Array;
+  epsilonCellXImaginary: Float64Array;
+  epsilonCellYImaginary: Float64Array;
+  epsilonCellZImaginary: Float64Array;
   cellArea: Float64Array;
   coreFraction: Float64Array;
   extinctionCell: Float64Array;
@@ -390,6 +400,13 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
     modes,
     xUm: grid.x,
     yUm: grid.y,
+    xEdgesUm: grid.xNodes,
+    yEdgesUm: grid.yNodes,
+    refractiveIndex: {
+      x: toMatrix(complexIndex(grid.epsilonCellX, grid.epsilonCellXImaginary), grid.nx, grid.ny),
+      y: toMatrix(complexIndex(grid.epsilonCellY, grid.epsilonCellYImaginary), grid.nx, grid.ny),
+      z: toMatrix(complexIndex(grid.epsilonCellZ, grid.epsilonCellZImaginary), grid.nx, grid.ny),
+    },
     nx: grid.nx,
     ny: grid.ny,
     dxUm: grid.dx,
@@ -931,7 +948,14 @@ function createGrid(config: WaveguideConfig): Grid {
     x,
     xNodes: xEdges,
     y,
+    yNodes: yEdges,
     epsilonCell,
+    epsilonCellX,
+    epsilonCellY,
+    epsilonCellZ,
+    epsilonCellXImaginary,
+    epsilonCellYImaginary,
+    epsilonCellZImaginary,
     cellArea,
     coreFraction,
     extinctionCell,
@@ -965,6 +989,10 @@ function complexReciprocal(real: Float64Array, imaginary: Float64Array): { real:
     outputImaginary[index] = -imaginary[index] / denominator;
   }
   return { real: outputReal, imaginary: outputImaginary };
+}
+
+function complexIndex(permittivityReal: Float64Array, permittivityImaginary: Float64Array): Float64Array {
+  return Float64Array.from(permittivityReal, (real, index) => Math.sqrt((Math.hypot(real, permittivityImaginary[index]) + real) / 2));
 }
 
 function stretchProfile(coordinates: number[], halfDomain: number, thickness: number, strength: number): { real: Float64Array; imaginary: Float64Array } {
