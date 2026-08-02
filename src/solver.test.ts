@@ -27,6 +27,18 @@ function fieldRoughness(field: number[][]): number {
   return differences / energy;
 }
 
+function horizontalCentroid(field: number[][], xUm: number[]): number {
+  let weightedPosition = 0;
+  let total = 0;
+  for (const row of field) {
+    for (let column = 0; column < row.length; column += 1) {
+      weightedPosition += xUm[column] * row[column];
+      total += row[column];
+    }
+  }
+  return weightedPosition / total;
+}
+
 describe("full-vector finite-difference mode solver", () => {
   it("allows a numeric input to be cleared before entering a replacement", () => {
     expect(parseNumericInput("")).toBeNaN();
@@ -65,6 +77,7 @@ describe("full-vector finite-difference mode solver", () => {
 
   it("rejects a non-guiding index profile", () => {
     expect(validateWaveguide({ ...benchmark, coreIndex: 1.4, claddingIndex: 1.5 })).not.toHaveLength(0);
+    expect(validateWaveguide({ ...benchmark, bendRadiusUm: 1 })).toContain("Bend radius must exceed the radial half-domain so the cylindrical metric remains positive.");
   });
 
   it("models etched sidewalls as a wider trapezoidal base", () => {
@@ -135,6 +148,47 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.modalPowerW).toBeCloseTo(1, 8);
     expect(mode.residual).toBeLessThan(5e-3);
   });
+
+  it("recovers the straight-guide limit with the cylindrical full-vector operator", () => {
+    const straight = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1 }).modes[0];
+    const bent = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1,
+      bendRadiusUm: 100_000, bendDirection: "positive-x",
+    }).modes[0];
+    expect(bent).toBeDefined();
+    expect(bent.effectiveIndex).toBeCloseTo(straight.effectiveIndex, 2);
+    expect(bent.modalPowerW).toBeCloseTo(1, 8);
+    expect(bent.residual).toBeLessThan(5e-3);
+  }, 10_000);
+
+  it("reverses the curved-mode displacement when the bend direction is reversed", () => {
+    const positive = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1,
+      bendRadiusUm: 10, bendDirection: "positive-x",
+    });
+    const negative = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1,
+      bendRadiusUm: 10, bendDirection: "negative-x",
+    });
+    expect(positive.modes[0].effectiveIndex).toBeCloseTo(negative.modes[0].effectiveIndex, 2);
+    const positiveCentroid = horizontalCentroid(positive.modes[0].fields.intensity, positive.xUm);
+    const negativeCentroid = horizontalCentroid(negative.modes[0].fields.intensity, negative.xUm);
+    expect(positiveCentroid).toBeCloseTo(-negativeCentroid, 2);
+    expect(Math.abs(positiveCentroid)).toBeGreaterThan(1e-3);
+  }, 10_000);
+
+  it("extracts bend radiation loss with a cylindrical stretched-coordinate PML", () => {
+    const mode = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1,
+      bendRadiusUm: 10, bendDirection: "positive-x",
+      boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
+    }).modes[0];
+    expect(mode).toBeDefined();
+    expect(mode.effectiveIndexImaginary).toBeGreaterThan(0);
+    expect(mode.lossDbPerCm).toBeGreaterThan(0);
+    expect(mode.modalPowerW).toBeCloseTo(1, 8);
+    expect(mode.residual).toBeLessThan(1e-2);
+  }, 20_000);
 
   it("tracks a mode through a geometry sweep", () => {
     const sweep = sweepGeometry({ ...benchmark, gridResolution: 24, modeCount: 2 }, {

@@ -46,6 +46,8 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
     if (!fieldRef.current || !cutRef.current) return;
     const signedField = component !== "intensity";
     const z = mode.fields[component];
+    const bent = (config.bendRadiusUm ?? 0) > 0;
+    const componentLabel = bent && component === "Ez" ? "E<sub>θ</sub>" : bent && component === "Hz" ? "H<sub>θ</sub>" : bent && component === "poynting" ? "S<sub>θ</sub> (W/m²)" : labels[component];
     const values = z.flat();
     const maximum = Math.max(...values.map((value) => Math.abs(value)), Number.EPSILON);
     const commonConfig = { displaylogo: false, responsive: true, scrollZoom: false };
@@ -66,7 +68,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       zmid: signedField ? 0 : undefined,
       colorscale: signedField ? "RdBu" : "Viridis",
       colorbar: {
-        title: { text: labels[component], side: "right" },
+        title: { text: componentLabel, side: "right" },
         thickness: 12,
         len: 0.82,
       },
@@ -110,7 +112,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
-      yaxis: { ...axisStyle, title: { text: labels[component] }, range: signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
+      yaxis: { ...axisStyle, title: { text: componentLabel }, range: signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
     }, commonConfig);
 
     return () => {

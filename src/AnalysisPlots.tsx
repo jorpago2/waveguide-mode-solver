@@ -58,7 +58,7 @@ export function ModeMapPlot({ result }: { result: ModeMapResult }) {
   useEffect(() => {
     if (!plotRef.current) return;
     const narrow = window.matchMedia("(max-width: 600px)").matches;
-    const parameterLabels = { widthUm: "Width", heightUm: "Height", slotGapUm: "Slot gap", couplerGapUm: "Coupler gap" };
+    const parameterLabels = { widthUm: "Width", heightUm: "Height", slotGapUm: "Slot gap", couplerGapUm: "Coupler gap", bendRadiusUm: "Bend radius" };
     void Plotly.react(plotRef.current, [
       { type: "heatmap", name: "Mode count", x: result.valuesUm, y: result.wavelengthsUm, z: result.modeCount, zmin: 0, colorscale: "Viridis", colorbar: { title: { text: "Modes" }, thickness: 11, x: narrow ? 1.02 : 0.45, ...(narrow ? { y: 0.79, len: 0.38 } : {}) }, hovertemplate: "value = %{x:.3f} µm<br>λ = %{y:.3f} µm<br>guided modes = %{z}<extra></extra>" },
       { type: "heatmap", name: "Effective index", x: result.valuesUm, y: result.wavelengthsUm, z: result.effectiveIndex, xaxis: "x2", yaxis: "y2", colorscale: "Cividis", colorbar: { title: { text: "n<sub>eff</sub>" }, thickness: 11, ...(narrow ? { y: 0.19, len: 0.38 } : {}) }, hovertemplate: "value = %{x:.3f} µm<br>λ = %{y:.3f} µm<br>n<sub>eff</sub> = %{z:.5f}<extra></extra>" },

@@ -45,6 +45,8 @@ const common = {
   materialTemperatureC: 21,
   coreOpticAxis: "y" as OpticAxis,
   coreElectricFieldVPerUm: 0,
+  bendRadiusUm: 0,
+  bendDirection: "positive-x" as const,
 };
 
 const presets: Record<string, WaveguideConfig> = {
@@ -128,7 +130,9 @@ export function App() {
       result.xUm.filter((x) => Math.abs(x) <= config.widthUm / 2).length,
       result.yUm.filter((y) => Math.abs(y) <= config.heightUm / 2).length,
     ) >= 8 },
+    ...((config.bendRadiusUm ?? 0) > 0 ? [{ label: "Open radial boundary", pass: (config.boundary ?? "hard") === "pml" }] : []),
   ] : [], [config, mode, result]);
+  const geometrySweepMaximum = geometrySweep.parameter === "bendRadiusUm" ? PARAMETER_MAXIMUMS.bendRadiusUm : PARAMETER_MAXIMUMS.dimensionUm;
 
   useEffect(() => {
     if (initialized.current) return;
@@ -188,6 +192,7 @@ export function App() {
         setGeometrySweep((current) => (
           (current.parameter === "slotGapUm" && (draft.geometry ?? "channel") !== "slot")
           || (current.parameter === "couplerGapUm" && (draft.geometry ?? "channel") !== "coupler")
+          || (current.parameter === "bendRadiusUm" && (draft.bendRadiusUm ?? 0) <= 0)
             ? { ...current, parameter: "widthUm" } : current
         ));
         setMessage(`${next.modes.length} guided mode${next.modes.length === 1 ? "" : "s"} found on a ${next.nx} × ${next.ny} Yee grid.`);
@@ -298,7 +303,7 @@ export function App() {
       <section className="intro" aria-labelledby="page-title">
         <p className="eyebrow">Integrated photonics · educational solver</p>
         <h1 id="page-title">Inspect and sweep complete vector modes.</h1>
-        <p>Model, validate and explore channel, rib, slot, coupler and multilayer waveguides with dispersive materials, fabrication tolerances and coupling analysis.</p>
+        <p>Model, validate and explore straight and curved channel, rib, slot, coupler and multilayer waveguides with dispersive materials, fabrication tolerances and coupling analysis.</p>
         <div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project JSON</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div>
       </section>
 
@@ -320,6 +325,11 @@ export function App() {
               <NumberField label={(draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
               <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
               <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
+              <label className="select-field">Propagation path<select value={(draft.bendRadiusUm ?? 0) > 0 ? "bend" : "straight"} onChange={(event) => setDraft((current) => event.target.value === "bend" ? { ...current, bendRadiusUm: current.bendRadiusUm && current.bendRadiusUm > 0 ? current.bendRadiusUm : 10, boundary: "pml" } : { ...current, bendRadiusUm: 0 })}><option value="straight">Straight</option><option value="bend">Constant-radius bend</option></select></label>
+              {(draft.bendRadiusUm ?? 0) > 0 && <>
+                <NumberField label="Bend radius" unit="µm" value={draft.bendRadiusUm ?? 10} min={0.1} max={PARAMETER_MAXIMUMS.bendRadiusUm} step={0.5} onChange={(v) => updateNumber("bendRadiusUm", v)} />
+                <label className="select-field">Bend direction<select value={draft.bendDirection ?? "positive-x"} onChange={(event) => setDraft((current) => ({ ...current, bendDirection: event.target.value as "positive-x" | "negative-x" }))}><option value="positive-x">Outer side at +x</option><option value="negative-x">Outer side at −x</option></select></label>
+              </>}
               {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
               {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
               {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
@@ -395,8 +405,10 @@ export function App() {
               <Metric label={<>Imaginary index Im(<i>n</i><sub>eff</sub>)</>} value={mode.effectiveIndexImaginary.toExponential(3)} />
               <Metric label="Normalized power" value={`${mode.modalPowerW.toFixed(3)} W`} />
               <Metric label="Guidance margin" value={`${mode.guidanceMargin.toExponential(3)}${mode.nearCutoff ? " · review" : ""}`} />
+              {mode.bendRadiusUm && <Metric label="Bend radius" value={`${mode.bendRadiusUm.toFixed(3)} µm`} />}
+              {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
             </div>
-            <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{fieldLabels[field]}</button>)}</div>
+            <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
             <ModePlot component={component} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} />
           </> : <div className="empty-state">No guided mode was found. Increase the core size or index contrast.</div>}
         </section>
@@ -417,12 +429,13 @@ export function App() {
       <section className="sweep-section">
         <div className="panel-heading"><div><span className="step">04</span><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runGeometrySweep}>
-          <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => ({ ...current, parameter: event.target.value as GeometrySweepParameter }))}>
+          <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => event.target.value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: event.target.value as GeometrySweepParameter })}>
             <option value="widthUm">Core width</option><option value="heightUm">Core height</option>{(config.geometry ?? "channel") === "slot" && <option value="slotGapUm">Slot gap</option>}
             {(config.geometry ?? "channel") === "coupler" && <option value="couplerGapUm">Coupler gap</option>}
+            {(config.bendRadiusUm ?? 0) > 0 && <option value="bendRadiusUm">Bend radius</option>}
           </select></label>
-          <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
-          <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
+          <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
+          <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
           <NumberField label="Samples" unit="points" value={geometrySweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={1} onChange={(value) => setGeometrySweep((current) => ({ ...current, points: value }))} />
           <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
         </form>
@@ -433,7 +446,7 @@ export function App() {
       <AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} />
 
       <section className="validation-section">
-        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>The solver discretizes Maxwell’s equations on a transverse Yee grid and solves the coupled eigenproblem for <i>H</i><sub>x</sub> and <i>H</i><sub>y</sub>. Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation"><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></div><p className="limitation">Scope: linear, non-magnetic dielectrics with diagonal anisotropy. Use the stretched-coordinate PML and repeat padding, PML and mesh sweeps before interpreting leakage or material attenuation quantitatively.</p></div>
+        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver discretizes all six Maxwell field components on a Yee grid in local cylindrical coordinates. The metric 1 + x/R is retained explicitly, so curvature is not replaced by an equivalent-index approximation.</> : <>The straight solver discretizes Maxwell’s equations on a transverse Yee grid and solves the coupled eigenproblem for <i>H</i><sub>x</sub> and <i>H</i><sub>y</sub>.</>} Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation">{(config.bendRadiusUm ?? 0) > 0 ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, non-magnetic dielectrics with diagonal anisotropy and constant bend radius. Use the stretched-coordinate PML and repeat padding, PML and mesh sweeps before interpreting leakage or material attenuation quantitatively.</p></div>
         <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Mode classification</dt><dd>{mode.label}</dd></div><div><dt>x/y symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
       </section>
     </main>
