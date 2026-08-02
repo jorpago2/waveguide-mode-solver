@@ -54,51 +54,54 @@ const common = {
   bendDirection: "positive-x" as const,
 };
 
+const STANDARD_GRID_RESOLUTION = 64;
+const THIN_FILM_GRID_RESOLUTION = 80;
+
 const presets: Record<string, WaveguideConfig> = {
   "SiN · channel": {
     ...common, wavelengthUm: 1.55, widthUm: 1, heightUm: 0.4, coreIndex: 2,
-    claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon-nitride", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 1.2, gridResolution: 40, modeCount: 3,
+    claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon-nitride", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 1.2, gridResolution: STANDARD_GRID_RESOLUTION, modeCount: 3,
   },
   "SOI · strip": {
     ...common, wavelengthUm: 1.55, widthUm: 0.45, heightUm: 0.22, slabHeightUm: 0.09,
     slotGapUm: 0.08, coreIndex: 3.476, claddingIndex: 1.444,
-    substrateIndex: 1.444, coreMaterial: "silicon", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 52, modeCount: 2,
+    substrateIndex: 1.444, coreMaterial: "silicon", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: THIN_FILM_GRID_RESOLUTION, modeCount: 2,
   },
   "SOI · rib": {
     ...common, geometry: "rib", wavelengthUm: 1.55, widthUm: 0.5, heightUm: 0.22, slabHeightUm: 0.09,
     coreIndex: 3.476, claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon",
-    claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 52, modeCount: 3,
+    claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: THIN_FILM_GRID_RESOLUTION, modeCount: 3,
   },
   "SOI · slot": {
     ...common, geometry: "slot", wavelengthUm: 1.55, widthUm: 0.52, heightUm: 0.22, slotGapUm: 0.08,
     coreIndex: 3.476, claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon",
-    claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 56, modeCount: 3,
+    claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: THIN_FILM_GRID_RESOLUTION, modeCount: 3,
   },
   "TFLN · Z-cut rib": {
     ...common, geometry: "rib", wavelengthUm: 1.55, widthUm: 1.2, heightUm: 0.6, slabHeightUm: 0.3,
     sidewallAngleDeg: 70, coreIndex: 2.211, coreIndexY: 2.138, coreIndexZ: 2.211, coreMaterial: "lithium-niobate", coreOpticAxis: "y",
     claddingIndex: 1.444, substrateIndex: 1.444, claddingMaterial: "silica", substrateMaterial: "silica",
-    paddingUm: 1.5, gridResolution: 52, modeCount: 3,
+    paddingUm: 1.5, gridResolution: STANDARD_GRID_RESOLUTION, modeCount: 3,
   },
   "AlN · channel": {
     ...common, wavelengthUm: 1.55, widthUm: 0.8, heightUm: 0.4, coreIndex: 2.15, coreMaterial: "aluminum-nitride",
     coreOpticAxis: "y", claddingIndex: 1.444, substrateIndex: 1.444, claddingMaterial: "silica", substrateMaterial: "silica",
-    paddingUm: 1.2, gridResolution: 48, modeCount: 3,
+    paddingUm: 1.2, gridResolution: STANDARD_GRID_RESOLUTION, modeCount: 3,
   },
   "4H-SiCOI · channel": {
     ...common, wavelengthUm: 1.55, widthUm: 0.8, heightUm: 0.4, coreIndex: 2.56, coreMaterial: "silicon-carbide",
     coreOpticAxis: "y", claddingIndex: 1.444, substrateIndex: 1.444, claddingMaterial: "silica", substrateMaterial: "silica",
-    paddingUm: 1.2, gridResolution: 48, modeCount: 3,
+    paddingUm: 1.2, gridResolution: STANDARD_GRID_RESOLUTION, modeCount: 3,
   },
   "Silica · weak guidance": {
     ...common, wavelengthUm: 1.55, widthUm: 4, heightUm: 4, coreIndex: 1.46, claddingIndex: 1.444,
     substrateIndex: 1.444, claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 5,
-    gridResolution: 48, modeCount: 3,
+    gridResolution: STANDARD_GRID_RESOLUTION, modeCount: 3,
   },
   "Polymer · channel": {
     ...common, wavelengthUm: 1.55, widthUm: 2, heightUm: 1.2, slabHeightUm: 0.5,
     slotGapUm: 0.25, coreIndex: 1.59, claddingIndex: 1.49,
-    substrateIndex: 1.49, paddingUm: 2, gridResolution: 44, modeCount: 3,
+    substrateIndex: 1.49, paddingUm: 2, gridResolution: STANDARD_GRID_RESOLUTION, modeCount: 3,
   },
 };
 
