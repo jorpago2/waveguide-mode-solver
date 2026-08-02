@@ -240,7 +240,9 @@ export function App() {
     if (errors.length > 0) { setError(errors.join(" ")); return; }
     setError("");
     setBusy(true);
-    setMessage("Solving the vector eigenproblem…");
+    setMessage(draft.gridResolution > 96
+      ? `Solving a high-resolution ${draft.gridResolution}-cell eigenproblem; this can take several minutes…`
+      : "Solving the vector eigenproblem…");
     try {
         const next = await runSolverWorker<SolverResult>({ kind: "solve", config: draft });
         setConfig({ ...draft });

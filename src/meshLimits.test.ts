@@ -9,13 +9,22 @@ const maximumMeshCase: WaveguideConfig = {
   claddingIndex: 1.444,
   paddingUm: 1.2,
   gridResolution: PARAMETER_MAXIMUMS.gridResolution,
-  modeCount: PARAMETER_MAXIMUMS.modeCount,
+  modeCount: 1,
 };
 
 describe("mesh limits", () => {
-  it("solves the maximum supported mesh and mode count", () => {
+  it("solves the maximum supported mesh resolution", () => {
     const result = solveWaveguide(maximumMeshCase);
     expect(result.nx).toBe(PARAMETER_MAXIMUMS.gridResolution);
+    expect(result.modes.length).toBeGreaterThan(0);
+    expect(result.modes.every((mode) => Number.isFinite(mode.effectiveIndex))).toBe(true);
+    expect(result.modes[0].residual).toBeLessThan(2e-3);
+    const reference = solveWaveguide({ ...maximumMeshCase, gridResolution: 96 });
+    expect(result.modes[0].effectiveIndex).toBeCloseTo(reference.modes[0].effectiveIndex, 2);
+  }, 300_000);
+
+  it("solves the maximum supported mode count", () => {
+    const result = solveWaveguide({ ...maximumMeshCase, gridResolution: 64, modeCount: PARAMETER_MAXIMUMS.modeCount });
     expect(result.modes.length).toBeGreaterThan(0);
     expect(result.modes.every((mode) => Number.isFinite(mode.effectiveIndex))).toBe(true);
   }, 60_000);

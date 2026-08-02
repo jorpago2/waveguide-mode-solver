@@ -37,7 +37,7 @@ export const PARAMETER_MAXIMUMS = {
   refractiveIndex: 50,
   extinction: 10,
   dispersionPerUm: 1_000,
-  gridResolution: 96,
+  gridResolution: 256,
   modeCount: 8,
   meshBias: 1.5,
   sweepPoints: 101,

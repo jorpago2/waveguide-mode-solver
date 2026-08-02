@@ -9,7 +9,7 @@ export function runSolverWorker<T>(request: SolverWorkerRequest): Promise<T> {
       reject(caught instanceof Error ? caught : new Error("This browser could not start the solver worker."));
       return;
     }
-    const timeoutMs = request.kind === "solve" ? 60_000 : 300_000;
+    const timeoutMs = request.kind === "solve" && request.config.gridResolution <= 96 ? 60_000 : 300_000;
     const timeout = window.setTimeout(() => {
       worker.terminate();
       reject(new Error(`The ${request.kind === "solve" ? "mode solve" : "analysis"} timed out. Reduce the mesh resolution, requested modes or sweep samples and try again.`));
