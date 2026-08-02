@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { ModePlot } from "./ModePlot";
 import { SweepPlot } from "./SweepPlot";
+import { parseNumericInput } from "./numericInput";
 import {
   solveWaveguide,
   sweepWaveguide,
@@ -74,8 +75,8 @@ export function App() {
     ) >= 8 },
   ] : [], [config, mode, result]);
 
-  function updateNumber(key: keyof WaveguideConfig, value: string) {
-    setDraft((current) => ({ ...current, [key]: Number(value) }));
+  function updateNumber(key: keyof WaveguideConfig, value: number) {
+    setDraft((current) => ({ ...current, [key]: value }));
   }
 
   function applyPreset(name: string) {
@@ -226,9 +227,9 @@ export function App() {
       <section className="sweep-section">
         <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runSweep}>
-          <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={20} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: Number(value) }))} />
-          <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={20} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: Number(value) }))} />
-          <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={31} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: Number(value) }))} />
+          <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={20} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
+          <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={20} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
+          <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={31} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
           <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{sweepMessage}</p>
@@ -244,8 +245,8 @@ export function App() {
   </div>;
 }
 
-function NumberField({ label, unit, value, min, max, step, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; onChange: (value: string) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={value} min={min} max={max} step={step} onChange={(event) => onChange(event.target.value)} /><small>{unit}</small></div></label>;
+function NumberField({ label, unit, value, min, max, step, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} onChange={(event) => onChange(parseNumericInput(event.target.value))} /><small>{unit}</small></div></label>;
 }
 
 function Metric({ label, value }: { label: ReactNode; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }

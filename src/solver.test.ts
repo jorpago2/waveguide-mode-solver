@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseNumericInput } from "./numericInput";
 import { solveWaveguide, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
@@ -13,6 +14,11 @@ const benchmark: WaveguideConfig = {
 };
 
 describe("full-vector finite-difference mode solver", () => {
+  it("allows a numeric input to be cleared before entering a replacement", () => {
+    expect(parseNumericInput("")).toBeNaN();
+    expect(parseNumericInput("0.25")).toBe(0.25);
+  });
+
   it("matches the reference Yee-grid implementation", () => {
     const result = solveWaveguide(benchmark);
     expect(result.modes.length).toBeGreaterThan(0);
