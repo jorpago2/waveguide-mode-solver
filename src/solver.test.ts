@@ -195,7 +195,7 @@ describe("full-vector finite-difference mode solver", () => {
     const bent = bentResult.modes[0];
     expect(bent).toBeDefined();
     expect(bentResult.formulation).toBe("transverse-e");
-    expect(bentResult.backend).toBe("Sparse LU");
+    expect(bentResult.backend).toBe("Rust WASM LU");
     expect(bent.effectiveIndex).toBeCloseTo(straight.effectiveIndex, 2);
     expect(bent.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(bent.residual).toBeLessThan(5e-3);
@@ -243,6 +243,17 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.lossDbPerCm).toBeGreaterThan(0);
     expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(mode.residual).toBeLessThan(1e-2);
+  }, 20_000);
+
+  it("solves three bend modes on the 64-cell production mesh", () => {
+    const result = solveWaveguide({
+      ...benchmark, gridResolution: 64, modeCount: 3,
+      bendRadiusUm: 10, bendDirection: "positive-x",
+      boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
+    });
+    expect(result.backend).toBe("Rust WASM LU");
+    expect(result.modes).toHaveLength(3);
+    expect(Math.max(...result.modes.map((mode) => mode.residual))).toBeLessThan(1e-2);
   }, 20_000);
 
   it("tracks a mode through a geometry sweep", () => {

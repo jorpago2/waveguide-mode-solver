@@ -147,7 +147,7 @@ export interface SolverResult {
   warnings: string[];
   arnoldiDimension: number;
   formulation: "transverse-h" | "transverse-e" | "first-order";
-  backend: "TypeScript" | "WebAssembly" | "Sparse LU";
+  backend: "TypeScript" | "WebAssembly" | "Rust WASM LU";
 }
 
 export interface SweepSettings {
@@ -261,7 +261,7 @@ interface OperatorContext {
   eigenvaluePower: 1 | 2;
   formulation: "transverse-h" | "transverse-e" | "first-order";
   linearSolver: "bicgstab" | "gmres" | "direct";
-  backend: "TypeScript" | "WebAssembly" | "Sparse LU";
+  backend: "TypeScript" | "WebAssembly" | "Rust WASM LU";
   solveShifted?: (shift: number, rightHandSide: Float64Array) => Float64Array;
   reconstructTransverse?: (
     electricReal: Float64Array,
@@ -1389,7 +1389,7 @@ function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContex
     eigenvaluePower: 2,
     formulation: "transverse-e",
     linearSolver: "direct",
-    backend: "Sparse LU",
+    backend: "Rust WASM LU",
     solveShifted: tidyOperator.solveShifted,
     reconstructTransverse: tidyOperator.reconstructMagnetic,
   };

@@ -2,13 +2,11 @@ import * as mathjs from "mathjs";
 import {
   add as matrixAdd,
   complex,
-  lusolve,
   multiply as matrixMultiply,
-  slu,
   type Complex,
   type Matrix,
-  type SLUDecomposition,
 } from "mathjs";
+import { factorizeSparseLu, solveSparseLu } from "./wasm/bendSolver";
 
 type Numeric = number | Complex;
 
@@ -332,10 +330,6 @@ function divideComplexVector(
   return { real, imaginary };
 }
 
-function outputArray(solution: Matrix<Numeric>): Numeric[] {
-  return solution.toArray().map((row) => (row as Numeric[])[0]);
-}
-
 export function createTidyBendOperator(
   grid: TidyBendGrid,
   wavelengthUm: number,
@@ -380,7 +374,9 @@ export function createTidyBendOperator(
   const operatorSparse = toSparseJson(operatorMatrix);
   const qSparse = toSparseJson(q);
   const isComplex = operatorSparse.values.some((value) => Math.abs(imaginaryPart(value)) > 1e-15);
-  let factorization: SLUDecomposition | undefined;
+  const operatorReal = Float64Array.from(operatorSparse.values, realPart);
+  const operatorImaginary = Float64Array.from(operatorSparse.values, imaginaryPart);
+  const zeroRightHandSide = new Float64Array(size);
   let factorizationShift = Number.NaN;
 
   const applyParts = (real: Float64Array, imaginary: Float64Array) => multiplySparse(operatorSparse, real, imaginary);
@@ -396,21 +392,17 @@ export function createTidyBendOperator(
   };
 
   const solveShifted = (shift: number, rightHandSide: Float64Array): Float64Array => {
-    if (!factorization || shift !== factorizationShift) {
-      const shiftedDiagonal = diagonal(Array.from({ length: size }, () => -shift));
-      factorization = slu(addMatrices(operatorMatrix, shiftedDiagonal), 1, 1);
+    if (shift !== factorizationShift) {
+      factorizeSparseLu(size, operatorSparse.ptr, operatorSparse.index, operatorReal, operatorImaginary, shift);
       factorizationShift = shift;
     }
-    const rhs = Array.from({ length: size }, (_, index) => numeric(
-      rightHandSide[index],
-      isComplex ? rightHandSide[size + index] : 0,
-    ));
-    const solved = outputArray(lusolve(factorization, rhs) as Matrix<Numeric>);
+    const solved = solveSparseLu(
+      rightHandSide.subarray(0, size),
+      isComplex ? rightHandSide.subarray(size) : zeroRightHandSide,
+    );
     const output = new Float64Array(isComplex ? 2 * size : size);
-    for (let index = 0; index < size; index += 1) {
-      output[index] = realPart(solved[index]);
-      if (isComplex) output[size + index] = imaginaryPart(solved[index]);
-    }
+    output.set(solved.real);
+    if (isComplex) output.set(solved.imaginary, size);
     const shiftedProduct = apply(output);
     for (let index = 0; index < shiftedProduct.length; index += 1) shiftedProduct[index] -= shift * output[index];
     let residualSquared = 0;

@@ -1,0 +1,17 @@
+[package]
+name = "bend-solver"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+faer = { version = "0.24.4", default-features = false, features = ["std", "sparse-linalg"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+panic = "abort"
+strip = true

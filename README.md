@@ -26,7 +26,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Solved cross-section inspector with principal-index maps, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
-- Shift-invert Arnoldi with reusable sparse LU for transformed bend operators, adaptively preconditioned BiCGSTAB for straight guides, SIMD WebAssembly kernels for diagonal and tensor operators, and residual rejection.
+- Shift-invert Arnoldi with reusable Rust/WebAssembly sparse LU for transformed bend operators, adaptively preconditioned BiCGSTAB for straight guides, SIMD WebAssembly kernels for diagonal and tensor operators, and residual rejection.
 - Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
 - Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.
@@ -36,6 +36,8 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Versioned JSON project export/import plus numeric CSV exports.
 
 ## Run locally
+
+Requires Node.js, pnpm and the Rust toolchain with the `wasm32-unknown-unknown` target. The pinned toolchain is declared in `rust-toolchain.toml`.
 
 ```bash
 pnpm install

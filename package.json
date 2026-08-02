@@ -5,11 +5,13 @@
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "build:wasm": "asc assembly/tensor.ts --target release",
+    "build:assembly-wasm": "asc assembly/tensor.ts --target release",
+    "build:rust-wasm": "node scripts/build-rust-wasm.mjs",
+    "build:wasm": "pnpm build:assembly-wasm && pnpm build:rust-wasm",
     "dev": "vite",
     "build": "pnpm build:wasm && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "pnpm build:wasm && vitest run"
   },
   "dependencies": {
     "mathjs": "^15.2.0",
