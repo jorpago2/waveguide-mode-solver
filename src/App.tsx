@@ -114,6 +114,7 @@ const fieldLabels: Record<FieldComponent, ReactNode> = {
   Hx: <>H<sub>x</sub></>, Hy: <>H<sub>y</sub></>, Hz: <>H<sub>z</sub></>, intensity: "|E|²", poynting: <>S<sub>z</sub></>,
 };
 type AppView = "solver" | "sweeps" | "analysis" | "validation";
+type ConfigurationTab = "geometry" | "materials" | "solver";
 const appViews: Array<{ id: AppView; label: string }> = [
   { id: "solver", label: "Mode Solver" },
   { id: "sweeps", label: "Sweeps" },
@@ -129,6 +130,7 @@ function viewFromHash(): AppView {
 export function App() {
   const [activeView, setActiveView] = useState<AppView>(() => typeof window === "undefined" ? "solver" : viewFromHash());
   const [solverPane, setSolverPane] = useState<"configure" | "results">("configure");
+  const [configurationTab, setConfigurationTab] = useState<ConfigurationTab>("geometry");
   const [draft, setDraft] = useState<WaveguideConfig>(initialConfig);
   const [config, setConfig] = useState<WaveguideConfig>(initialConfig);
   const [result, setResult] = useState<SolverResult>();
@@ -369,9 +371,9 @@ export function App() {
     <main>
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
       <section className="intro" aria-labelledby="page-title">
-        <p className="eyebrow">Integrated photonics · educational solver</p>
-        <h1 id="page-title">Solve and inspect complete vector modes.</h1>
-        <p>Configure straight or curved waveguides, solve their guided modes and inspect the fields, structure and mesh in one focused workspace.</p>
+        <p className="eyebrow">Full-vector eigenmode workspace</p>
+        <h1 id="page-title">Configure. Solve. Inspect.</h1>
+        <p>Build the cross-section, assign materials, define the numerical model and inspect every field component in a focused workflow.</p>
         <div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project JSON</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div>
       </section>
 
@@ -381,53 +383,60 @@ export function App() {
       </div>
       <div className="workspace" data-mobile-pane={solverPane}>
         <aside className="control-panel" id="configuration-panel">
-          <div className="panel-heading"><div><span className="step">01</span><h2>Waveguide</h2></div><span className="method-chip">FDM</span></div>
+          <div className="panel-heading"><div><span className="step">01</span><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
           <form onSubmit={solve} noValidate>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
-            <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => ({ ...current, geometry: event.target.value as GeometryType }))}>
-              <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option>
-            </select></label>
-            <div className="material-selectors">
-              <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />
-              <MaterialSelect label="Cladding material" value={draft.claddingMaterial ?? "custom"} onChange={(value) => updateMaterial("claddingMaterial", "claddingIndex", value)} />
-              {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <MaterialSelect label="Base substrate" value={draft.substrateMaterial ?? "custom"} onChange={(value) => updateMaterial("substrateMaterial", "substrateIndex", value)} />}
+            <div className="configuration-tabs" role="tablist" aria-label="Configuration sections">
+              {(["geometry", "materials", "solver"] as ConfigurationTab[]).map((tab) => <button type="button" role="tab" aria-selected={configurationTab === tab} aria-controls={`configuration-${tab}`} className={configurationTab === tab ? "active" : ""} key={tab} onClick={() => setConfigurationTab(tab)}>{tab === "geometry" ? "Geometry" : tab === "materials" ? "Materials" : "Solver"}</button>)}
             </div>
-            <div className="form-grid">
-              <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
-              <NumberField label={(draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
-              <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
-              <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
-              <label className="select-field">Propagation path<select value={(draft.bendRadiusUm ?? 0) > 0 ? "bend" : "straight"} onChange={(event) => setDraft((current) => event.target.value === "bend" ? { ...current, bendRadiusUm: current.bendRadiusUm && current.bendRadiusUm > 0 ? current.bendRadiusUm : 10, boundary: "pml" } : { ...current, bendRadiusUm: 0 })}><option value="straight">Straight</option><option value="bend">Constant-radius bend</option></select></label>
-              {(draft.bendRadiusUm ?? 0) > 0 && <>
-                <NumberField label="Bend radius" unit="µm" value={draft.bendRadiusUm ?? 10} min={0.1} max={PARAMETER_MAXIMUMS.bendRadiusUm} step={0.5} onChange={(v) => updateNumber("bendRadiusUm", v)} />
-                <label className="select-field">Bend direction<select value={draft.bendDirection ?? "positive-x"} onChange={(event) => setDraft((current) => ({ ...current, bendDirection: event.target.value as "positive-x" | "negative-x" }))}><option value="positive-x">Outer side at +x</option><option value="negative-x">Outer side at −x</option></select></label>
-              </>}
-              {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
-              {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
-              {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
-              {(draft.geometry ?? "channel") !== "slot" && <NumberField label="Sidewall angle" unit="°" value={draft.sidewallAngleDeg ?? 90} min={20} max={90} step={1} onChange={(v) => updateNumber("sidewallAngleDeg", v)} />}
-              {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <NumberField label="Base substrate n" unit="n" value={draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndex", v)} />}
-              <NumberField label="Core nₓ" unit="n" value={displayMaterialAxis(draft, "core", "x")} min={1.01} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndex", v)} />
-              <NumberField label="Cladding nₓ" unit="n" value={displayMaterialAxis(draft, "cladding", "x")} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndex", v)} />
-              <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={PARAMETER_MAXIMUMS.gridResolution} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
-              <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={PARAMETER_MAXIMUMS.modeCount} step={1} onChange={(v) => updateNumber("modeCount", v)} />
-            </div>
-            <details className="advanced-controls">
-              <summary>Vertical stack ({draft.stackLayers?.length ?? 0} layers)</summary>
-              <p>Finite layers are listed from the core downward; the base substrate continues below the final layer.</p>
-              <div className="stack-editor">
-                {(draft.stackLayers ?? []).map((layer, index) => <div className="stack-layer" key={`${index}-${layer.name}`}>
-                  <label>Layer name<input value={layer.name} onChange={(event) => updateStackLayer(index, { name: event.target.value })} /></label>
-                  <MaterialSelect label="Material" value={layer.material} allowTabulated={false} onChange={(material) => updateStackLayer(index, { material, index: displayMaterialIndex(material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis) })} />
-                  <NumberField label="Thickness" unit="µm" value={layer.thicknessUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.05} onChange={(value) => updateStackLayer(index, { thicknessUm: value })} />
-                  <NumberField label="Index" unit="n" value={displayMaterialIndex(layer.material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={layer.material !== "custom"} onChange={(value) => updateStackLayer(index, { index: value })} />
-                  <button type="button" className="remove-layer" onClick={() => removeStackLayer(index)} aria-label={`Remove ${layer.name}`}>Remove</button>
-                </div>)}
+            <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
+              <div className="configuration-heading"><h3>Cross-section</h3><p>Define the physical structure and propagation path.</p></div>
+              <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => ({ ...current, geometry: event.target.value as GeometryType }))}>
+                <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option>
+              </select></label>
+              <div className="form-grid">
+                <NumberField label={(draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
+                <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
+                {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
+                {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
+                {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
+                {(draft.geometry ?? "channel") !== "slot" && <NumberField label="Sidewall angle" unit="°" value={draft.sidewallAngleDeg ?? 90} min={20} max={90} step={1} onChange={(v) => updateNumber("sidewallAngleDeg", v)} />}
+                <label className="select-field">Propagation path<select value={(draft.bendRadiusUm ?? 0) > 0 ? "bend" : "straight"} onChange={(event) => setDraft((current) => event.target.value === "bend" ? { ...current, bendRadiusUm: current.bendRadiusUm && current.bendRadiusUm > 0 ? current.bendRadiusUm : 10, boundary: "pml" } : { ...current, bendRadiusUm: 0 })}><option value="straight">Straight</option><option value="bend">Constant-radius bend</option></select></label>
+                {(draft.bendRadiusUm ?? 0) > 0 && <>
+                  <NumberField label="Bend radius" unit="µm" value={draft.bendRadiusUm ?? 10} min={0.1} max={PARAMETER_MAXIMUMS.bendRadiusUm} step={0.5} onChange={(v) => updateNumber("bendRadiusUm", v)} />
+                  <label className="select-field">Bend direction<select value={draft.bendDirection ?? "positive-x"} onChange={(event) => setDraft((current) => ({ ...current, bendDirection: event.target.value as "positive-x" | "negative-x" }))}><option value="positive-x">Outer side at +x</option><option value="negative-x">Outer side at −x</option></select></label>
+                </>}
               </div>
-              <button type="button" className="export-button add-layer" onClick={addStackLayer} disabled={(draft.stackLayers?.length ?? 0) >= 6}>Add layer</button>
-            </details>
-            <details className="advanced-controls">
-              <summary>Materials & mesh</summary>
+              <details className="advanced-controls">
+                <summary>Vertical stack ({draft.stackLayers?.length ?? 0} layers)</summary>
+                <p>Finite layers are listed from the core downward; the base substrate continues below the final layer.</p>
+                <div className="stack-editor">
+                  {(draft.stackLayers ?? []).map((layer, index) => <div className="stack-layer" key={`${index}-${layer.name}`}>
+                    <label>Layer name<input value={layer.name} onChange={(event) => updateStackLayer(index, { name: event.target.value })} /></label>
+                    <MaterialSelect label="Material" value={layer.material} allowTabulated={false} onChange={(material) => updateStackLayer(index, { material, index: displayMaterialIndex(material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis) })} />
+                    <NumberField label="Thickness" unit="µm" value={layer.thicknessUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.05} onChange={(value) => updateStackLayer(index, { thicknessUm: value })} />
+                    <NumberField label="Index" unit="n" value={displayMaterialIndex(layer.material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={layer.material !== "custom"} onChange={(value) => updateStackLayer(index, { index: value })} />
+                    <button type="button" className="remove-layer" onClick={() => removeStackLayer(index)} aria-label={`Remove ${layer.name}`}>Remove</button>
+                  </div>)}
+                </div>
+                <button type="button" className="export-button add-layer" onClick={addStackLayer} disabled={(draft.stackLayers?.length ?? 0) >= 6}>Add layer</button>
+              </details>
+            </section>
+
+            <section id="configuration-materials" className="configuration-section" role="tabpanel" hidden={configurationTab !== "materials"}>
+              <div className="configuration-heading"><h3>Optical materials</h3><p>Select models and edit custom tensor properties.</p></div>
+              <div className="material-selectors">
+                <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />
+                <MaterialSelect label="Cladding material" value={draft.claddingMaterial ?? "custom"} onChange={(value) => updateMaterial("claddingMaterial", "claddingIndex", value)} />
+                {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <MaterialSelect label="Base substrate" value={draft.substrateMaterial ?? "custom"} onChange={(value) => updateMaterial("substrateMaterial", "substrateIndex", value)} />}
+              </div>
+              <div className="form-grid">
+                <NumberField label="Core nₓ" unit="n" value={displayMaterialAxis(draft, "core", "x")} min={1.01} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndex", v)} />
+                <NumberField label="Cladding nₓ" unit="n" value={displayMaterialAxis(draft, "cladding", "x")} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndex", v)} />
+                {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <NumberField label="Base substrate n" unit="n" value={draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndex", v)} />}
+              </div>
+              <details className="advanced-controls">
+                <summary>Anisotropy, loss & dispersion</summary>
               <div className="material-table-imports">
                 {(draft.coreMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Core" table={draft.coreMaterialTable} onChange={(event) => void importMaterialCsv("core", event)} />}
                 {(draft.claddingMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Cladding" table={draft.claddingMaterialTable} onChange={(event) => void importMaterialCsv("cladding", event)} />}
@@ -454,16 +463,28 @@ export function App() {
                   <NumberField label="Substrate dn/dλ" unit="µm⁻¹" value={draft.substrateDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("substrateDispersionPerUm", v)} />
                 </>}
                 <NumberField label="Reference λ" unit="µm" value={draft.materialReferenceWavelengthUm ?? draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("materialReferenceWavelengthUm", v)} />
+              </div>
+              <MaterialSources config={draft} />
+              <p>Uniaxial built-in materials use ε = εₒI + (εₑ − εₒ)aaᵀ. Polar angle θ is measured from +y and azimuth φ from +z toward +x, allowing an arbitrary 3D optic axis. Imported CSV data use wavelength_um,n,k with linear interpolation and no extrapolation. Off-diagonal tensors are limited to straight, lossless guides with hard boundaries.</p>
+              </details>
+            </section>
+
+            <section id="configuration-solver" className="configuration-section" role="tabpanel" hidden={configurationTab !== "solver"}>
+              <div className="configuration-heading"><h3>Numerical setup</h3><p>Control the mode search, mesh and outer boundary.</p></div>
+              <div className="form-grid">
+                <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
+                <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={PARAMETER_MAXIMUMS.modeCount} step={1} onChange={(v) => updateNumber("modeCount", v)} />
+                <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={PARAMETER_MAXIMUMS.gridResolution} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
                 <NumberField label="Mesh bias" unit={`0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} onChange={(v) => updateNumber("meshBias", v)} />
+                <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
                 <label className="select-field">Outer boundary<select value={draft.boundary ?? "hard"} onChange={(event) => setDraft((current) => ({ ...current, boundary: event.target.value as "hard" | "pml" }))}><option value="hard">Hard wall</option><option value="pml">PML (open)</option></select></label>
                 {(draft.boundary ?? "hard") === "pml" && <>
                   <NumberField label="PML thickness" unit="µm" value={draft.pmlThicknessUm ?? draft.paddingUm * 0.6} min={0.01} max={Math.max(0.02, draft.paddingUm - 0.01)} step={0.05} onChange={(v) => updateNumber("pmlThicknessUm", v)} />
                   <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
                 </>}
               </div>
-              <MaterialSources config={draft} />
-              <p>Uniaxial built-in materials use ε = εₒI + (εₑ − εₒ)aaᵀ. Polar angle θ is measured from +y and azimuth φ from +z toward +x, allowing an arbitrary 3D optic axis. Imported CSV data use wavelength_um,n,k with linear interpolation and no extrapolation. Off-diagonal tensors are limited to straight, lossless guides with hard boundaries.</p>
-            </details>
+              <p className="configuration-note">Use the Analysis view for mesh and boundary convergence before interpreting quantitative results.</p>
+            </section>
             <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
             <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}
           </form>
