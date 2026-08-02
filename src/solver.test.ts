@@ -42,6 +42,20 @@ describe("full-vector finite-difference mode solver", () => {
     expect(validateWaveguide({ ...benchmark, coreIndex: 1.4, claddingIndex: 1.5 })).not.toHaveLength(0);
   });
 
+  it("accepts the expanded parameter range", () => {
+    expect(validateWaveguide({
+      ...benchmark,
+      wavelengthUm: 100,
+      widthUm: 100,
+      heightUm: 50,
+      paddingUm: 100,
+      coreIndex: 10,
+      claddingIndex: 2,
+      gridResolution: 80,
+      modeCount: 6,
+    })).toHaveLength(0);
+  });
+
   it("supports graded meshes, diagonal anisotropy, loss and each geometry", () => {
     const geometries: GeometryType[] = ["channel", "rib", "slot", "multilayer"];
     for (const geometry of geometries) {

@@ -6,6 +6,7 @@ import {
   solveWaveguide,
   sweepWaveguide,
   validateWaveguide,
+  PARAMETER_MAXIMUMS,
   type FieldComponent,
   type GeometryType,
   type SolverResult,
@@ -168,37 +169,37 @@ export function App() {
               <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="multilayer">Multilayer ridge</option>
             </select></label>
             <div className="form-grid">
-              <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={20} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
-              <NumberField label="Core width" unit="µm" value={draft.widthUm} min={0.05} max={20} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
-              <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={20} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
-              <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={20} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
-              {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={draft.heightUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
-              {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={draft.widthUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
-              {(draft.geometry ?? "channel") === "multilayer" && <NumberField label="Substrate n" unit="n" value={draft.substrateIndex ?? draft.claddingIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("substrateIndex", v)} />}
-              <NumberField label="Core nₓ" unit="n" value={draft.coreIndex} min={1.01} max={6} step={0.001} onChange={(v) => updateNumber("coreIndex", v)} />
-              <NumberField label="Cladding nₓ" unit="n" value={draft.claddingIndex} min={1} max={5} step={0.001} onChange={(v) => updateNumber("claddingIndex", v)} />
-              <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={64} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
-              <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={4} step={1} onChange={(v) => updateNumber("modeCount", v)} />
+              <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
+              <NumberField label="Core width" unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
+              <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
+              <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
+              {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
+              {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
+              {(draft.geometry ?? "channel") === "multilayer" && <NumberField label="Substrate n" unit="n" value={draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndex", v)} />}
+              <NumberField label="Core nₓ" unit="n" value={draft.coreIndex} min={1.01} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("coreIndex", v)} />
+              <NumberField label="Cladding nₓ" unit="n" value={draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("claddingIndex", v)} />
+              <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={PARAMETER_MAXIMUMS.gridResolution} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
+              <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={PARAMETER_MAXIMUMS.modeCount} step={1} onChange={(v) => updateNumber("modeCount", v)} />
             </div>
             <details className="advanced-controls">
               <summary>Materials & mesh</summary>
               <div className="form-grid">
-                <NumberField label="Core nᵧ" unit="n" value={draft.coreIndexY ?? draft.coreIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("coreIndexY", v)} />
-                <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={draft.coreIndexZ ?? draft.coreIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("coreIndexZ", v)} />
-                <NumberField label="Cladding nᵧ" unit="n" value={draft.claddingIndexY ?? draft.claddingIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("claddingIndexY", v)} />
-                <NumberField label={<>Cladding n<sub>z</sub></>} unit="n" value={draft.claddingIndexZ ?? draft.claddingIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("claddingIndexZ", v)} />
-                <NumberField label="Core κ" unit="Im(n)" value={draft.coreExtinction ?? 0} min={0} max={1} step={0.000001} onChange={(v) => updateNumber("coreExtinction", v)} />
-                <NumberField label="Cladding κ" unit="Im(n)" value={draft.claddingExtinction ?? 0} min={0} max={1} step={0.000001} onChange={(v) => updateNumber("claddingExtinction", v)} />
-                <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-10} max={10} step={0.001} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />
-                <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-10} max={10} step={0.001} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
+                <NumberField label="Core nᵧ" unit="n" value={draft.coreIndexY ?? draft.coreIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("coreIndexY", v)} />
+                <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={draft.coreIndexZ ?? draft.coreIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("coreIndexZ", v)} />
+                <NumberField label="Cladding nᵧ" unit="n" value={draft.claddingIndexY ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("claddingIndexY", v)} />
+                <NumberField label={<>Cladding n<sub>z</sub></>} unit="n" value={draft.claddingIndexZ ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("claddingIndexZ", v)} />
+                <NumberField label="Core κ" unit="Im(n)" value={draft.coreExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("coreExtinction", v)} />
+                <NumberField label="Cladding κ" unit="Im(n)" value={draft.claddingExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("claddingExtinction", v)} />
+                <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />
+                <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
                 {(draft.geometry ?? "channel") === "multilayer" && <>
-                  <NumberField label="Substrate nᵧ" unit="n" value={draft.substrateIndexY ?? draft.substrateIndex ?? draft.claddingIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("substrateIndexY", v)} />
-                  <NumberField label={<>Substrate n<sub>z</sub></>} unit="n" value={draft.substrateIndexZ ?? draft.substrateIndex ?? draft.claddingIndex} min={1} max={6} step={0.001} onChange={(v) => updateNumber("substrateIndexZ", v)} />
-                  <NumberField label="Substrate κ" unit="Im(n)" value={draft.substrateExtinction ?? 0} min={0} max={1} step={0.000001} onChange={(v) => updateNumber("substrateExtinction", v)} />
-                  <NumberField label="Substrate dn/dλ" unit="µm⁻¹" value={draft.substrateDispersionPerUm ?? 0} min={-10} max={10} step={0.001} onChange={(v) => updateNumber("substrateDispersionPerUm", v)} />
+                  <NumberField label="Substrate nᵧ" unit="n" value={draft.substrateIndexY ?? draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndexY", v)} />
+                  <NumberField label={<>Substrate n<sub>z</sub></>} unit="n" value={draft.substrateIndexZ ?? draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndexZ", v)} />
+                  <NumberField label="Substrate κ" unit="Im(n)" value={draft.substrateExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("substrateExtinction", v)} />
+                  <NumberField label="Substrate dn/dλ" unit="µm⁻¹" value={draft.substrateDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("substrateDispersionPerUm", v)} />
                 </>}
-                <NumberField label="Reference λ" unit="µm" value={draft.materialReferenceWavelengthUm ?? draft.wavelengthUm} min={0.2} max={20} step={0.01} onChange={(v) => updateNumber("materialReferenceWavelengthUm", v)} />
-                <NumberField label="Mesh bias" unit="0–3" value={draft.meshBias ?? 0} min={0} max={3} step={0.1} onChange={(v) => updateNumber("meshBias", v)} />
+                <NumberField label="Reference λ" unit="µm" value={draft.materialReferenceWavelengthUm ?? draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("materialReferenceWavelengthUm", v)} />
+                <NumberField label="Mesh bias" unit={`0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} onChange={(v) => updateNumber("meshBias", v)} />
               </div>
               <p>Real diagonal tensor ε = diag(nₓ², nᵧ², n_z²). κ is included as a first-order modal-loss perturbation; dn/dλ is linear around the reference wavelength.</p>
             </details>
@@ -227,9 +228,9 @@ export function App() {
       <section className="sweep-section">
         <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runSweep}>
-          <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={20} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
-          <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={20} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
-          <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={31} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
+          <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
+          <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
+          <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
           <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{sweepMessage}</p>

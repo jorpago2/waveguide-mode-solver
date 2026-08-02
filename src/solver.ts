@@ -3,6 +3,18 @@ import { EigenvalueDecomposition, Matrix } from "ml-matrix";
 export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer";
 
+export const PARAMETER_MAXIMUMS = {
+  wavelengthUm: 1_000,
+  dimensionUm: 1_000,
+  refractiveIndex: 50,
+  extinction: 10,
+  dispersionPerUm: 1_000,
+  gridResolution: 96,
+  modeCount: 8,
+  meshBias: 5,
+  sweepPoints: 101,
+} as const;
+
 export interface WaveguideConfig {
   wavelengthUm: number;
   widthUm: number;
@@ -120,29 +132,29 @@ interface RitzPair {
 
 export function validateWaveguide(config: WaveguideConfig): string[] {
   const errors: string[] = [];
-  if (!Number.isFinite(config.wavelengthUm) || config.wavelengthUm < 0.2 || config.wavelengthUm > 20) {
-    errors.push("Wavelength must be between 0.2 and 20 µm.");
+  if (!Number.isFinite(config.wavelengthUm) || config.wavelengthUm < 0.2 || config.wavelengthUm > PARAMETER_MAXIMUMS.wavelengthUm) {
+    errors.push(`Wavelength must be between 0.2 and ${PARAMETER_MAXIMUMS.wavelengthUm} µm.`);
   }
-  if (!Number.isFinite(config.widthUm) || config.widthUm < 0.05 || config.widthUm > 20) {
-    errors.push("Core width must be between 0.05 and 20 µm.");
+  if (!Number.isFinite(config.widthUm) || config.widthUm < 0.05 || config.widthUm > PARAMETER_MAXIMUMS.dimensionUm) {
+    errors.push(`Core width must be between 0.05 and ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
   }
-  if (!Number.isFinite(config.heightUm) || config.heightUm < 0.05 || config.heightUm > 20) {
-    errors.push("Core height must be between 0.05 and 20 µm.");
+  if (!Number.isFinite(config.heightUm) || config.heightUm < 0.05 || config.heightUm > PARAMETER_MAXIMUMS.dimensionUm) {
+    errors.push(`Core height must be between 0.05 and ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
   }
-  if (!Number.isFinite(config.paddingUm) || config.paddingUm < 0.2 || config.paddingUm > 20) {
-    errors.push("Cladding padding must be between 0.2 and 20 µm.");
+  if (!Number.isFinite(config.paddingUm) || config.paddingUm < 0.2 || config.paddingUm > PARAMETER_MAXIMUMS.dimensionUm) {
+    errors.push(`Cladding padding must be between 0.2 and ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
   }
-  if (!Number.isFinite(config.claddingIndex) || config.claddingIndex < 1 || config.claddingIndex > 5) {
-    errors.push("Cladding index must be between 1 and 5.");
+  if (!Number.isFinite(config.claddingIndex) || config.claddingIndex < 1 || config.claddingIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
+    errors.push(`Cladding index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
-  if (!Number.isFinite(config.coreIndex) || config.coreIndex <= config.claddingIndex || config.coreIndex > 6) {
-    errors.push("Core index must be greater than the cladding index and no larger than 6.");
+  if (!Number.isFinite(config.coreIndex) || config.coreIndex <= config.claddingIndex || config.coreIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
+    errors.push(`Core index must be greater than the cladding index and no larger than ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
-  if (!Number.isInteger(config.gridResolution) || config.gridResolution < 24 || config.gridResolution > 64) {
-    errors.push("Grid resolution must be an integer between 24 and 64.");
+  if (!Number.isInteger(config.gridResolution) || config.gridResolution < 24 || config.gridResolution > PARAMETER_MAXIMUMS.gridResolution) {
+    errors.push(`Grid resolution must be an integer between 24 and ${PARAMETER_MAXIMUMS.gridResolution}.`);
   }
-  if (!Number.isInteger(config.modeCount) || config.modeCount < 1 || config.modeCount > 4) {
-    errors.push("Requested modes must be an integer between 1 and 4.");
+  if (!Number.isInteger(config.modeCount) || config.modeCount < 1 || config.modeCount > PARAMETER_MAXIMUMS.modeCount) {
+    errors.push(`Requested modes must be an integer between 1 and ${PARAMETER_MAXIMUMS.modeCount}.`);
   }
   const finiteOptional = [
     config.coreIndexY, config.coreIndexZ, config.claddingIndexY, config.claddingIndexZ,
@@ -151,23 +163,32 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.substrateDispersionPerUm, config.meshBias,
   ].every((value) => value === undefined || Number.isFinite(value));
   if (!finiteOptional) errors.push("Optional material and mesh values must be finite.");
-  if ((config.coreExtinction ?? 0) < 0 || (config.claddingExtinction ?? 0) < 0 || (config.substrateExtinction ?? 0) < 0) {
-    errors.push("Extinction coefficients cannot be negative.");
+  if ([config.coreExtinction ?? 0, config.claddingExtinction ?? 0, config.substrateExtinction ?? 0]
+    .some((value) => value < 0 || value > PARAMETER_MAXIMUMS.extinction)) {
+    errors.push(`Extinction coefficients must be between 0 and ${PARAMETER_MAXIMUMS.extinction}.`);
   }
-  if ((config.meshBias ?? 0) < 0 || (config.meshBias ?? 0) > 3) errors.push("Mesh bias must be between 0 and 3.");
+  if ([config.coreDispersionPerUm ?? 0, config.claddingDispersionPerUm ?? 0, config.substrateDispersionPerUm ?? 0]
+    .some((value) => Math.abs(value) > PARAMETER_MAXIMUMS.dispersionPerUm)) {
+    errors.push(`Material dispersion slopes must stay within ±${PARAMETER_MAXIMUMS.dispersionPerUm} µm⁻¹.`);
+  }
+  if ((config.materialReferenceWavelengthUm ?? config.wavelengthUm) < 0.2
+    || (config.materialReferenceWavelengthUm ?? config.wavelengthUm) > PARAMETER_MAXIMUMS.wavelengthUm) {
+    errors.push(`Material reference wavelength must be between 0.2 and ${PARAMETER_MAXIMUMS.wavelengthUm} µm.`);
+  }
+  if ((config.meshBias ?? 0) < 0 || (config.meshBias ?? 0) > PARAMETER_MAXIMUMS.meshBias) errors.push(`Mesh bias must be between 0 and ${PARAMETER_MAXIMUMS.meshBias}.`);
   if ((config.geometry ?? "channel") === "rib" && ((config.slabHeightUm ?? 0) <= 0 || (config.slabHeightUm ?? 0) >= config.heightUm)) {
     errors.push("Rib slab height must be positive and smaller than the total core height.");
   }
   if ((config.geometry ?? "channel") === "slot" && ((config.slotGapUm ?? 0) <= 0 || (config.slotGapUm ?? 0) >= config.widthUm)) {
     errors.push("Slot gap must be positive and smaller than the total core width.");
   }
-  if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 1 || (config.substrateIndex ?? 0) > 6)) {
-    errors.push("Substrate index must be between 1 and 6.");
+  if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 1 || (config.substrateIndex ?? 0) > PARAMETER_MAXIMUMS.refractiveIndex)) {
+    errors.push(`Substrate index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
   if (finiteOptional) {
     const materials = materialValues(config);
     const indices = Object.values(materials).flatMap((material) => [material.nx, material.ny, material.nz]);
-    if (indices.some((value) => value < 1 || value > 6)) errors.push("Dispersive material indices must remain between 1 and 6 at the solved wavelength.");
+    if (indices.some((value) => value < 1 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
     const coreMaximum = Math.max(materials.core.nx, materials.core.ny, materials.core.nz);
     const exteriorMaximum = Math.max(materials.cladding.nx, materials.cladding.ny, materials.cladding.nz,
       (config.geometry ?? "channel") === "multilayer" ? materials.substrate.nx : 0);
@@ -228,11 +249,11 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
 }
 
 export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings): SweepResult {
-  if (!(settings.startWavelengthUm >= 0.2 && settings.stopWavelengthUm <= 20 && settings.stopWavelengthUm > settings.startWavelengthUm)) {
-    throw new Error("Sweep limits must be ordered and stay between 0.2 and 20 µm.");
+  if (!(settings.startWavelengthUm >= 0.2 && settings.stopWavelengthUm <= PARAMETER_MAXIMUMS.wavelengthUm && settings.stopWavelengthUm > settings.startWavelengthUm)) {
+    throw new Error(`Sweep limits must be ordered and stay between 0.2 and ${PARAMETER_MAXIMUMS.wavelengthUm} µm.`);
   }
-  if (!Number.isInteger(settings.points) || settings.points < 5 || settings.points > 31) {
-    throw new Error("Sweep points must be an integer between 5 and 31.");
+  if (!Number.isInteger(settings.points) || settings.points < 5 || settings.points > PARAMETER_MAXIMUMS.sweepPoints) {
+    throw new Error(`Sweep points must be an integer between 5 and ${PARAMETER_MAXIMUMS.sweepPoints}.`);
   }
   const wavelengths = Array.from({ length: settings.points }, (_, index) => (
     settings.startWavelengthUm + index * (settings.stopWavelengthUm - settings.startWavelengthUm) / (settings.points - 1)
