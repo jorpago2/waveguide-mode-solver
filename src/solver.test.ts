@@ -13,6 +13,20 @@ const benchmark: WaveguideConfig = {
   modeCount: 2,
 };
 
+function fieldRoughness(field: number[][]): number {
+  let differences = 0;
+  let energy = 0;
+  for (let row = 0; row < field.length; row += 1) {
+    for (let column = 0; column < field[row].length; column += 1) {
+      const value = field[row][column];
+      energy += value ** 2;
+      if (column + 1 < field[row].length) differences += (value - field[row][column + 1]) ** 2;
+      if (row + 1 < field.length) differences += (value - field[row + 1][column]) ** 2;
+    }
+  }
+  return differences / energy;
+}
+
 describe("full-vector finite-difference mode solver", () => {
   it("allows a numeric input to be cleared before entering a replacement", () => {
     expect(parseNumericInput("")).toBeNaN();
@@ -25,6 +39,13 @@ describe("full-vector finite-difference mode solver", () => {
     expect(result.modes[0].effectiveIndex).toBeCloseTo(1.66415615, 2);
     expect(result.modes[1].effectiveIndex).toBeCloseTo(1.60326769, 2);
     expect(result.modes[0].residual).toBeLessThan(2e-3);
+  });
+
+  it("converges the modal field on the finest supported uniform grid", () => {
+    const coarse = solveWaveguide({ ...benchmark, gridResolution: 32, modeCount: 1 }).modes[0];
+    const fine = solveWaveguide({ ...benchmark, gridResolution: 96, modeCount: 1 }).modes[0];
+    expect(fine.residual).toBeLessThan(1e-3);
+    expect(fieldRoughness(fine.fields.Ex)).toBeLessThan(fieldRoughness(coarse.fields.Ex) / 4);
   });
 
   it("returns physical vector-field metrics", () => {

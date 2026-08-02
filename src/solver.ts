@@ -11,7 +11,7 @@ export const PARAMETER_MAXIMUMS = {
   dispersionPerUm: 1_000,
   gridResolution: 96,
   modeCount: 8,
-  meshBias: 5,
+  meshBias: 1.5,
   sweepPoints: 101,
 } as const;
 
@@ -206,7 +206,7 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
   const requestedRitzPairs = Math.max(config.modeCount * 3, 8);
   const arnoldiDimension = Math.min(
     operator.hxSize + operator.hySize - 1,
-    Math.max(58, config.modeCount * 22),
+    Math.max(58, config.modeCount * 22, Math.ceil(config.gridResolution * (2 + (config.meshBias ?? 0)))),
   );
   const pairs = solveLargestEigenpairs(operator, arnoldiDimension, requestedRitzPairs, config);
   const { exteriorIndex, maximumIndex } = guidanceBounds(config);
@@ -220,7 +220,8 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
       Math.abs(Math.sqrt(candidate.eigenvalue) / operator.k0 - effectiveIndex) < 1e-7
     )) === index;
   });
-  const modes = uniquePairs
+  const convergedPairs = uniquePairs.filter((pair) => pair.residual <= 2e-2);
+  const modes = convergedPairs
     .slice(0, config.modeCount)
     .map((pair, index) => buildMode(pair, index, config, operator));
 
@@ -230,8 +231,9 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
     grid.y.filter((value) => Math.abs(value) <= config.heightUm / 2).length,
   );
   if (cellsAcrossCore < 8) warnings.push("Fewer than 8 cells span the smallest core dimension; refine the grid before using quantitative values.");
+  if (convergedPairs.length < uniquePairs.length) warnings.push(`${uniquePairs.length - convergedPairs.length} poorly converged mode${uniquePairs.length - convergedPairs.length === 1 ? " was" : "s were"} discarded because the field residual exceeded 2 × 10⁻².`);
   if (modes.length < config.modeCount) warnings.push(`Only ${modes.length} guided mode${modes.length === 1 ? " was" : "s were"} found inside the requested index interval.`);
-  if (modes.some((mode) => mode.residual > 2e-3)) warnings.push("One or more eigenpairs have a high residual; increase grid resolution or reduce the requested mode count.");
+  if (modes.some((mode) => mode.residual > 2e-3)) warnings.push("One or more eigenpairs need review; reduce the requested mode count or mesh bias before interpreting the field profile.");
 
   return {
     modes,

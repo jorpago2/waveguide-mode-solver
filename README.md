@@ -13,6 +13,7 @@ It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and r
 - Wavelength sweeps with field-overlap mode tracking.
 - Effective index, group index, dispersion, absorption, confinement and effective area.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
+- Grid-aware Arnoldi basis with residual rejection for unreliable field profiles.
 
 ## Run locally
 
