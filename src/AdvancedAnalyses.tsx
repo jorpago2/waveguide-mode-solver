@@ -16,7 +16,7 @@ interface Props {
 }
 
 const initialTolerance: ToleranceSettings = { widthStdDevNm: 10, heightStdDevNm: 5, gapStdDevNm: 5, sidewallAngleStdDevDeg: 0, coreIndexStdDev: 0.001, samples: 12, seed: 2026, modeIndex: 0 };
-const initialConvergence: ConvergenceSettings = { coarseResolution: 24, refinementRatio: 1.4, modeIndex: 0, includePmlSensitivity: true };
+const initialConvergence: ConvergenceSettings = { coarseResolution: 24, refinementRatio: 1.4, modeIndex: 0, includePmlSensitivity: true, lossTolerancePercent: 10 };
 const initialGaussian: GaussianCouplingSettings = { waistUm: 1.5, offsetXUm: 0, offsetYUm: 0, polarizationAngleDeg: 0 };
 const initialCoupler: DirectionalCouplerSettings = { gapUm: 0.2, polarization: "quasi-TE" };
 const initialMap: ModeMapSettings = { parameter: "widthUm", startValueUm: 0.5, stopValueUm: 1.5, geometryPoints: 5, startWavelengthUm: 1.45, stopWavelengthUm: 1.65, wavelengthPoints: 5, maximumModes: 4, gridResolution: 24, modeIndex: 0 };
@@ -79,10 +79,11 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   return <>
     <section className="sweep-section" aria-labelledby="convergence-title">
       <div className="panel-heading"><div><span className="step">05</span><h2 id="convergence-title">Numerical convergence</h2></div></div>
-      <p className="section-intro">Track the selected mode over three systematically refined meshes. Richardson extrapolation and the fine-grid GCI are reported only for monotonic convergence.</p>
+      <p className="section-intro">Track the selected mode over three systematically refined meshes. Loss is checked against the selected tolerance and, with PML, against boundary and absorber variations.</p>
       <form className="analysis-controls" onSubmit={runConvergence}>
         <AnalysisNumber label="Coarse resolution" unit="cells" value={convergence.coarseResolution} min={24} max={56} step={1} onChange={(value) => setConvergence((current) => ({ ...current, coarseResolution: value }))} />
         <AnalysisNumber label="Refinement ratio" unit="r" value={convergence.refinementRatio} min={1.3} max={2} step={0.05} onChange={(value) => setConvergence((current) => ({ ...current, refinementRatio: value }))} />
+        <AnalysisNumber label="Loss tolerance" unit="%" value={convergence.lossTolerancePercent} min={0.1} max={100} step={0.5} onChange={(value) => setConvergence((current) => ({ ...current, lossTolerancePercent: value }))} />
         {(config.boundary ?? "hard") === "pml" && <label className="checkbox-field"><input type="checkbox" checked={convergence.includePmlSensitivity} onChange={(event) => setConvergence((current) => ({ ...current, includePmlSensitivity: event.target.checked }))} /><span>Test PML sensitivity</span></label>}
         <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "convergence" ? "Verifying…" : "Run convergence"}<span aria-hidden="true">→</span></button>
       </form>
@@ -94,16 +95,19 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
           <AnalysisMetric label="Richardson neff" value={formatOptional(convergenceResult.richardsonEffectiveIndex, 7)} />
           <AnalysisMetric label="Asymptotic ratio" value={formatOptional(convergenceResult.asymptoticRatio, 3)} />
           <AnalysisMetric label="GCI status" value={convergenceResult.inAsymptoticRange ? "Asymptotic" : "Not verified"} />
-          <AnalysisMetric label="Loss mesh spread" value={`${convergenceResult.lossRelativeSpreadPercent.toPrecision(3)}%`} />
+          <AnalysisMetric label="Fine-grid loss change" value={`${convergenceResult.lossFineChangePercent.toPrecision(3)}%`} />
+          <AnalysisMetric label="Loss validation" value={lossValidationLabel(convergenceResult.lossValidation)} />
         </div>
         <ConvergencePlot result={convergenceResult} />
         {convergenceResult.pmlSensitivity && <>
           <div className="analysis-metrics">
             <AnalysisMetric label="PML max Δneff" value={formatPercent(convergenceResult.pmlSensitivity.maximumEffectiveIndexChangePercent)} />
             <AnalysisMetric label="PML max loss change" value={formatPercent(convergenceResult.pmlSensitivity.maximumLossChangePercent)} />
+            <AnalysisMetric label="Minimum mode overlap" value={convergenceResult.pmlSensitivity.minimumOverlap === undefined ? "—" : `${(100 * convergenceResult.pmlSensitivity.minimumOverlap).toFixed(2)}%`} />
+            <AnalysisMetric label="PML loss status" value={convergenceResult.pmlSensitivity.stable ? "Pass" : "Review"} />
             <AnalysisMetric label="Failed PML checks" value={String(convergenceResult.pmlSensitivity.failedChecks)} />
           </div>
-          <div className="comparison-scroll"><table className="comparison-table"><caption>One-at-a-time PML robustness checks on the finest mesh</caption><thead><tr><th>Variation</th><th>Grid</th><th>Padding</th><th>PML thickness</th><th>Strength</th><th>n<sub>eff</sub></th><th>Loss</th><th>Overlap</th></tr></thead><tbody>{convergenceResult.pmlSensitivity.points.map((point) => <tr key={point.name}><th>{point.name}</th><td>{point.resolution}</td><td>{point.paddingUm.toFixed(3)} µm</td><td>{point.thicknessUm.toFixed(3)} µm</td><td>{point.strength.toFixed(2)}</td>{point.error ? <td colSpan={3} className="failed-check">{point.error}</td> : <><td>{point.effectiveIndex!.toFixed(7)}</td><td>{point.lossDbPerCm!.toPrecision(4)} dB/cm</td><td>{(100 * point.overlap!).toFixed(2)}%</td></>}</tr>)}</tbody></table></div>
+          <div className="comparison-scroll"><table className="comparison-table"><caption>One-at-a-time boundary and PML robustness checks on the finest mesh</caption><thead><tr><th>Variation</th><th>Grid</th><th>Padding</th><th>PML thickness</th><th>Strength</th><th>n<sub>eff</sub></th><th>Loss</th><th>Δloss</th><th>Overlap</th></tr></thead><tbody>{convergenceResult.pmlSensitivity.points.map((point) => <tr key={point.name}><th>{point.name}</th><td>{point.resolution}</td><td>{point.paddingUm.toFixed(3)} µm</td><td>{point.thicknessUm.toFixed(3)} µm</td><td>{point.strength.toFixed(2)}</td>{point.error ? <td colSpan={4} className="failed-check">{point.error}</td> : <><td>{point.effectiveIndex!.toFixed(7)}</td><td>{point.lossDbPerCm!.toPrecision(4)} dB/cm</td><td>{point.lossChangePercent!.toPrecision(3)}%</td><td>{(100 * point.overlap!).toFixed(2)}%</td></>}</tr>)}</tbody></table></div>
         </>}
         {convergenceResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
       </>}
@@ -178,4 +182,5 @@ function AnalysisNumber({ label, unit, value, min, max, step, onChange }: { labe
 function AnalysisMetric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
 function formatOptional(value: number | undefined, digits: number): string { return value === undefined ? "—" : value.toFixed(digits); }
 function formatPercent(value: number | undefined): string { return value === undefined ? "—" : `${value.toPrecision(3)}%`; }
+function lossValidationLabel(value: ConvergenceResult["lossValidation"]): string { return value === "pass" ? "Pass" : value === "mesh-only" ? "Mesh only" : value === "not-applicable" ? "No measurable loss" : "Review"; }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : "The analysis failed."; }

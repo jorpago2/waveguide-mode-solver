@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import type { SolverResult, WaveguideConfig } from "./solver";
+import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
 
-export function GeometryPlot({ config, result }: { config: WaveguideConfig; result: SolverResult }) {
+export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig; result: SolverResult; mode?: WaveguideMode }) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [axis, setAxis] = useState<PrincipalAxis>("x");
   const [showMesh, setShowMesh] = useState(true);
+  const [showMode, setShowMode] = useState(true);
 
   useEffect(() => {
     if (!plotRef.current) return;
@@ -25,7 +26,7 @@ export function GeometryPlot({ config, result }: { config: WaveguideConfig; resu
       { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum - pmlThickness, y1: yMaximum - pmlThickness },
     ].map((shape) => ({ ...shape, line: { color: "#d55e00", width: 1.5, dash: "dash" as const } })) : [];
 
-    void Plotly.react(plotRef.current, [{
+    const data: Plotly.Data[] = [{
       type: "heatmap",
       x: result.xEdgesUm,
       y: result.yEdgesUm,
@@ -34,7 +35,19 @@ export function GeometryPlot({ config, result }: { config: WaveguideConfig; resu
       colorscale: "Cividis",
       colorbar: { title: { text: `n<sub>${axis}</sub>`, side: "right" }, thickness: 13, len: 0.84 },
       hovertemplate: `x = %{x:.4f} µm<br>y = %{y:.4f} µm<br>n<sub>${axis}</sub> = %{z:.6f}<extra></extra>`,
-    }] as Plotly.Data[], {
+    } as Plotly.Data];
+    if (showMode && mode) {
+      const maximumIntensity = Math.max(...mode.fields.intensity.flat(), Number.EPSILON);
+      data.push({
+        type: "contour", x: result.xUm, y: result.yUm,
+        z: mode.fields.intensity.map((row) => row.map((value) => value / maximumIntensity)),
+        name: `${mode.label} |E|²`, showlegend: false, showscale: false, hoverinfo: "skip",
+        contours: { start: 0.1, end: 0.9, size: 0.2, coloring: "none", showlabels: false },
+        line: { color: "#cc79a7", width: 1.8 },
+      } as Plotly.Data);
+    }
+
+    void Plotly.react(plotRef.current, data, {
       margin: { l: 58, r: 42, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
@@ -44,16 +57,17 @@ export function GeometryPlot({ config, result }: { config: WaveguideConfig; resu
       shapes: [...meshShapes, ...pmlShapes],
     }, { displaylogo: false, responsive: true, scrollZoom: false });
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [axis, config, result, showMesh]);
+  }, [axis, config, mode, result, showMesh, showMode]);
 
   return <>
     <div className="field-toolbar geometry-toolbar" aria-label="Refractive-index component">
       <span>Principal index</span>
       {(["x", "y", "z"] as const).map((component) => <button type="button" className={axis === component ? "active" : ""} aria-pressed={axis === component} key={component} onClick={() => setAxis(component)}>n<sub>{component}</sub></button>)}
       <label className="checkbox-field"><input type="checkbox" checked={showMesh} onChange={(event) => setShowMesh(event.target.checked)} />Show mesh</label>
+      <label className="checkbox-field"><input type="checkbox" checked={showMode} disabled={!mode} onChange={(event) => setShowMode(event.target.checked)} />Mode |E|²</label>
       <small>{result.nx} × {result.ny} cells</small>
     </div>
     <div ref={plotRef} className="geometry-plot" aria-label={`Waveguide geometry, ${axis}-axis refractive index and computational mesh`} />
-    <p className="plot-note">Cell-centred principal index after subpixel material averaging. Mesh lines are the actual finite-difference cell boundaries; dashed orange lines mark the PML onset.</p>
+    <p className="plot-note">Cell-centred principal index after subpixel material averaging. Contours show normalized modal |E|²; mesh lines are the actual finite-difference cell boundaries and dashed orange lines mark the PML onset.</p>
   </>;
 }

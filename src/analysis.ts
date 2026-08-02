@@ -50,6 +50,7 @@ export interface ConvergenceSettings {
   refinementRatio: number;
   modeIndex: number;
   includePmlSensitivity: boolean;
+  lossTolerancePercent: number;
 }
 
 export interface ConvergenceLevel {
@@ -72,6 +73,7 @@ export interface PmlSensitivityPoint {
   effectiveIndex?: number;
   lossDbPerCm?: number;
   overlap?: number;
+  lossChangePercent?: number;
   error?: string;
 }
 
@@ -79,6 +81,9 @@ export interface PmlSensitivityResult {
   points: PmlSensitivityPoint[];
   maximumEffectiveIndexChangePercent?: number;
   maximumLossChangePercent?: number;
+  minimumOverlap?: number;
+  stable: boolean;
+  tolerancePercent: number;
   failedChecks: number;
   gridLimited: boolean;
 }
@@ -93,6 +98,8 @@ export interface ConvergenceResult {
   inAsymptoticRange: boolean;
   fineRelativeChangePercent: number;
   lossRelativeSpreadPercent: number;
+  lossFineChangePercent: number;
+  lossValidation: "pass" | "review" | "mesh-only" | "not-applicable";
   pmlSensitivity?: PmlSensitivityResult;
   warnings: string[];
 }
@@ -239,6 +246,9 @@ export function analyzeConvergence(config: WaveguideConfig, settings: Convergenc
   if (!Number.isFinite(settings.refinementRatio) || settings.refinementRatio < 1.3 || settings.refinementRatio > 2) {
     throw new Error("The refinement ratio must be between 1.3 and 2.0.");
   }
+  if (!Number.isFinite(settings.lossTolerancePercent) || settings.lossTolerancePercent < 0.1 || settings.lossTolerancePercent > 100) {
+    throw new Error("The loss tolerance must be between 0.1% and 100%.");
+  }
   if (!Number.isInteger(settings.modeIndex) || settings.modeIndex < 0 || settings.modeIndex >= PARAMETER_MAXIMUMS.modeCount) {
     throw new Error("The selected convergence mode is invalid.");
   }
@@ -303,6 +313,11 @@ export function analyzeConvergence(config: WaveguideConfig, settings: Convergenc
   const lossValues = levels.map((level) => level.lossDbPerCm);
   const meanLoss = lossValues.reduce((sum, value) => sum + value, 0) / lossValues.length;
   const lossRelativeSpreadPercent = 100 * (Math.max(...lossValues) - Math.min(...lossValues)) / Math.max(Math.abs(meanLoss), 1e-30);
+  const lossApplicable = Math.max(Math.abs(medium.lossDbPerCm), Math.abs(fine.lossDbPerCm)) > 1e-12;
+  const lossFineChangePercent = lossApplicable
+    ? 100 * Math.abs(fine.lossDbPerCm - medium.lossDbPerCm) / Math.max(Math.abs(fine.lossDbPerCm), 1e-30)
+    : 0;
+  const meshLossStable = lossApplicable && lossFineChangePercent <= settings.lossTolerancePercent;
   const warnings: string[] = [];
   if (!monotonic) warnings.push("Effective index converges non-monotonically; Richardson extrapolation and GCI are not applicable.");
   else if (observedOrder === undefined) warnings.push("An observed convergence order could not be fitted to these grids.");
@@ -311,10 +326,15 @@ export function analyzeConvergence(config: WaveguideConfig, settings: Convergenc
   if (Math.min(levels[1].overlap, levels[2].overlap) < 0.8) warnings.push("Modal overlap falls below 80% during refinement; inspect possible mode switching.");
 
   const pmlSensitivity = (config.boundary ?? "hard") === "pml" && settings.includePmlSensitivity
-    ? analyzePmlSensitivity({ ...config, gridResolution: fine.resolution, modeCount }, solved[2], tracked[2])
+    ? analyzePmlSensitivity({ ...config, gridResolution: fine.resolution, modeCount }, solved[2], tracked[2], settings.lossTolerancePercent)
     : undefined;
   if (pmlSensitivity?.failedChecks) warnings.push(`${pmlSensitivity.failedChecks} PML robustness check${pmlSensitivity.failedChecks === 1 ? "" : "s"} failed to return the tracked mode.`);
   if (pmlSensitivity?.gridLimited) warnings.push("The boundary-distance check reached the 96-cell grid limit, so its mesh spacing is not held exactly constant.");
+  if (lossApplicable && !meshLossStable) warnings.push(`Fine-grid loss changes by ${lossFineChangePercent.toPrecision(3)}%, above the ${settings.lossTolerancePercent}% tolerance.`);
+  if (pmlSensitivity && !pmlSensitivity.stable) warnings.push(`Boundary or PML loss sensitivity exceeds the ${settings.lossTolerancePercent}% tolerance, mode overlap falls below 80%, or a check failed.`);
+  const lossValidation = !lossApplicable ? "not-applicable"
+    : pmlSensitivity ? (meshLossStable && pmlSensitivity.stable ? "pass" : "review")
+      : meshLossStable ? "mesh-only" : "review";
   return {
     levels,
     monotonic,
@@ -325,6 +345,8 @@ export function analyzeConvergence(config: WaveguideConfig, settings: Convergenc
     inAsymptoticRange,
     fineRelativeChangePercent: 100 * Math.abs(fine.effectiveIndex - medium.effectiveIndex) / Math.abs(fine.effectiveIndex),
     lossRelativeSpreadPercent,
+    lossFineChangePercent,
+    lossValidation,
     pmlSensitivity,
     warnings,
   };
@@ -441,7 +463,7 @@ function observedConvergenceOrder(fine: ConvergenceLevel, medium: ConvergenceLev
   return (lower + upper) / 2;
 }
 
-function analyzePmlSensitivity(config: WaveguideConfig, baselineResult: SolverResult, baselineMode: WaveguideMode): PmlSensitivityResult {
+function analyzePmlSensitivity(config: WaveguideConfig, baselineResult: SolverResult, baselineMode: WaveguideMode, tolerancePercent: number): PmlSensitivityResult {
   const thickness = config.pmlThicknessUm ?? config.paddingUm * 0.6;
   const strength = config.pmlStrength ?? 4;
   const boundaryPadding = Math.min(PARAMETER_MAXIMUMS.dimensionUm, config.paddingUm * 1.25);
@@ -481,18 +503,30 @@ function analyzePmlSensitivity(config: WaveguideConfig, baselineResult: SolverRe
     }
   });
   const baseline = points[0];
-  const valid = points.slice(1).filter((point) => point.effectiveIndex !== undefined && point.lossDbPerCm !== undefined);
+  const pointsWithChanges = points.map((point, index) => ({
+    ...point,
+    lossChangePercent: point.lossDbPerCm === undefined || baseline.lossDbPerCm === undefined ? undefined
+      : index === 0 ? 0 : 100 * Math.abs(point.lossDbPerCm - baseline.lossDbPerCm) / Math.max(Math.abs(baseline.lossDbPerCm), 1e-30),
+  }));
+  const valid = pointsWithChanges.slice(1).filter((point) => point.effectiveIndex !== undefined && point.lossDbPerCm !== undefined);
   const effectiveIndexChanges = valid.map((point) => (
     100 * Math.abs(point.effectiveIndex! - baseline.effectiveIndex!) / Math.abs(baseline.effectiveIndex!)
   ));
   const lossChanges = valid.map((point) => (
-    100 * Math.abs(point.lossDbPerCm! - baseline.lossDbPerCm!) / Math.max(Math.abs(baseline.lossDbPerCm!), 1e-30)
+    point.lossChangePercent as number
   ));
+  const minimumOverlap = valid.length > 0 ? Math.min(...valid.map((point) => point.overlap ?? 0)) : undefined;
+  const maximumLossChangePercent = lossChanges.length > 0 ? Math.max(...lossChanges) : undefined;
+  const failedChecks = pointsWithChanges.filter((point) => point.error).length;
   return {
-    points,
+    points: pointsWithChanges,
     maximumEffectiveIndexChangePercent: effectiveIndexChanges.length > 0 ? Math.max(...effectiveIndexChanges) : undefined,
-    maximumLossChangePercent: lossChanges.length > 0 ? Math.max(...lossChanges) : undefined,
-    failedChecks: points.filter((point) => point.error).length,
+    maximumLossChangePercent,
+    minimumOverlap,
+    stable: failedChecks === 0 && maximumLossChangePercent !== undefined && maximumLossChangePercent <= tolerancePercent
+      && minimumOverlap !== undefined && minimumOverlap >= 0.8,
+    tolerancePercent,
+    failedChecks,
     gridLimited: boundaryResolution < requestedBoundaryResolution,
   };
 }

@@ -52,26 +52,32 @@ describe("photonic design analyses", () => {
   });
 
   it("tracks a mode over three grids and reports mesh uncertainty", () => {
-    const convergence = analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: false });
+    const convergence = analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: false, lossTolerancePercent: 10 });
     expect(convergence.levels.map((level) => level.resolution)).toEqual([24, 31, 41]);
     expect(convergence.levels.slice(1).every((level) => level.overlap > 0.8)).toBe(true);
     expect(convergence.monotonic).toBe(true);
     expect(convergence.observedOrder).toBeGreaterThan(0);
     expect(convergence.fineRelativeChangePercent).toBeGreaterThanOrEqual(0);
+    expect(convergence.lossFineChangePercent).toBeGreaterThanOrEqual(0);
+    expect(convergence.lossValidation).toBe("not-applicable");
     expect(Number.isFinite(convergence.lossRelativeSpreadPercent)).toBe(true);
     expect(convergence.gciFinePercent).toBeGreaterThanOrEqual(0);
     expect(convergence.richardsonEffectiveIndex).toBeGreaterThan(config.claddingIndex);
-    expect(() => analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.1, modeIndex: 0, includePmlSensitivity: false })).toThrow(/refinement ratio/);
+    expect(() => analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.1, modeIndex: 0, includePmlSensitivity: false, lossTolerancePercent: 10 })).toThrow(/refinement ratio/);
+    expect(() => analyzeConvergence(config, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: false, lossTolerancePercent: 0 })).toThrow(/loss tolerance/);
   });
 
   it("checks PML robustness independently from mesh GCI", () => {
     const convergence = analyzeConvergence({
       ...config, modeCount: 1, boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
-    }, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: true });
+    }, { coarseResolution: 24, refinementRatio: 1.3, modeIndex: 0, includePmlSensitivity: true, lossTolerancePercent: 10 });
     expect(convergence.pmlSensitivity?.points).toHaveLength(4);
     expect(convergence.pmlSensitivity?.points.slice(1).every((point) => point.error || point.overlap! > 0.8)).toBe(true);
     expect(Number.isFinite(convergence.pmlSensitivity?.maximumEffectiveIndexChangePercent)).toBe(true);
     expect(Number.isFinite(convergence.pmlSensitivity?.maximumLossChangePercent)).toBe(true);
+    expect(Number.isFinite(convergence.pmlSensitivity?.minimumOverlap)).toBe(true);
+    expect(convergence.pmlSensitivity?.points.every((point) => point.error || Number.isFinite(point.lossChangePercent))).toBe(true);
+    expect(["pass", "review"]).toContain(convergence.lossValidation);
   }, 30_000);
 
   it("computes a bounded Gaussian coupling efficiency", () => {
