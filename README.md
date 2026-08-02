@@ -13,7 +13,8 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Dispersive material models for LiNbO₃, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
 - MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
 - Editable finite layers below the core with a semi-infinite base substrate.
-- Complex diagonal anisotropy: ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²].
+- Rotated uniaxial transverse anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, solved with a four-field first-order Maxwell operator.
+- Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
 - Rigorous constant-radius bends in local cylindrical coordinates, retaining the metric factor 1 + x/R in the six-component Maxwell eigenproblem.
@@ -52,7 +53,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 
 ## Numerical scope
 
-- Linear, non-magnetic dielectrics with diagonal anisotropy.
+- Linear, non-magnetic dielectrics. Transverse x–y anisotropy is available for straight, lossless guides when z remains a principal axis; bends, PML and material loss currently require diagonal tensors.
 - Curved guides must have a constant radius larger than the entire radial half-domain. Varying-radius transitions, Euler bends and longitudinal discontinuities are outside the 2D eigenmode model.
 - Hard-wall and PML outer boundaries are available. Radiation loss requires mesh, padding, PML-thickness and PML-strength convergence checks.
 - The reported GCI applies to effective-index mesh discretization only and is valid only when the three grids converge monotonically in the asymptotic range.

@@ -1,5 +1,7 @@
-export type MaterialId = "custom" | "air" | "silica" | "silicon" | "silicon-nitride"
+export type MaterialId = "custom" | "tabulated" | "air" | "silica" | "silicon" | "silicon-nitride"
   | "lithium-niobate" | "aluminum-nitride" | "gallium-arsenide" | "indium-phosphide" | "silicon-carbide";
+
+export type BuiltInMaterialId = Exclude<MaterialId, "custom" | "tabulated">;
 
 export type OpticAxis = "x" | "y" | "z";
 
@@ -20,8 +22,30 @@ export interface MaterialAxes {
   nz: number;
 }
 
+export interface PrincipalMaterialIndices {
+  ordinary: number;
+  extraordinary: number;
+}
+
+export interface TabulatedMaterialData {
+  name: string;
+  wavelengthUm: number[];
+  refractiveIndex: number[];
+  extinctionCoefficient: number[];
+}
+
+export interface SymmetricTensor {
+  xx: number;
+  yy: number;
+  zz: number;
+  xy: number;
+  xz: number;
+  yz: number;
+}
+
 export const MATERIALS: MaterialDefinition[] = [
   { id: "custom", name: "Custom / linear", formula: "User-defined n, κ and dn/dλ", minimumWavelengthUm: 0.2, maximumWavelengthUm: 1_000 },
+  { id: "tabulated", name: "Imported n,k table", formula: "Linear interpolation of wavelength_um,n,k CSV data", minimumWavelengthUm: 0.2, maximumWavelengthUm: 1_000 },
   { id: "air", name: "Air", formula: "n = 1", minimumWavelengthUm: 0.2, maximumWavelengthUm: 1_000 },
   { id: "silica", name: "Fused silica", formula: "Malitson Sellmeier", minimumWavelengthUm: 0.21, maximumWavelengthUm: 3.71, sourceUrl: "https://doi.org/10.1364/JOSA.55.001205", sourceLabel: "Malitson (1965)" },
   { id: "silicon", name: "Crystalline silicon", formula: "Li dispersion at 293 K", minimumWavelengthUm: 1.2, maximumWavelengthUm: 14, sourceUrl: "https://doi.org/10.1063/1.555624", sourceLabel: "Li (1980)" },
@@ -37,17 +61,29 @@ export function materialDefinition(id: MaterialId): MaterialDefinition {
   return MATERIALS.find((material) => material.id === id) ?? MATERIALS[0];
 }
 
-export function evaluateMaterial(id: Exclude<MaterialId, "custom">, wavelengthUm: number): number {
+export function evaluateMaterial(id: BuiltInMaterialId, wavelengthUm: number): number {
   return evaluateMaterialAxes(id, wavelengthUm).nx;
 }
 
 export function evaluateMaterialAxes(
-  id: Exclude<MaterialId, "custom">,
+  id: BuiltInMaterialId,
   wavelengthUm: number,
   temperatureC = 21,
   opticAxis: OpticAxis = "y",
   electricFieldVPerUm = 0,
 ): MaterialAxes {
+  const { ordinary, extraordinary } = evaluateMaterialPrincipalIndices(id, wavelengthUm, temperatureC, electricFieldVPerUm);
+  return opticAxis === "x" ? { nx: extraordinary, ny: ordinary, nz: ordinary }
+    : opticAxis === "z" ? { nx: ordinary, ny: ordinary, nz: extraordinary }
+      : { nx: ordinary, ny: extraordinary, nz: ordinary };
+}
+
+export function evaluateMaterialPrincipalIndices(
+  id: BuiltInMaterialId,
+  wavelengthUm: number,
+  temperatureC = 21,
+  electricFieldVPerUm = 0,
+): PrincipalMaterialIndices {
   const material = materialDefinition(id);
   if (wavelengthUm < material.minimumWavelengthUm || wavelengthUm > material.maximumWavelengthUm) {
     throw new Error(`${material.name} is valid from ${material.minimumWavelengthUm} to ${material.maximumWavelengthUm} µm.`);
@@ -89,9 +125,101 @@ export function evaluateMaterialAxes(
       + 35.65066 * wavelengthSquared / (wavelengthSquared - 1268.24708));
     extraordinary = Math.sqrt(6.79485 + 0.15558 / (wavelengthSquared - 0.03535) - 0.02296 * wavelengthSquared);
   }
-  return opticAxis === "x" ? { nx: extraordinary, ny: ordinary, nz: ordinary }
-    : opticAxis === "z" ? { nx: ordinary, ny: ordinary, nz: extraordinary }
-      : { nx: ordinary, ny: extraordinary, nz: ordinary };
+  return { ordinary, extraordinary };
+}
+
+export function opticAxisDirection(opticAxis: OpticAxis = "y", tiltDeg?: number, azimuthDeg?: number): [number, number, number] {
+  if (tiltDeg === undefined && azimuthDeg === undefined) {
+    return opticAxis === "x" ? [1, 0, 0] : opticAxis === "z" ? [0, 0, 1] : [0, 1, 0];
+  }
+  const tilt = (tiltDeg ?? 0) * Math.PI / 180;
+  const azimuth = (azimuthDeg ?? 0) * Math.PI / 180;
+  return [Math.sin(tilt) * Math.sin(azimuth), Math.cos(tilt), Math.sin(tilt) * Math.cos(azimuth)];
+}
+
+export function uniaxialPermittivityTensor(ordinaryIndex: number, extraordinaryIndex: number, axis: [number, number, number]): SymmetricTensor {
+  const ordinary = ordinaryIndex ** 2;
+  const contrast = extraordinaryIndex ** 2 - ordinary;
+  const [x, y, z] = axis;
+  return {
+    xx: ordinary + contrast * x ** 2,
+    yy: ordinary + contrast * y ** 2,
+    zz: ordinary + contrast * z ** 2,
+    xy: contrast * x * y,
+    xz: contrast * x * z,
+    yz: contrast * y * z,
+  };
+}
+
+export function parseMaterialCsv(text: string, name = "Imported material"): TabulatedMaterialData {
+  const rows = text.trim().split(/\r?\n/).filter((row) => row.trim());
+  if (rows.length < 3) throw new Error("The material CSV needs a header and at least two data rows.");
+  if (rows.length > 10_001) throw new Error("The material CSV is limited to 10,000 data rows.");
+  const delimiter = rows[0].includes(";") ? ";" : ",";
+  const headers = rows[0].split(delimiter).map((header) => header.trim().toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const wavelengthColumn = headers.findIndex((header) => ["wavelengthum", "wavelength", "lambdaum", "lambda"].includes(header));
+  const indexColumn = headers.findIndex((header) => ["n", "index", "refractiveindex"].includes(header));
+  const extinctionColumn = headers.findIndex((header) => ["k", "kappa", "extinction", "extinctioncoefficient"].includes(header));
+  if (wavelengthColumn < 0 || indexColumn < 0) throw new Error("The material CSV header must contain wavelength_um and n columns; k is optional.");
+  const data = rows.slice(1).map((row, rowIndex) => {
+    const columns = row.split(delimiter).map((value) => value.trim());
+    const wavelengthUm = Number(columns[wavelengthColumn]);
+    const refractiveIndex = Number(columns[indexColumn]);
+    const extinctionCoefficient = extinctionColumn < 0 || columns[extinctionColumn] === "" ? 0 : Number(columns[extinctionColumn]);
+    if (!Number.isFinite(wavelengthUm) || !Number.isFinite(refractiveIndex) || !Number.isFinite(extinctionCoefficient)) {
+      throw new Error(`Material CSV row ${rowIndex + 2} contains a non-numeric value.`);
+    }
+    if (wavelengthUm < 0.2 || wavelengthUm > 1_000 || refractiveIndex < 1 || refractiveIndex > 50
+      || extinctionCoefficient < 0 || extinctionCoefficient > 10) {
+      throw new Error(`Material CSV row ${rowIndex + 2} is outside the supported wavelength, n or k range.`);
+    }
+    return { wavelengthUm, refractiveIndex, extinctionCoefficient };
+  }).sort((first, second) => first.wavelengthUm - second.wavelengthUm);
+  if (data.some((entry, index) => index > 0 && entry.wavelengthUm === data[index - 1].wavelengthUm)) {
+    throw new Error("Material CSV wavelengths must be unique.");
+  }
+  return {
+    name: (name.replace(/\.csv$/i, "") || "Imported material").slice(0, 120),
+    wavelengthUm: data.map((entry) => entry.wavelengthUm),
+    refractiveIndex: data.map((entry) => entry.refractiveIndex),
+    extinctionCoefficient: data.map((entry) => entry.extinctionCoefficient),
+  };
+}
+
+export function evaluateTabulatedMaterial(data: TabulatedMaterialData, wavelengthUm: number): { n: number; k: number } {
+  validateTabulatedMaterial(data);
+  const minimum = data.wavelengthUm[0];
+  const maximum = data.wavelengthUm[data.wavelengthUm.length - 1];
+  if (wavelengthUm < minimum || wavelengthUm > maximum) {
+    throw new Error(`${data.name} is tabulated from ${minimum} to ${maximum} µm; extrapolation is disabled.`);
+  }
+  const upper = data.wavelengthUm.findIndex((value) => value >= wavelengthUm);
+  if (upper <= 0) return { n: data.refractiveIndex[0], k: data.extinctionCoefficient[0] };
+  const lower = upper - 1;
+  const fraction = (wavelengthUm - data.wavelengthUm[lower]) / (data.wavelengthUm[upper] - data.wavelengthUm[lower]);
+  return {
+    n: data.refractiveIndex[lower] + fraction * (data.refractiveIndex[upper] - data.refractiveIndex[lower]),
+    k: data.extinctionCoefficient[lower] + fraction * (data.extinctionCoefficient[upper] - data.extinctionCoefficient[lower]),
+  };
+}
+
+export function validateTabulatedMaterial(data: TabulatedMaterialData | undefined): void {
+  if (!data || !data.name?.trim() || data.name.length > 120 || !Array.isArray(data.wavelengthUm) || !Array.isArray(data.refractiveIndex)
+    || !Array.isArray(data.extinctionCoefficient) || data.wavelengthUm.length < 2
+    || data.wavelengthUm.length > 10_000
+    || data.refractiveIndex.length !== data.wavelengthUm.length || data.extinctionCoefficient.length !== data.wavelengthUm.length) {
+    throw new Error("The imported material table is incomplete.");
+  }
+  for (let index = 0; index < data.wavelengthUm.length; index += 1) {
+    const wavelength = data.wavelengthUm[index];
+    const refractiveIndex = data.refractiveIndex[index];
+    const extinction = data.extinctionCoefficient[index];
+    if (!Number.isFinite(wavelength) || !Number.isFinite(refractiveIndex) || !Number.isFinite(extinction)
+      || wavelength < 0.2 || wavelength > 1_000 || refractiveIndex < 1 || refractiveIndex > 50 || extinction < 0 || extinction > 10
+      || (index > 0 && wavelength <= data.wavelengthUm[index - 1])) {
+      throw new Error("The imported material table must contain strictly increasing, finite wavelength, n and k values within the supported ranges.");
+    }
+  }
 }
 
 function threePoleSellmeier(wavelengthSquared: number, strengths: number[], resonancesSquared: number[]): number {

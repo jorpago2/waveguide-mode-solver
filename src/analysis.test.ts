@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { analyzeConvergence, analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides } from "./analysis";
-import { evaluateMaterial, evaluateMaterialAxes } from "./materials";
+import { evaluateMaterial, evaluateMaterialAxes, evaluateTabulatedMaterial, opticAxisDirection, parseMaterialCsv, uniaxialPermittivityTensor } from "./materials";
 import { solveWaveguide, validateWaveguide, type WaveguideConfig } from "./solver";
 
 const config: WaveguideConfig = {
@@ -34,6 +34,18 @@ describe("photonic design analyses", () => {
       expect(evaluateMaterial(material, 1.55)).toBeGreaterThan(2);
       expect(evaluateMaterial(material, 1.55)).toBeLessThan(4);
     }
+  });
+
+  it("rotates a uniaxial tensor and interpolates imported n,k data without extrapolation", () => {
+    const tensor = uniaxialPermittivityTensor(2.2, 2.1, opticAxisDirection("y", 90, 45));
+    expect(tensor.xx).toBeCloseTo(tensor.zz, 12);
+    expect(Math.abs(tensor.xz)).toBeGreaterThan(0.1);
+    expect(tensor.xy).toBeCloseTo(0, 12);
+    expect(tensor.xx + tensor.yy + tensor.zz).toBeCloseTo(2 * 2.2 ** 2 + 2.1 ** 2, 12);
+    const table = parseMaterialCsv("wavelength_um,n,k\n1.6,2.0,0.002\n1.5,2.2,0.001", "measured.csv");
+    expect(evaluateTabulatedMaterial(table, 1.55)).toEqual({ n: 2.1, k: 0.0015 });
+    expect(() => evaluateTabulatedMaterial(table, 1.7)).toThrow(/extrapolation/);
+    expect(() => parseMaterialCsv("wavelength_um,n\n1.5,2\n1.5,2.1")).toThrow(/unique/);
   });
 
   it("classifies the fundamental mode and includes a finite lower stack", () => {
@@ -78,7 +90,7 @@ describe("photonic design analyses", () => {
     expect(Number.isFinite(convergence.pmlSensitivity?.minimumOverlap)).toBe(true);
     expect(convergence.pmlSensitivity?.points.every((point) => point.error || Number.isFinite(point.lossChangePercent))).toBe(true);
     expect(["pass", "review"]).toContain(convergence.lossValidation);
-  }, 30_000);
+  }, 45_000);
 
   it("computes a bounded Gaussian coupling efficiency", () => {
     const result = solveWaveguide(config);

@@ -248,6 +248,13 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .material-selectors { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 9px; }
 .material-selectors .select-field { margin-top: 0; }
 .material-sources a { color: var(--teal); font-weight: 700; }
+.material-table-imports { margin-top: 12px; display: grid; gap: 8px; }
+.material-csv-input { min-height: 58px; padding: 10px 12px; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; align-items: center; color: #53666c; background: #f5f8f6; border: 1px dashed #b8cac6; border-radius: 10px; cursor: pointer; }
+.material-csv-input span { grid-row: 1 / 3; color: var(--teal); font-size: 0.72rem; font-weight: 800; }
+.material-csv-input strong { overflow-wrap: anywhere; color: #31515a; font-size: 0.74rem; }
+.material-csv-input small { color: #78898d; font-size: 0.66rem; }
+.material-csv-input input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.material-csv-input:focus-within { outline: 2px solid var(--teal); outline-offset: 2px; }
 .stack-editor { margin-top: 12px; display: grid; gap: 10px; }
 .stack-layer { padding: 12px; display: grid; grid-template-columns: minmax(90px, 1fr) minmax(120px, 1.2fr); gap: 9px; background: #f5f8f6; border: 1px solid #dce5e2; border-radius: 10px; }
 .stack-layer > label { display: grid; gap: 7px; color: #53666c; font-size: 0.76rem; font-weight: 600; }

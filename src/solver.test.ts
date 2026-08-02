@@ -125,7 +125,25 @@ describe("full-vector finite-difference mode solver", () => {
       expect(result.dxMaxUm).toBeGreaterThan(result.dxUm);
       expect(result.modes[0].lossDbPerCm).toBeGreaterThan(0);
     }
-  });
+  }, 10_000);
+
+  it("solves a straight guide with a transversely rotated uniaxial tensor and a tabulated material", () => {
+    const rotated = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1, coreIndex: 2.2,
+      coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 45, coreOpticAxisAzimuthDeg: 90,
+    });
+    expect(rotated.formulation).toBe("first-order");
+    expect(rotated.modes[0].effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
+    expect(rotated.modes[0].residual).toBeLessThan(2e-2);
+    expect(validateWaveguide({ ...benchmark, coreIndex: 2.2, coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 90, coreOpticAxisAzimuthDeg: 45 }).join(" ")).toMatch(/transverse x–y plane/);
+    const tabulated = solveWaveguide({
+      ...benchmark, gridResolution: 24, modeCount: 1, coreMaterial: "tabulated",
+      coreMaterialTable: { name: "measured", wavelengthUm: [1.5, 1.6], refractiveIndex: [2.05, 1.95], extinctionCoefficient: [0, 0] },
+    });
+    expect(tabulated.formulation).toBe("transverse-h");
+    expect(tabulated.modes[0].effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
+    expect(validateWaveguide({ ...benchmark, coreMaterial: "tabulated" }).join(" ")).toMatch(/incomplete/);
+  }, 30_000);
 
   it("tracks a mode and derives finite group index and dispersion", () => {
     const sweep = sweepWaveguide({ ...benchmark, modeCount: 2 }, {

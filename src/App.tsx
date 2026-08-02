@@ -7,7 +7,11 @@ import { parseNumericInput } from "./numericInput";
 import { runSolverWorker } from "./workerClient";
 import { AdvancedAnalyses } from "./AdvancedAnalyses";
 import packageJson from "../package.json";
-import { MATERIALS, evaluateMaterialAxes, materialDefinition, type MaterialId, type OpticAxis } from "./materials";
+import {
+  MATERIALS, evaluateMaterialAxes, evaluateMaterialPrincipalIndices, evaluateTabulatedMaterial, materialDefinition,
+  opticAxisDirection, parseMaterialCsv, uniaxialPermittivityTensor,
+  type MaterialId, type OpticAxis, type TabulatedMaterialData,
+} from "./materials";
 import {
   validateWaveguide,
   PARAMETER_MAXIMUMS,
@@ -161,8 +165,27 @@ export function App() {
     setDraft((current) => ({
       ...current,
       [materialKey]: materialId,
-      [indexKey]: displayMaterialIndex(materialId, current.wavelengthUm, current[indexKey] ?? current.claddingIndex, current.materialTemperatureC, materialKey === "coreMaterial" ? current.coreOpticAxis : materialKey === "claddingMaterial" ? current.claddingOpticAxis : current.substrateOpticAxis, materialKey === "coreMaterial" ? current.coreElectricFieldVPerUm : 0),
+      [indexKey]: displayMaterialIndex(materialId, current.wavelengthUm, current[indexKey] ?? current.claddingIndex, current.materialTemperatureC, materialKey === "coreMaterial" ? current.coreOpticAxis : materialKey === "claddingMaterial" ? current.claddingOpticAxis : current.substrateOpticAxis, materialKey === "coreMaterial" ? current.coreElectricFieldVPerUm : 0, materialKey === "coreMaterial" ? current.coreMaterialTable : materialKey === "claddingMaterial" ? current.claddingMaterialTable : current.substrateMaterialTable),
     }));
+  }
+
+  async function importMaterialCsv(region: "core" | "cladding" | "substrate", event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const table = parseMaterialCsv(await file.text(), file.name);
+      const sample = evaluateTabulatedMaterial(table, draft.wavelengthUm);
+      setDraft((current) => region === "core"
+        ? { ...current, coreMaterial: "tabulated", coreMaterialTable: table, coreIndex: sample.n, coreExtinction: sample.k }
+        : region === "cladding"
+          ? { ...current, claddingMaterial: "tabulated", claddingMaterialTable: table, claddingIndex: sample.n, claddingExtinction: sample.k }
+          : { ...current, substrateMaterial: "tabulated", substrateMaterialTable: table, substrateIndex: sample.n, substrateExtinction: sample.k });
+      setError("");
+      setMessage(`${table.name} imported at ${table.wavelengthUm.length} wavelengths. Solve to apply it.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The material CSV could not be imported.");
+    }
   }
 
   function updateStackLayer(index: number, update: Partial<VerticalLayer>) {
@@ -348,7 +371,7 @@ export function App() {
               <div className="stack-editor">
                 {(draft.stackLayers ?? []).map((layer, index) => <div className="stack-layer" key={`${index}-${layer.name}`}>
                   <label>Layer name<input value={layer.name} onChange={(event) => updateStackLayer(index, { name: event.target.value })} /></label>
-                  <MaterialSelect label="Material" value={layer.material} onChange={(material) => updateStackLayer(index, { material, index: displayMaterialIndex(material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis) })} />
+                  <MaterialSelect label="Material" value={layer.material} allowTabulated={false} onChange={(material) => updateStackLayer(index, { material, index: displayMaterialIndex(material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis) })} />
                   <NumberField label="Thickness" unit="µm" value={layer.thicknessUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.05} onChange={(value) => updateStackLayer(index, { thicknessUm: value })} />
                   <NumberField label="Index" unit="n" value={displayMaterialIndex(layer.material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={layer.material !== "custom"} onChange={(value) => updateStackLayer(index, { index: value })} />
                   <button type="button" className="remove-layer" onClick={() => removeStackLayer(index)} aria-label={`Remove ${layer.name}`}>Remove</button>
@@ -358,15 +381,22 @@ export function App() {
             </details>
             <details className="advanced-controls">
               <summary>Materials & mesh</summary>
+              <div className="material-table-imports">
+                {(draft.coreMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Core" table={draft.coreMaterialTable} onChange={(event) => void importMaterialCsv("core", event)} />}
+                {(draft.claddingMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Cladding" table={draft.claddingMaterialTable} onChange={(event) => void importMaterialCsv("cladding", event)} />}
+                {(draft.substrateMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Substrate" table={draft.substrateMaterialTable} onChange={(event) => void importMaterialCsv("substrate", event)} />}
+              </div>
               <div className="form-grid">
                 <NumberField label="Core nᵧ" unit="n" value={displayMaterialAxis(draft, "core", "y")} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexY", v)} />
                 <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={displayMaterialAxis(draft, "core", "z")} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexZ", v)} />
                 <NumberField label="Cladding nᵧ" unit="n" value={displayMaterialAxis(draft, "cladding", "y")} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndexY", v)} />
                 <NumberField label={<>Cladding n<sub>z</sub></>} unit="n" value={displayMaterialAxis(draft, "cladding", "z")} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndexZ", v)} />
-                {materialDefinition(draft.coreMaterial ?? "custom").anisotropic && <label className="select-field">Core optic axis<select value={draft.coreOpticAxis ?? "y"} onChange={(event) => setDraft((current) => ({ ...current, coreOpticAxis: event.target.value as OpticAxis }))}><option value="x">x (in plane)</option><option value="y">y (vertical / Z-cut)</option><option value="z">z (propagation)</option></select></label>}
+                {materialDefinition(draft.coreMaterial ?? "custom").anisotropic && <>
+                  <NumberField label="Transverse optic-axis angle" unit="° from +y to +x" value={draft.coreOpticAxisTiltDeg ?? legacyOpticAxisTilt(draft.coreOpticAxis)} min={0} max={90} step={1} onChange={(v) => setDraft((current) => ({ ...current, coreOpticAxisTiltDeg: v, coreOpticAxisAzimuthDeg: 90 }))} />
+                </>}
                 {(draft.coreMaterial ?? "custom") === "lithium-niobate" && <><NumberField label="LiNbO₃ temperature" unit="°C" value={draft.materialTemperatureC ?? 21} min={20} max={240} step={1} onChange={(v) => updateNumber("materialTemperatureC", v)} /><NumberField label="DC field along optic axis" unit="V/µm" value={draft.coreElectricFieldVPerUm ?? 0} min={-100} max={100} step={0.1} onChange={(v) => updateNumber("coreElectricFieldVPerUm", v)} /></>}
-                <NumberField label="Core κ" unit="Im(n)" value={draft.coreExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("coreExtinction", v)} />
-                <NumberField label="Cladding κ" unit="Im(n)" value={draft.claddingExtinction ?? 0} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} onChange={(v) => updateNumber("claddingExtinction", v)} />
+                <NumberField label="Core κ" unit="Im(n)" value={displayMaterialExtinction(draft, "core")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.coreMaterial ?? "custom") === "tabulated"} onChange={(v) => updateNumber("coreExtinction", v)} />
+                <NumberField label="Cladding κ" unit="Im(n)" value={displayMaterialExtinction(draft, "cladding")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.claddingMaterial ?? "custom") === "tabulated"} onChange={(v) => updateNumber("claddingExtinction", v)} />
                 <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />
                 <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
                 {(draft.geometry ?? "channel") === "multilayer" && <>
@@ -384,7 +414,7 @@ export function App() {
                 </>}
               </div>
               <MaterialSources config={draft} />
-              <p>Diagonal complex tensor ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²]. Sidewall angle is measured from the substrate plane (90° is vertical). LiNbO₃ temperature and Pockels controls are uniform-material approximations, not thermal or electrode solves.</p>
+              <p>Uniaxial built-in materials use ε = εₒI + (εₑ − εₒ)aaᵀ. The transverse optic-axis angle is measured from vertical +y toward +x, with propagation z kept as a principal axis. Imported CSV data use wavelength_um,n,k with linear interpolation and no extrapolation. Off-diagonal tensors are currently limited to straight, lossless guides with hard boundaries.</p>
             </details>
             <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
             <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}
@@ -451,7 +481,7 @@ export function App() {
       <AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} />
 
       <section className="validation-section">
-        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver discretizes all six Maxwell field components on a Yee grid in local cylindrical coordinates. The metric 1 + x/R is retained explicitly, so curvature is not replaced by an equivalent-index approximation.</> : <>The straight solver discretizes Maxwell’s equations on a transverse Yee grid and solves the coupled eigenproblem for <i>H</i><sub>x</sub> and <i>H</i><sub>y</sub>.</>} Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation">{(config.bendRadiusUm ?? 0) > 0 ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, non-magnetic dielectrics with diagonal anisotropy and constant bend radius. Use the stretched-coordinate PML and repeat padding, PML and mesh sweeps before interpreting leakage or material attenuation quantitatively.</p></div>
+        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver discretizes all six Maxwell field components on a Yee grid in local cylindrical coordinates. The metric 1 + x/R is retained explicitly, so curvature is not replaced by an equivalent-index approximation.</> : result?.formulation === "first-order" ? <>The rotated-tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining the symmetric transverse permittivity tensor.</> : <>The straight diagonal-tensor solver uses the coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, non-magnetic dielectrics; transverse x–y tensor rotation is supported for straight, lossless guides with z as a principal axis. Constant-radius bends require a diagonal local tensor. Use PML and repeat padding, absorber and mesh sweeps before interpreting attenuation quantitatively.</p></div>
         <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Mode classification</dt><dd>{mode.label}</dd></div><div><dt>x/y symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
       </section>
     </main>
@@ -463,21 +493,33 @@ function NumberField({ label, unit, value, min, max, step, disabled = false, onC
   return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} onChange={(event) => onChange(parseNumericInput(event.target.value))} /><small>{unit}</small></div></label>;
 }
 
-function MaterialSelect({ label, value, onChange }: { label: string; value: MaterialId; onChange: (value: MaterialId) => void }) {
-  return <label className="select-field">{label}<select value={value} onChange={(event) => onChange(event.target.value as MaterialId)}>{MATERIALS.map((material) => <option value={material.id} key={material.id}>{material.name}</option>)}</select></label>;
+function MaterialSelect({ label, value, allowTabulated = true, onChange }: { label: string; value: MaterialId; allowTabulated?: boolean; onChange: (value: MaterialId) => void }) {
+  return <label className="select-field">{label}<select value={value} onChange={(event) => onChange(event.target.value as MaterialId)}>{MATERIALS.filter((material) => allowTabulated || material.id !== "tabulated").map((material) => <option value={material.id} key={material.id}>{material.name}</option>)}</select></label>;
+}
+
+function MaterialCsvInput({ region, table, onChange }: { region: string; table?: TabulatedMaterialData; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
+  const range = table ? `${table.wavelengthUm[0]}–${table.wavelengthUm[table.wavelengthUm.length - 1]} µm · ${table.wavelengthUm.length} rows` : "wavelength_um,n,k";
+  return <label className="material-csv-input"><span>{region} CSV</span><strong>{table?.name ?? "Choose file"}</strong><small>{range}</small><input type="file" accept=".csv,text/csv" onChange={onChange} /></label>;
 }
 
 function MaterialSources({ config }: { config: WaveguideConfig }) {
   const substrateActive = (config.geometry ?? "channel") === "multilayer" || (config.stackLayers?.length ?? 0) > 0;
   const selected = [...new Set([config.coreMaterial, config.claddingMaterial, ...(substrateActive ? [config.substrateMaterial] : []), ...(config.stackLayers ?? []).map((layer) => layer.material)])]
-    .filter((id): id is MaterialId => Boolean(id && id !== "custom"))
+    .filter((id): id is MaterialId => Boolean(id && id !== "custom" && id !== "tabulated"))
     .map(materialDefinition);
-  if (selected.length === 0) return null;
-  return <p className="material-sources">Models: {selected.map((material, index) => <span key={material.id}>{index > 0 && " · "}{material.sourceUrl ? <a href={material.sourceUrl} target="_blank" rel="noreferrer">{material.sourceLabel}</a> : material.name} ({material.minimumWavelengthUm}–{material.maximumWavelengthUm} µm)</span>)}</p>;
+  const imported = [config.coreMaterial === "tabulated" ? config.coreMaterialTable : undefined,
+    config.claddingMaterial === "tabulated" ? config.claddingMaterialTable : undefined,
+    ...(substrateActive && config.substrateMaterial === "tabulated" ? [config.substrateMaterialTable] : [])]
+    .filter((table): table is TabulatedMaterialData => Boolean(table));
+  if (selected.length === 0 && imported.length === 0) return null;
+  return <p className="material-sources">Models: {selected.map((material, index) => <span key={material.id}>{index > 0 && " · "}{material.sourceUrl ? <a href={material.sourceUrl} target="_blank" rel="noreferrer">{material.sourceLabel}</a> : material.name} ({material.minimumWavelengthUm}–{material.maximumWavelengthUm} µm)</span>)}{imported.map((table) => <span key={table.name}> · {table.name} ({table.wavelengthUm[0]}–{table.wavelengthUm[table.wavelengthUm.length - 1]} µm)</span>)}</p>;
 }
 
-function displayMaterialIndex(materialId: MaterialId | undefined, wavelengthUm: number, fallback: number, temperatureC = 21, opticAxis: OpticAxis = "y", electricFieldVPerUm = 0): number {
+function displayMaterialIndex(materialId: MaterialId | undefined, wavelengthUm: number, fallback: number, temperatureC = 21, opticAxis: OpticAxis = "y", electricFieldVPerUm = 0, table?: TabulatedMaterialData): number {
   if (!materialId || materialId === "custom") return fallback;
+  if (materialId === "tabulated") {
+    try { return evaluateTabulatedMaterial(table as TabulatedMaterialData, wavelengthUm).n; } catch { return fallback; }
+  }
   try { return evaluateMaterialAxes(materialId, wavelengthUm, temperatureC, opticAxis, electricFieldVPerUm).nx; } catch { return fallback; }
 }
 
@@ -488,12 +530,32 @@ function displayMaterialAxis(config: WaveguideConfig, region: "core" | "cladding
     return axis === "y" ? (region === "core" ? config.coreIndexY : config.claddingIndexY) ?? fallback
       : axis === "z" ? (region === "core" ? config.coreIndexZ : config.claddingIndexZ) ?? fallback : fallback;
   }
+  if (materialId === "tabulated") {
+    const table = region === "core" ? config.coreMaterialTable : config.claddingMaterialTable;
+    try { return evaluateTabulatedMaterial(table as TabulatedMaterialData, config.wavelengthUm).n; } catch { return fallback; }
+  }
   try {
-    const axes = evaluateMaterialAxes(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21,
-      region === "core" ? config.coreOpticAxis : config.claddingOpticAxis,
-      region === "core" ? config.coreElectricFieldVPerUm : 0);
-    return axes[`n${axis}`];
+    const opticAxis = region === "core" ? config.coreOpticAxis : config.claddingOpticAxis;
+    const tilt = region === "core" ? config.coreOpticAxisTiltDeg : config.claddingOpticAxisTiltDeg;
+    const azimuth = region === "core" ? config.coreOpticAxisAzimuthDeg : config.claddingOpticAxisAzimuthDeg;
+    if (tilt !== undefined || azimuth !== undefined) {
+      const principal = evaluateMaterialPrincipalIndices(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21, region === "core" ? config.coreElectricFieldVPerUm : 0);
+      const tensor = uniaxialPermittivityTensor(principal.ordinary, principal.extraordinary, opticAxisDirection(opticAxis, tilt, azimuth));
+      return Math.sqrt(tensor[axis === "x" ? "xx" : axis === "y" ? "yy" : "zz"]);
+    }
+    return evaluateMaterialAxes(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21, opticAxis, region === "core" ? config.coreElectricFieldVPerUm : 0)[`n${axis}`];
   } catch { return fallback; }
+}
+
+function displayMaterialExtinction(config: WaveguideConfig, region: "core" | "cladding"): number {
+  const materialId = region === "core" ? config.coreMaterial : config.claddingMaterial;
+  if (materialId !== "tabulated") return (region === "core" ? config.coreExtinction : config.claddingExtinction) ?? 0;
+  const table = region === "core" ? config.coreMaterialTable : config.claddingMaterialTable;
+  try { return evaluateTabulatedMaterial(table as TabulatedMaterialData, config.wavelengthUm).k; } catch { return 0; }
+}
+
+function legacyOpticAxisTilt(axis: OpticAxis = "y"): number {
+  return axis === "y" ? 0 : 90;
 }
 
 function Metric({ label, value }: { label: ReactNode; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }

@@ -1,5 +1,9 @@
 import { EigenvalueDecomposition, Matrix } from "ml-matrix";
-import { evaluateMaterialAxes, materialDefinition, type MaterialId, type OpticAxis } from "./materials";
+import {
+  evaluateMaterialPrincipalIndices, evaluateTabulatedMaterial, materialDefinition,
+  opticAxisDirection, uniaxialPermittivityTensor, validateTabulatedMaterial,
+  type MaterialId, type OpticAxis, type SymmetricTensor, type TabulatedMaterialData,
+} from "./materials";
 
 export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity" | "poynting";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
@@ -15,6 +19,8 @@ export interface VerticalLayer {
   indexZ?: number;
   extinction?: number;
   opticAxis?: OpticAxis;
+  opticAxisTiltDeg?: number;
+  opticAxisAzimuthDeg?: number;
 }
 
 export const PARAMETER_MAXIMUMS = {
@@ -70,6 +76,15 @@ export interface WaveguideConfig {
   coreOpticAxis?: OpticAxis;
   claddingOpticAxis?: OpticAxis;
   substrateOpticAxis?: OpticAxis;
+  coreOpticAxisTiltDeg?: number;
+  coreOpticAxisAzimuthDeg?: number;
+  claddingOpticAxisTiltDeg?: number;
+  claddingOpticAxisAzimuthDeg?: number;
+  substrateOpticAxisTiltDeg?: number;
+  substrateOpticAxisAzimuthDeg?: number;
+  coreMaterialTable?: TabulatedMaterialData;
+  claddingMaterialTable?: TabulatedMaterialData;
+  substrateMaterialTable?: TabulatedMaterialData;
   coreElectricFieldVPerUm?: number;
   stackLayers?: VerticalLayer[];
   bendRadiusUm?: number;
@@ -119,6 +134,7 @@ export interface SolverResult {
   dyMaxUm: number;
   warnings: string[];
   arnoldiDimension: number;
+  formulation: "transverse-h" | "first-order";
 }
 
 export interface SweepSettings {
@@ -192,6 +208,8 @@ interface Grid {
   epsilonCellXImaginary: Float64Array;
   epsilonCellYImaginary: Float64Array;
   epsilonCellZImaginary: Float64Array;
+  epsilonCellXY: Float64Array;
+  epsilonCellXYImaginary: Float64Array;
   cellArea: Float64Array;
   coreFraction: Float64Array;
   extinctionCell: Float64Array;
@@ -224,6 +242,8 @@ interface OperatorContext {
   complex: boolean;
   physicalVectorSize: number;
   eigenvaluePower: 1 | 2;
+  formulation: "transverse-h" | "first-order";
+  linearSolver: "bicgstab" | "gmres";
 }
 
 interface RitzPair {
@@ -271,6 +291,8 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.substrateExtinction, config.coreDispersionPerUm, config.claddingDispersionPerUm,
     config.substrateDispersionPerUm, config.meshBias, config.coreIndexOffset,
     config.sidewallAngleDeg, config.materialTemperatureC, config.coreElectricFieldVPerUm, config.bendRadiusUm,
+    config.coreOpticAxisTiltDeg, config.coreOpticAxisAzimuthDeg, config.claddingOpticAxisTiltDeg,
+    config.claddingOpticAxisAzimuthDeg, config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg,
   ].every((value) => value === undefined || Number.isFinite(value));
   if (!finiteOptional) errors.push("Optional material and mesh values must be finite.");
   if ([config.coreExtinction ?? 0, config.claddingExtinction ?? 0, config.substrateExtinction ?? 0]
@@ -315,6 +337,14 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if ((config.materialTemperatureC ?? 21) < -200 || (config.materialTemperatureC ?? 21) > 500) errors.push("Material temperature must be between -200 and 500 °C.");
   if ((config.coreMaterial ?? "custom") === "lithium-niobate" && ((config.materialTemperatureC ?? 21) < 20 || (config.materialTemperatureC ?? 21) > 240)) errors.push("The LiNbO₃ thermo-optic fit is limited to 20–240 °C.");
   if (Math.abs(config.coreElectricFieldVPerUm ?? 0) > 100) errors.push("The uniform optical-axis electric field must stay within ±100 V/µm.");
+  const orientations = [
+    [config.coreOpticAxisTiltDeg, config.coreOpticAxisAzimuthDeg],
+    [config.claddingOpticAxisTiltDeg, config.claddingOpticAxisAzimuthDeg],
+    [config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg],
+    ...(config.stackLayers ?? []).map((layer) => [layer.opticAxisTiltDeg, layer.opticAxisAzimuthDeg]),
+  ];
+  if (orientations.some(([tilt]) => tilt !== undefined && (tilt < 0 || tilt > 90))) errors.push("Optic-axis tilt must be between 0° and 90° from the vertical y axis.");
+  if (orientations.some(([, azimuth]) => azimuth !== undefined && (azimuth < -180 || azimuth > 180))) errors.push("Optic-axis azimuth must be between −180° and 180° from the propagation z axis toward +x.");
   if ((config.coreMaterial ?? "custom") === "lithium-niobate" && Math.abs(config.coreElectricFieldVPerUm ?? 0) > 0
     && (config.wavelengthUm < 1.3 || config.wavelengthUm > 1.6)) errors.push("The built-in LiNbO₃ electro-optic coefficients are limited to 1.3–1.6 µm.");
   const stackLayers = config.stackLayers ?? [];
@@ -322,10 +352,28 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if (stackLayers.some((layer) => !layer.name.trim() || !Number.isFinite(layer.thicknessUm) || layer.thicknessUm <= 0
     || layer.thicknessUm > PARAMETER_MAXIMUMS.dimensionUm || !Number.isFinite(layer.index) || layer.index < 1
     || layer.index > PARAMETER_MAXIMUMS.refractiveIndex || !Number.isFinite(layer.extinction ?? 0)
+    || !Number.isFinite(layer.opticAxisTiltDeg ?? 0) || !Number.isFinite(layer.opticAxisAzimuthDeg ?? 0)
     || (layer.extinction ?? 0) < 0 || (layer.extinction ?? 0) > PARAMETER_MAXIMUMS.extinction)) {
     errors.push("Every stack layer needs a name, positive thickness, valid refractive index and non-negative extinction.");
   }
+  if (stackLayers.some((layer) => layer.material === "tabulated")) errors.push("Imported material tables are available for the core, cladding and base substrate, not finite stack layers.");
   if (stackLayers.reduce((sum, layer) => sum + layer.thicknessUm, 0) >= config.paddingUm) errors.push("The finite stack must be thinner than the lower cladding padding so the base substrate is sampled.");
+  let materialTablesValid = true;
+  const tables: Array<[string, MaterialId | undefined, TabulatedMaterialData | undefined]> = [
+    ["Core", config.coreMaterial, config.coreMaterialTable],
+    ["Cladding", config.claddingMaterial, config.claddingMaterialTable],
+    ["Substrate", config.substrateMaterial, config.substrateMaterialTable],
+  ];
+  for (const [region, materialId, table] of tables) {
+    if (materialId !== "tabulated") continue;
+    try {
+      validateTabulatedMaterial(table);
+      evaluateTabulatedMaterial(table as TabulatedMaterialData, config.wavelengthUm);
+    } catch (caught) {
+      errors.push(`${region}: ${caught instanceof Error ? caught.message : "invalid imported material table."}`);
+      materialTablesValid = false;
+    }
+  }
   let materialModelsValid = true;
   const selectedMaterialIds = new Set([config.coreMaterial, config.claddingMaterial,
     ...((config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? [config.substrateMaterial] : []),
@@ -339,7 +387,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
       }
     }
   }
-  if (finiteOptional && materialModelsValid) {
+  if (finiteOptional && materialModelsValid && materialTablesValid) {
     const materials = materialValues(config);
     const materialList = [materials.core, materials.cladding, materials.substrate, ...materials.layers];
     const indices = materialList.flatMap((material) => [material.nx, material.ny, material.nz]);
@@ -349,6 +397,14 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
       (config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? Math.max(materials.substrate.nx, materials.substrate.ny, materials.substrate.nz) : 0,
       ...materials.layers.flatMap((material) => [material.nx, material.ny, material.nz]));
     if (coreMaximum <= exteriorMaximum) errors.push("The core must retain a larger principal index than the exterior materials.");
+    const hasLongitudinalCoupling = materialList.some((material) => [material.epsilonReal.xz, material.epsilonReal.yz, material.epsilonImaginary.xz, material.epsilonImaginary.yz].some((value) => Math.abs(value) > 1e-12));
+    const hasTransverseRotation = materialList.some((material) => Math.abs(material.epsilonReal.xy) > 1e-12 || Math.abs(material.epsilonImaginary.xy) > 1e-12);
+    const hasMaterialLoss = materialList.some((material) => Object.values(material.epsilonImaginary).some((value) => Math.abs(value) > 1e-12));
+    if (hasLongitudinalCoupling) errors.push("The browser solver currently supports rotated anisotropy only in the transverse x–y plane, with z remaining a principal propagation axis.");
+    if (hasTransverseRotation && (hasMaterialLoss || (config.boundary ?? "hard") === "pml")) errors.push("Transversely rotated anisotropy currently requires lossless materials and a hard outer boundary.");
+    if (bendRadiusUm > 0 && materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary))) {
+      errors.push("Rotated off-diagonal anisotropy is currently limited to straight guides; a constant local tensor is not rigorous along a curved crystal path.");
+    }
   }
   return errors;
 }
@@ -360,11 +416,14 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
   const grid = createGrid(config);
   const operator = (config.bendRadiusUm ?? 0) > 0
     ? createBendOperator(grid, config)
-    : createVectorOperator(grid, config.wavelengthUm);
+    : gridHasOffDiagonalTensor(grid) ? createTensorOperator(grid, config.wavelengthUm)
+      : createVectorOperator(grid, config.wavelengthUm);
   const requestedRitzPairs = Math.max(config.modeCount * (operator.eigenvaluePower === 1 ? 4 : 3), operator.eigenvaluePower === 1 ? 10 : 8);
   const arnoldiDimension = Math.min(
     operator.physicalVectorSize * (operator.complex ? 2 : 1) - 1,
-    Math.max(operator.complex ? (operator.eigenvaluePower === 1 ? 48 : 28) : 16, config.modeCount * (operator.complex ? 12 : 7) + (operator.eigenvaluePower === 1 ? 8 : 0)),
+    operator.formulation === "first-order" && (config.bendRadiusUm ?? 0) === 0
+      ? Math.max(32, config.modeCount * 10 + 12)
+      : Math.max(operator.complex ? (operator.eigenvaluePower === 1 ? 48 : 28) : 16, config.modeCount * (operator.complex ? 12 : 7) + (operator.eigenvaluePower === 1 ? 8 : 0)),
   );
   const pairs = solveLargestEigenpairs(operator, arnoldiDimension, requestedRitzPairs, config);
   const { exteriorIndex, maximumIndex } = guidanceBounds(config);
@@ -382,7 +441,7 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
   const modes = convergedPairs
     .slice(0, config.modeCount)
     .map((pair, index) => operator.eigenvaluePower === 1
-      ? buildBendMode(pair, index, config, operator)
+      ? buildFirstOrderMode(pair, index, config, operator)
       : buildMode(pair, index, config, operator));
 
   const warnings: string[] = [];
@@ -415,6 +474,7 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
     dyMaxUm: Math.max(...grid.dyCell),
     warnings,
     arnoldiDimension,
+    formulation: operator.formulation,
   };
 }
 
@@ -564,25 +624,87 @@ function sameModeFamily(first: WaveguideMode, second: WaveguideMode): boolean {
     && first.verticalOrder === second.verticalOrder;
 }
 
+interface MaterialValue {
+  nx: number;
+  ny: number;
+  nz: number;
+  k: number;
+  epsilonReal: SymmetricTensor;
+  epsilonImaginary: SymmetricTensor;
+}
+
 function materialValues(config: WaveguideConfig) {
   const reference = config.materialReferenceWavelengthUm ?? config.wavelengthUm;
   const offset = config.wavelengthUm - reference;
   const values = (
     materialId: MaterialId | undefined, base: number, ny: number | undefined, nz: number | undefined,
     k: number | undefined, slope: number | undefined, opticAxis: OpticAxis | undefined,
-    indexOffset = 0, electricFieldVPerUm = 0,
-  ) => {
-    const axes = materialId && materialId !== "custom"
-      ? evaluateMaterialAxes(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21, opticAxis ?? "y", electricFieldVPerUm)
-      : { nx: base + (slope ?? 0) * offset, ny: (ny ?? base) + (slope ?? 0) * offset, nz: (nz ?? base) + (slope ?? 0) * offset };
-    return { nx: axes.nx + indexOffset, ny: axes.ny + indexOffset, nz: axes.nz + indexOffset, k: k ?? 0 };
+    indexOffset = 0, electricFieldVPerUm = 0, tiltDeg?: number, azimuthDeg?: number, table?: TabulatedMaterialData,
+  ): MaterialValue => {
+    if (materialId === "tabulated") {
+      const sample = evaluateTabulatedMaterial(table as TabulatedMaterialData, config.wavelengthUm);
+      return diagonalMaterial(sample.n + indexOffset, sample.n + indexOffset, sample.n + indexOffset, sample.k);
+    }
+    if (materialId && materialId !== "custom") {
+      const principal = evaluateMaterialPrincipalIndices(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21, electricFieldVPerUm);
+      const ordinary = principal.ordinary + indexOffset;
+      const extraordinary = principal.extraordinary + indexOffset;
+      const axis = opticAxisDirection(opticAxis ?? "y", tiltDeg, azimuthDeg);
+      const epsilonReal = uniaxialPermittivityTensor(ordinary, extraordinary, axis);
+      const extinction = k ?? 0;
+      epsilonReal.xx -= extinction ** 2;
+      epsilonReal.yy -= extinction ** 2;
+      epsilonReal.zz -= extinction ** 2;
+      const ordinaryImaginary = 2 * ordinary * extinction;
+      const imaginaryContrast = 2 * extinction * (extraordinary - ordinary);
+      const [x, y, z] = axis;
+      const epsilonImaginary = {
+        xx: ordinaryImaginary + imaginaryContrast * x ** 2,
+        yy: ordinaryImaginary + imaginaryContrast * y ** 2,
+        zz: ordinaryImaginary + imaginaryContrast * z ** 2,
+        xy: imaginaryContrast * x * y,
+        xz: imaginaryContrast * x * z,
+        yz: imaginaryContrast * y * z,
+      };
+      return {
+        nx: complexIndexValue(epsilonReal.xx, epsilonImaginary.xx),
+        ny: complexIndexValue(epsilonReal.yy, epsilonImaginary.yy),
+        nz: complexIndexValue(epsilonReal.zz, epsilonImaginary.zz),
+        k: extinction,
+        epsilonReal,
+        epsilonImaginary,
+      };
+    }
+    return diagonalMaterial(
+      base + (slope ?? 0) * offset + indexOffset,
+      (ny ?? base) + (slope ?? 0) * offset + indexOffset,
+      (nz ?? base) + (slope ?? 0) * offset + indexOffset,
+      k ?? 0,
+    );
   };
   return {
-    core: values(config.coreMaterial, config.coreIndex, config.coreIndexY, config.coreIndexZ, config.coreExtinction, config.coreDispersionPerUm, config.coreOpticAxis, config.coreIndexOffset ?? 0, config.coreElectricFieldVPerUm),
-    cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm, config.claddingOpticAxis),
-    substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm, config.substrateOpticAxis),
-    layers: (config.stackLayers ?? []).map((layer) => values(layer.material, layer.index, layer.indexY, layer.indexZ, layer.extinction, 0, layer.opticAxis)),
+    core: values(config.coreMaterial, config.coreIndex, config.coreIndexY, config.coreIndexZ, config.coreExtinction, config.coreDispersionPerUm, config.coreOpticAxis, config.coreIndexOffset ?? 0, config.coreElectricFieldVPerUm, config.coreOpticAxisTiltDeg, config.coreOpticAxisAzimuthDeg, config.coreMaterialTable),
+    cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm, config.claddingOpticAxis, 0, 0, config.claddingOpticAxisTiltDeg, config.claddingOpticAxisAzimuthDeg, config.claddingMaterialTable),
+    substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm, config.substrateOpticAxis, 0, 0, config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg, config.substrateMaterialTable),
+    layers: (config.stackLayers ?? []).map((layer) => values(layer.material, layer.index, layer.indexY, layer.indexZ, layer.extinction, 0, layer.opticAxis, 0, 0, layer.opticAxisTiltDeg, layer.opticAxisAzimuthDeg)),
   };
+}
+
+function diagonalMaterial(nx: number, ny: number, nz: number, k: number): MaterialValue {
+  const zero = { xy: 0, xz: 0, yz: 0 };
+  return {
+    nx, ny, nz, k,
+    epsilonReal: { xx: nx ** 2 - k ** 2, yy: ny ** 2 - k ** 2, zz: nz ** 2 - k ** 2, ...zero },
+    epsilonImaginary: { xx: 2 * nx * k, yy: 2 * ny * k, zz: 2 * nz * k, ...zero },
+  };
+}
+
+function complexIndexValue(permittivityReal: number, permittivityImaginary: number): number {
+  return Math.sqrt((Math.hypot(permittivityReal, permittivityImaginary) + permittivityReal) / 2);
+}
+
+function tensorHasOffDiagonal(real: SymmetricTensor, imaginary: SymmetricTensor): boolean {
+  return [real.xy, real.xz, real.yz, imaginary.xy, imaginary.xz, imaginary.yz].some((value) => Math.abs(value) > 1e-12);
 }
 
 function guidanceBounds(config: WaveguideConfig): { exteriorIndex: number; maximumIndex: number } {
@@ -847,6 +969,8 @@ function createGrid(config: WaveguideConfig): Grid {
   const epsilonCellXImaginary = new Float64Array(nx * ny);
   const epsilonCellYImaginary = new Float64Array(nx * ny);
   const epsilonCellZImaginary = new Float64Array(nx * ny);
+  const epsilonCellXY = new Float64Array(nx * ny);
+  const epsilonCellXYImaginary = new Float64Array(nx * ny);
   const epsilonCell = new Float64Array(nx * ny);
   const extinctionCell = new Float64Array(nx * ny);
   const cellArea = new Float64Array(nx * ny);
@@ -867,12 +991,14 @@ function createGrid(config: WaveguideConfig): Grid {
         ...stack.layers.map((fraction, layerIndex) => ({ fraction, value: material.layers[layerIndex] })),
       ];
       coreFraction[index] = core;
-      epsilonCellX[index] = components.reduce((sum, component) => sum + component.fraction * (component.value.nx ** 2 - component.value.k ** 2), 0);
-      epsilonCellY[index] = components.reduce((sum, component) => sum + component.fraction * (component.value.ny ** 2 - component.value.k ** 2), 0);
-      epsilonCellZ[index] = components.reduce((sum, component) => sum + component.fraction * (component.value.nz ** 2 - component.value.k ** 2), 0);
-      epsilonCellXImaginary[index] = 2 * components.reduce((sum, component) => sum + component.fraction * component.value.nx * component.value.k, 0);
-      epsilonCellYImaginary[index] = 2 * components.reduce((sum, component) => sum + component.fraction * component.value.ny * component.value.k, 0);
-      epsilonCellZImaginary[index] = 2 * components.reduce((sum, component) => sum + component.fraction * component.value.nz * component.value.k, 0);
+      epsilonCellX[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.xx, 0);
+      epsilonCellY[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.yy, 0);
+      epsilonCellZ[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.zz, 0);
+      epsilonCellXY[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.xy, 0);
+      epsilonCellXImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.xx, 0);
+      epsilonCellYImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.yy, 0);
+      epsilonCellZImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.zz, 0);
+      epsilonCellXYImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.xy, 0);
       epsilonCell[index] = (epsilonCellX[index] + epsilonCellY[index] + epsilonCellZ[index]) / 3;
       extinctionCell[index] = components.reduce((sum, component) => sum + component.fraction * component.value.k, 0);
       cellArea[index] = dxCell[column] * dyCell[row];
@@ -956,6 +1082,8 @@ function createGrid(config: WaveguideConfig): Grid {
     epsilonCellXImaginary,
     epsilonCellYImaginary,
     epsilonCellZImaginary,
+    epsilonCellXY,
+    epsilonCellXYImaginary,
     cellArea,
     coreFraction,
     extinctionCell,
@@ -1069,7 +1197,53 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     return complexJoin(outputHx, outputHy);
   } : applyReal;
 
-  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2 };
+  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab" };
+}
+
+function gridHasOffDiagonalTensor(grid: Grid): boolean {
+  return [grid.epsilonCellXY, grid.epsilonCellXYImaginary]
+    .some((component) => component.some((value) => Math.abs(value) > 1e-12));
+}
+
+function createTensorOperator(grid: Grid, wavelengthUm: number): OperatorContext {
+  const { nx, ny } = grid;
+  const hxSize = ny * (nx + 1);
+  const hySize = (ny + 1) * nx;
+  const physicalVectorSize = 2 * (hxSize + hySize);
+  const k0 = 2 * Math.PI / wavelengthUm;
+  const apply = (vector: Float64Array): Float64Array => {
+    let offset = 0;
+    const ex = vector.subarray(offset, offset += hySize);
+    const ey = vector.subarray(offset, offset += hxSize);
+    const hx = vector.subarray(offset, offset += hxSize);
+    const hy = vector.subarray(offset, offset + hySize);
+    const longitudinalPotential = subtract(dyOperator(hx, nx, ny, grid.dyDual), dxOperator(hy, nx, ny, grid.dxDual));
+    multiplyInPlace(longitudinalPotential, grid.inverseEpsilonZ);
+    const outputEx = scale(ax(longitudinalPotential, nx, ny, grid.dxCell), 1 / k0);
+    addScaledInPlace(outputEx, hy, -k0);
+    const outputEy = scale(ay(longitudinalPotential, nx, ny, grid.dyCell), 1 / k0);
+    addScaledInPlace(outputEy, hx, k0);
+
+    const longitudinalE = subtract(by(ex, nx, ny, grid.dyCell), bx(ey, nx, ny, grid.dxCell));
+    const outputHx = scale(cx(longitudinalE, nx, ny, grid.dxDual), -1 / k0);
+    const outputHy = scale(cy(longitudinalE, nx, ny, grid.dyDual), -1 / k0);
+    const exCell = averageVertical(ex, nx, ny);
+    const eyCell = averageHorizontal(ey, nx, ny);
+    const displacementX = multiplyCopy(ex, grid.epsilonX);
+    const displacementY = multiplyCopy(ey, grid.epsilonY);
+    addScaledInPlace(displacementX, averageCellsToVerticalEdges(multiplyCopy(eyCell, grid.epsilonCellXY), nx, ny), 1);
+    addScaledInPlace(displacementY, averageCellsToHorizontalEdges(multiplyCopy(exCell, grid.epsilonCellXY), nx, ny), 1);
+    addScaledInPlace(outputHx, displacementY, k0);
+    addScaledInPlace(outputHy, displacementX, -k0);
+    const output = new Float64Array(physicalVectorSize);
+    offset = 0;
+    output.set(outputEx, offset); offset += hySize;
+    output.set(outputEy, offset); offset += hxSize;
+    output.set(outputHx, offset); offset += hxSize;
+    output.set(outputHy, offset);
+    return output;
+  };
+  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab" };
 }
 
 function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContext {
@@ -1157,7 +1331,7 @@ function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContex
     return complexJoinMany([outputEx, outputEy, outputHx, outputHy]);
   } : applyReal;
 
-  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize, eigenvaluePower: 1 };
+  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: complex ? "gmres" : "bicgstab" };
 }
 
 function bendMetric(coordinates: number[], signedRadius: number, config: WaveguideConfig): ComplexArray {
@@ -1289,7 +1463,7 @@ function addComplexEigenvalueInPlace(target: Float64Array, vector: Float64Array,
 }
 
 function solveShiftedSystem(operator: OperatorContext, shift: number, rightHandSide: Float64Array): Float64Array {
-  if (operator.complex && operator.eigenvaluePower === 1) return solveShiftedGmres(operator, shift, rightHandSide);
+  if (operator.linearSolver === "gmres") return solveShiftedGmres(operator, shift, rightHandSide);
   const size = rightHandSide.length;
   const solution = new Float64Array(size);
   let residual = rightHandSide.slice();
@@ -1405,7 +1579,7 @@ function solveShiftedGmres(operator: OperatorContext, shift: number, rightHandSi
   return solution;
 }
 
-function buildBendMode(pair: RitzPair, order: number, config: WaveguideConfig, operator: OperatorContext): WaveguideMode {
+function buildFirstOrderMode(pair: RitzPair, order: number, config: WaveguideConfig, operator: OperatorContext): WaveguideMode {
   const { grid, hxSize, hySize, k0 } = operator;
   const { nx, ny } = grid;
   const betaComplex = { real: pair.eigenvalue, imaginary: pair.eigenvalueImaginary };
@@ -1431,9 +1605,9 @@ function buildBendMode(pair: RitzPair, order: number, config: WaveguideConfig, o
     imaginary: imaginaryVector.subarray(offset, offset + hySize),
   };
 
-  const longitudinalH = complexSubtract(complexDyOperator(hx, grid), complexDxOperator(hy, grid));
-  complexMultiplyInPlace(longitudinalH, grid.inverseEpsilonZ, grid.inverseEpsilonZImaginary);
-  const ez = complexScaleScalar(longitudinalH, 0, -1 / k0);
+  const longitudinalPotential = complexSubtract(complexDyOperator(hx, grid), complexDxOperator(hy, grid));
+  complexMultiplyInPlace(longitudinalPotential, grid.inverseEpsilonZ, grid.inverseEpsilonZImaginary);
+  const ez = complexScaleScalar(longitudinalPotential, 0, -1 / k0);
   const hz = complexScaleScalar(complexSubtract(complexBy(ex, grid), complexBx(ey, grid)), 0, 1 / k0);
 
   const collocatedEx = complexAverage(ex, (part) => averageVertical(part, nx, ny));
@@ -1953,6 +2127,30 @@ function averageNodes(values: Float64Array, nx: number, ny: number): Float64Arra
   return output;
 }
 
+function averageCellsToVerticalEdges(values: Float64Array, nx: number, ny: number): Float64Array {
+  const output = new Float64Array((ny + 1) * nx);
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column < nx; column += 1) {
+      const south = values[cellIndex(clamp(row - 1, 0, ny - 1), column, nx)];
+      const north = values[cellIndex(clamp(row, 0, ny - 1), column, nx)];
+      output[row * nx + column] = (south + north) / 2;
+    }
+  }
+  return output;
+}
+
+function averageCellsToHorizontalEdges(values: Float64Array, nx: number, ny: number): Float64Array {
+  const output = new Float64Array(ny * (nx + 1));
+  for (let row = 0; row < ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      const west = values[cellIndex(row, clamp(column - 1, 0, nx - 1), nx)];
+      const east = values[cellIndex(row, clamp(column, 0, nx - 1), nx)];
+      output[row * (nx + 1) + column] = (west + east) / 2;
+    }
+  }
+  return output;
+}
+
 function deterministicUnitVector(size: number): Float64Array {
   const vector = new Float64Array(size);
   let state = 0x9e3779b9;
@@ -1997,6 +2195,12 @@ function addScaledInPlace(target: Float64Array, source: Float64Array, factor: nu
 
 function multiplyInPlace(target: Float64Array, weights: Float64Array): void {
   for (let index = 0; index < target.length; index += 1) target[index] *= weights[index];
+}
+
+function multiplyCopy(values: Float64Array, weights: Float64Array): Float64Array {
+  const output = values.slice();
+  multiplyInPlace(output, weights);
+  return output;
 }
 
 function multiplyScalarInPlace(target: Float64Array, factor: number): void {
