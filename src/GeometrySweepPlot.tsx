@@ -11,7 +11,7 @@ export function GeometrySweepPlot({ result }: { result: GeometrySweepResult }) {
     const x = result.points.map((point) => point.valueUm);
     const axis = { color: "#53636a", gridcolor: "rgba(23,48,58,0.08)", ticks: "outside" as const };
     void Plotly.react(plotRef.current, [
-      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x, y: result.points.map((point) => point.effectiveIndex), line: { color: "#087f8c", width: 2.5 }, marker: { size: 5 } },
+      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x, y: result.points.map((point) => point.effectiveIndex), line: { color: "#087f8c", width: 2.5 }, marker: { size: result.points.map((point) => point.nearCutoff ? 9 : 5), color: result.points.map((point) => point.nearCutoff ? "#ed6a3a" : "#087f8c") }, text: result.points.map((point) => `${point.modeLabel}${point.nearCutoff ? " · near cutoff" : ""}`), hovertemplate: "%{text}<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>" },
       { type: "scatter", mode: "lines+markers", name: "Confinement", x, y: result.points.map((point) => 100 * point.electricConfinement), yaxis: "y2", line: { color: "#ed6a3a", width: 2.5, dash: "dash" }, marker: { size: 5 } },
       { type: "scatter", mode: "lines", name: "A<sub>eff</sub>", x, y: result.points.map((point) => point.effectiveAreaUm2), xaxis: "x2", yaxis: "y3", line: { color: "#7156a5", width: 2 } },
       { type: "scatter", mode: "lines", name: "Overlap", x, y: result.points.map((point) => point.overlap), xaxis: "x2", yaxis: "y4", line: { color: "#b6472d", width: 2, dash: "dot" } },

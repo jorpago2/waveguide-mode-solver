@@ -9,6 +9,10 @@ It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and r
 - Uniform or center-graded transverse mesh with subpixel interface averaging.
 - Technology presets for SOI strip, rib and slot guides, SiN, thin-film lithium niobate, weak-guidance silica and polymer platforms.
 - Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
+- Dominant-field TE/TM mode labels with transverse node counts, symmetry metrics, cutoff warnings and family-aware sweep tracking.
+- Dispersive material models for LiNbO₃, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
+- MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
+- Editable finite layers below the core with a semi-infinite base substrate.
 - Complex diagonal anisotropy: ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²].
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
@@ -22,7 +26,9 @@ It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and r
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
 - Seeded Latin-hypercube fabrication-tolerance studies with confidence intervals and correlation-based sensitivity ranking.
 - Gaussian-beam overlap and identical two-guide directional-coupler supermode analysis.
+- Modal power-overlap and effective-index-mismatch matrices between two waveguide cross-sections.
 - Two-dimensional mode-count and effective-index maps for visualizing cutoff regions.
+- Versioned JSON project export/import plus numeric CSV exports.
 
 ## Run locally
 
@@ -38,7 +44,7 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization, material models, seeded tolerances, coupling and modal maps.
+The tests exercise subpixel convergence, the finest supported grid, every geometry, graded meshes, anisotropy, complex loss, PML, power normalization, material models, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison and modal maps.
 
 ## Numerical scope
 
@@ -47,15 +53,17 @@ The tests exercise subpixel convergence, the finest supported grid, every geomet
 - The PML is intended for open-boundary mode studies; a nonzero imaginary effective index alone does not establish that a physical mode is leaky.
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.
-- Library materials are isotropic reference models. Deposited-film composition, temperature and process variation require custom measured data.
-- The Z-cut TFLN preset uses representative ordinary and extraordinary indices at 1.55 µm; quantitative designs require process-specific dispersion and film data.
+- Mode labels are inferred from the dominant real transverse electric-field component. Treat labels near degeneracies, strong hybridization or asymmetric geometries as diagnostic rather than exact quantum numbers.
+- Finite stack layers are horizontal and lie below the core. Exterior indices must remain below the core index; high-index-substrate leakage requires a dedicated leaky-mode formulation and PML convergence study.
+- The LiNbO₃ temperature correction applies the congruent-LN wavelength-dependent thermo-optic fit of Moretti et al. to the 5% MgO Sellmeier base as an approximation and is restricted to 20–240 °C. Its electro-optic control assumes a uniform DC field parallel to the optical axis and uses telecom values r₁₃ = 8.6 pm/V and r₃₃ = 30.8 pm/V; process-specific data are required and it does not solve electrodes or RF/optical overlap.
+- Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
 
 ## Reference
 
 A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modesolver for Anisotropic Dielectric Waveguides,” *Journal of Lightwave Technology* 26(11), 1423–1431 (2008). [doi:10.1109/JLT.2008.923643](https://doi.org/10.1109/JLT.2008.923643)
 
-Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), and [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823).
+Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), and [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068).
 
 ## License
 

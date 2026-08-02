@@ -1,9 +1,20 @@
 import { EigenvalueDecomposition, Matrix } from "ml-matrix";
-import { evaluateMaterial, materialDefinition, type MaterialId } from "./materials";
+import { evaluateMaterialAxes, materialDefinition, type MaterialId, type OpticAxis } from "./materials";
 
 export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity" | "poynting";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
 export type BoundaryType = "hard" | "pml";
+
+export interface VerticalLayer {
+  name: string;
+  thicknessUm: number;
+  material: MaterialId;
+  index: number;
+  indexY?: number;
+  indexZ?: number;
+  extinction?: number;
+  opticAxis?: OpticAxis;
+}
 
 export const PARAMETER_MAXIMUMS = {
   wavelengthUm: 1_000,
@@ -53,11 +64,22 @@ export interface WaveguideConfig {
   couplerGapUm?: number;
   coreIndexOffset?: number;
   sidewallAngleDeg?: number;
+  materialTemperatureC?: number;
+  coreOpticAxis?: OpticAxis;
+  claddingOpticAxis?: OpticAxis;
+  substrateOpticAxis?: OpticAxis;
+  coreElectricFieldVPerUm?: number;
+  stackLayers?: VerticalLayer[];
 }
 
 export interface WaveguideMode {
   id: string;
+  label: string;
   order: number;
+  horizontalOrder: number;
+  verticalOrder: number;
+  symmetryX: number;
+  symmetryY: number;
   polarization: "quasi-TE" | "quasi-TM";
   effectiveIndex: number;
   effectiveIndexImaginary: number;
@@ -70,6 +92,8 @@ export interface WaveguideMode {
   lossDbPerCm: number;
   modalPowerW: number;
   peakPoyntingWPerM2: number;
+  guidanceMargin: number;
+  nearCutoff: boolean;
   fields: Record<FieldComponent, number[][]>;
 }
 
@@ -101,6 +125,8 @@ export interface SweepPoint {
   dispersionPsPerNmKm: number;
   lossDbPerCm: number;
   overlap: number;
+  modeLabel: string;
+  nearCutoff: boolean;
 }
 
 export interface SweepResult {
@@ -125,6 +151,8 @@ export interface GeometrySweepPoint {
   effectiveAreaUm2: number;
   lossDbPerCm: number;
   overlap: number;
+  modeLabel: string;
+  nearCutoff: boolean;
 }
 
 export interface GeometrySweepResult {
@@ -221,7 +249,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.coreExtinction, config.claddingExtinction, config.substrateIndex, config.substrateIndexY, config.substrateIndexZ,
     config.substrateExtinction, config.coreDispersionPerUm, config.claddingDispersionPerUm,
     config.substrateDispersionPerUm, config.meshBias, config.coreIndexOffset,
-    config.sidewallAngleDeg,
+    config.sidewallAngleDeg, config.materialTemperatureC, config.coreElectricFieldVPerUm,
   ].every((value) => value === undefined || Number.isFinite(value));
   if (!finiteOptional) errors.push("Optional material and mesh values must be finite.");
   if ([config.coreExtinction ?? 0, config.claddingExtinction ?? 0, config.substrateExtinction ?? 0]
@@ -259,9 +287,24 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 1 || (config.substrateIndex ?? 0) > PARAMETER_MAXIMUMS.refractiveIndex)) {
     errors.push(`Substrate index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
+  if ((config.materialTemperatureC ?? 21) < -200 || (config.materialTemperatureC ?? 21) > 500) errors.push("Material temperature must be between -200 and 500 °C.");
+  if ((config.coreMaterial ?? "custom") === "lithium-niobate" && ((config.materialTemperatureC ?? 21) < 20 || (config.materialTemperatureC ?? 21) > 240)) errors.push("The LiNbO₃ thermo-optic fit is limited to 20–240 °C.");
+  if (Math.abs(config.coreElectricFieldVPerUm ?? 0) > 100) errors.push("The uniform optical-axis electric field must stay within ±100 V/µm.");
+  if ((config.coreMaterial ?? "custom") === "lithium-niobate" && Math.abs(config.coreElectricFieldVPerUm ?? 0) > 0
+    && (config.wavelengthUm < 1.3 || config.wavelengthUm > 1.6)) errors.push("The built-in LiNbO₃ electro-optic coefficients are limited to 1.3–1.6 µm.");
+  const stackLayers = config.stackLayers ?? [];
+  if (stackLayers.length > 6) errors.push("The vertical stack is limited to six finite layers.");
+  if (stackLayers.some((layer) => !layer.name.trim() || !Number.isFinite(layer.thicknessUm) || layer.thicknessUm <= 0
+    || layer.thicknessUm > PARAMETER_MAXIMUMS.dimensionUm || !Number.isFinite(layer.index) || layer.index < 1
+    || layer.index > PARAMETER_MAXIMUMS.refractiveIndex || !Number.isFinite(layer.extinction ?? 0)
+    || (layer.extinction ?? 0) < 0 || (layer.extinction ?? 0) > PARAMETER_MAXIMUMS.extinction)) {
+    errors.push("Every stack layer needs a name, positive thickness, valid refractive index and non-negative extinction.");
+  }
+  if (stackLayers.reduce((sum, layer) => sum + layer.thicknessUm, 0) >= config.paddingUm) errors.push("The finite stack must be thinner than the lower cladding padding so the base substrate is sampled.");
   let materialModelsValid = true;
   const selectedMaterialIds = new Set([config.coreMaterial, config.claddingMaterial,
-    ...((config.geometry ?? "channel") === "multilayer" ? [config.substrateMaterial] : [])]);
+    ...((config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? [config.substrateMaterial] : []),
+    ...stackLayers.map((layer) => layer.material)]);
   for (const materialId of selectedMaterialIds) {
     if (materialId && materialId !== "custom") {
       const material = materialDefinition(materialId);
@@ -273,11 +316,13 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   }
   if (finiteOptional && materialModelsValid) {
     const materials = materialValues(config);
-    const indices = Object.values(materials).flatMap((material) => [material.nx, material.ny, material.nz]);
+    const materialList = [materials.core, materials.cladding, materials.substrate, ...materials.layers];
+    const indices = materialList.flatMap((material) => [material.nx, material.ny, material.nz]);
     if (indices.some((value) => value < 1 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
     const coreMaximum = Math.max(materials.core.nx, materials.core.ny, materials.core.nz);
     const exteriorMaximum = Math.max(materials.cladding.nx, materials.cladding.ny, materials.cladding.nz,
-      (config.geometry ?? "channel") === "multilayer" ? materials.substrate.nx : 0);
+      (config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? Math.max(materials.substrate.nx, materials.substrate.ny, materials.substrate.nz) : 0,
+      ...materials.layers.flatMap((material) => [material.nx, material.ny, material.nz]));
     if (coreMaximum <= exteriorMaximum) errors.push("The core must retain a larger principal index than the exterior materials.");
   }
   return errors;
@@ -360,7 +405,8 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
       const previous = tracked[index - direction]?.mode;
       const candidates = solveAt(index);
       if (!previous || candidates.length === 0) break;
-      const ranked = candidates.map((mode) => ({ mode, overlap: modeOverlap(previous, mode) }))
+      const matching = candidates.filter((mode) => sameModeFamily(previous, mode));
+      const ranked = (matching.length > 0 ? matching : candidates).map((mode) => ({ mode, overlap: modeOverlap(previous, mode) }))
         .sort((first, second) => second.overlap - first.overlap);
       tracked[index] = ranked[0];
     }
@@ -382,10 +428,13 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
     dispersionPsPerNmKm: -(entry.wavelengthUm * 1e12 / speedOfLight) * second[index],
     lossDbPerCm: entry.mode.lossDbPerCm,
     overlap: entry.overlap,
+    modeLabel: entry.mode.label,
+    nearCutoff: entry.mode.nearCutoff,
   }));
   const warnings: string[] = [];
   if (valid.length < settings.points) warnings.push(`Mode tracking stopped at ${valid.length} of ${settings.points} wavelengths.`);
   if (points.some((point) => point.overlap < 0.75)) warnings.push("A low field overlap indicates a possible mode crossing; inspect that interval.");
+  if (points.some((point) => point.nearCutoff)) warnings.push("The tracked mode approaches cutoff; increase padding and verify mesh convergence near that interval.");
   warnings.push("Group index and dispersion use finite differences; repeat with more wavelength points to check convergence.");
   return { points, warnings };
 }
@@ -432,7 +481,8 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
       const previous = tracked[index - direction];
       const candidateResult = solveAt(index);
       if (!previous || !candidateResult?.modes.length) break;
-      const ranked = candidateResult.modes.map((mode) => ({
+      const matching = candidateResult.modes.filter((mode) => sameModeFamily(previous.mode, mode));
+      const ranked = (matching.length > 0 ? matching : candidateResult.modes).map((mode) => ({
         result: candidateResult,
         mode,
         overlap: resampledModeOverlap(previous.result, previous.mode, candidateResult, mode),
@@ -448,40 +498,56 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
     effectiveAreaUm2: entry.mode.effectiveAreaUm2,
     lossDbPerCm: entry.mode.lossDbPerCm,
     overlap: entry.overlap,
+    modeLabel: entry.mode.label,
+    nearCutoff: entry.mode.nearCutoff,
   })).filter(Boolean) as GeometrySweepPoint[];
   if (points.length < 3) throw new Error("The selected mode could not be tracked across at least three geometry values.");
   const warnings: string[] = [];
   if (points.length < settings.points) warnings.push(`Mode tracking stopped at ${points.length} of ${settings.points} geometry values.`);
   if (points.some((point) => point.overlap < 0.75)) warnings.push("A low field overlap indicates a possible mode crossing; inspect that interval.");
+  if (points.some((point) => point.nearCutoff)) warnings.push("The tracked mode approaches cutoff; verify the mesh and domain around that geometry.");
   return { parameter: settings.parameter, points, warnings };
+}
+
+function sameModeFamily(first: WaveguideMode, second: WaveguideMode): boolean {
+  return first.polarization === second.polarization
+    && first.horizontalOrder === second.horizontalOrder
+    && first.verticalOrder === second.verticalOrder;
 }
 
 function materialValues(config: WaveguideConfig) {
   const reference = config.materialReferenceWavelengthUm ?? config.wavelengthUm;
   const offset = config.wavelengthUm - reference;
-  const values = (materialId: MaterialId | undefined, base: number, ny: number | undefined, nz: number | undefined, k: number | undefined, slope: number | undefined, indexOffset = 0) => ({
-    nx: (materialId && materialId !== "custom" ? evaluateMaterial(materialId, config.wavelengthUm) : base + (slope ?? 0) * offset) + indexOffset,
-    ny: (materialId && materialId !== "custom" ? evaluateMaterial(materialId, config.wavelengthUm) : (ny ?? base) + (slope ?? 0) * offset) + indexOffset,
-    nz: (materialId && materialId !== "custom" ? evaluateMaterial(materialId, config.wavelengthUm) : (nz ?? base) + (slope ?? 0) * offset) + indexOffset,
-    k: k ?? 0,
-  });
+  const values = (
+    materialId: MaterialId | undefined, base: number, ny: number | undefined, nz: number | undefined,
+    k: number | undefined, slope: number | undefined, opticAxis: OpticAxis | undefined,
+    indexOffset = 0, electricFieldVPerUm = 0,
+  ) => {
+    const axes = materialId && materialId !== "custom"
+      ? evaluateMaterialAxes(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21, opticAxis ?? "y", electricFieldVPerUm)
+      : { nx: base + (slope ?? 0) * offset, ny: (ny ?? base) + (slope ?? 0) * offset, nz: (nz ?? base) + (slope ?? 0) * offset };
+    return { nx: axes.nx + indexOffset, ny: axes.ny + indexOffset, nz: axes.nz + indexOffset, k: k ?? 0 };
+  };
   return {
-    core: values(config.coreMaterial, config.coreIndex, config.coreIndexY, config.coreIndexZ, config.coreExtinction, config.coreDispersionPerUm, config.coreIndexOffset ?? 0),
-    cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm),
-    substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm),
+    core: values(config.coreMaterial, config.coreIndex, config.coreIndexY, config.coreIndexZ, config.coreExtinction, config.coreDispersionPerUm, config.coreOpticAxis, config.coreIndexOffset ?? 0, config.coreElectricFieldVPerUm),
+    cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm, config.claddingOpticAxis),
+    substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm, config.substrateOpticAxis),
+    layers: (config.stackLayers ?? []).map((layer) => values(layer.material, layer.index, layer.indexY, layer.indexZ, layer.extinction, 0, layer.opticAxis)),
   };
 }
 
 function guidanceBounds(config: WaveguideConfig): { exteriorIndex: number; maximumIndex: number } {
   const values = materialValues(config);
   const maximum = (material: { nx: number; ny: number; nz: number }) => Math.max(material.nx, material.ny, material.nz);
+  const stackMaximum = values.layers.reduce((value, layer) => Math.max(value, maximum(layer)), 0);
+  const hasSubstrate = (config.geometry ?? "channel") === "multilayer" || (config.stackLayers?.length ?? 0) > 0;
   return {
-    exteriorIndex: Math.max(maximum(values.cladding), (config.geometry ?? "channel") === "multilayer" ? maximum(values.substrate) : 0),
-    maximumIndex: Math.max(maximum(values.core), maximum(values.cladding), maximum(values.substrate)),
+    exteriorIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, stackMaximum),
+    maximumIndex: Math.max(maximum(values.core), maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, stackMaximum),
   };
 }
 
-function regionFractions(x0: number, x1: number, y0: number, y1: number, config: WaveguideConfig): { core: number; substrate: number } {
+function coreFractionAtCell(x0: number, x1: number, y0: number, y1: number, config: WaveguideConfig): number {
   const geometry = config.geometry ?? "channel";
   const coreBottom = -config.heightUm / 2;
   const coreTop = config.heightUm / 2;
@@ -502,10 +568,25 @@ function regionFractions(x0: number, x1: number, y0: number, y1: number, config:
   } else {
     core = trapezoidFraction(x0, x1, y0, y1, 0, config.widthUm, config.widthUm + 2 * sidewallExpansion(config), coreBottom, coreTop);
   }
-  const substrate = geometry === "multilayer"
-    ? rectangleFraction(x0, x1, y0, y1, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, coreBottom)
-    : 0;
-  return { core: clamp(core, 0, 1), substrate: clamp(substrate, 0, 1) };
+  return clamp(core, 0, 1);
+}
+
+function stackFractions(y0: number, y1: number, config: WaveguideConfig): { layers: number[]; substrate: number } {
+  const layers = config.stackLayers ?? [];
+  const active = layers.length > 0 || (config.geometry ?? "channel") === "multilayer";
+  if (!active) return { layers: layers.map(() => 0), substrate: 0 };
+  let top = -config.heightUm / 2;
+  const fractions = layers.map((layer) => {
+    const bottom = top - layer.thicknessUm;
+    const fraction = intervalFraction(y0, y1, bottom, top);
+    top = bottom;
+    return fraction;
+  });
+  return { layers: fractions, substrate: intervalFraction(y0, y1, Number.NEGATIVE_INFINITY, top) };
+}
+
+function intervalFraction(value0: number, value1: number, interval0: number, interval1: number): number {
+  return Math.max(0, Math.min(value1, interval1) - Math.max(value0, interval0)) / (value1 - value0);
 }
 
 function sidewallExpansion(config: WaveguideConfig): number {
@@ -633,13 +714,20 @@ export function resampledModeOverlap(
         const b = bilinearSample(second.fields[component], secondResult.xUm, secondResult.yUm,
           firstResult.xUm[column], firstResult.yUm[row]);
         if (b === undefined) continue;
-        numerator += a * b;
-        firstNorm += a * a;
-        secondNorm += b * b;
+        const area = coordinateSpacing(firstResult.xUm, column) * coordinateSpacing(firstResult.yUm, row);
+        numerator += a * b * area;
+        firstNorm += a * a * area;
+        secondNorm += b * b * area;
       }
     }
   }
   return Math.abs(numerator) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
+}
+
+function coordinateSpacing(coordinates: number[], index: number): number {
+  if (index === 0) return coordinates[1] - coordinates[0];
+  if (index === coordinates.length - 1) return coordinates[index] - coordinates[index - 1];
+  return (coordinates[index + 1] - coordinates[index - 1]) / 2;
 }
 
 function bilinearSample(field: number[][], x: number[], y: number[], sampleX: number, sampleY: number): number | undefined {
@@ -712,17 +800,25 @@ function createGrid(config: WaveguideConfig): Grid {
   for (let row = 0; row < ny; row += 1) {
     for (let column = 0; column < nx; column += 1) {
       const index = cellIndex(row, column, nx);
-      const fractions = regionFractions(xEdges[column], xEdges[column + 1], yEdges[row], yEdges[row + 1], config);
-      const claddingFraction = Math.max(0, 1 - fractions.core - fractions.substrate);
-      coreFraction[index] = fractions.core;
-      epsilonCellX[index] = fractions.core * (material.core.nx ** 2 - material.core.k ** 2) + fractions.substrate * (material.substrate.nx ** 2 - material.substrate.k ** 2) + claddingFraction * (material.cladding.nx ** 2 - material.cladding.k ** 2);
-      epsilonCellY[index] = fractions.core * (material.core.ny ** 2 - material.core.k ** 2) + fractions.substrate * (material.substrate.ny ** 2 - material.substrate.k ** 2) + claddingFraction * (material.cladding.ny ** 2 - material.cladding.k ** 2);
-      epsilonCellZ[index] = fractions.core * (material.core.nz ** 2 - material.core.k ** 2) + fractions.substrate * (material.substrate.nz ** 2 - material.substrate.k ** 2) + claddingFraction * (material.cladding.nz ** 2 - material.cladding.k ** 2);
-      epsilonCellXImaginary[index] = 2 * (fractions.core * material.core.nx * material.core.k + fractions.substrate * material.substrate.nx * material.substrate.k + claddingFraction * material.cladding.nx * material.cladding.k);
-      epsilonCellYImaginary[index] = 2 * (fractions.core * material.core.ny * material.core.k + fractions.substrate * material.substrate.ny * material.substrate.k + claddingFraction * material.cladding.ny * material.cladding.k);
-      epsilonCellZImaginary[index] = 2 * (fractions.core * material.core.nz * material.core.k + fractions.substrate * material.substrate.nz * material.substrate.k + claddingFraction * material.cladding.nz * material.cladding.k);
+      const core = coreFractionAtCell(xEdges[column], xEdges[column + 1], yEdges[row], yEdges[row + 1], config);
+      const stack = stackFractions(yEdges[row], yEdges[row + 1], config);
+      const layerTotal = stack.layers.reduce((sum, fraction) => sum + fraction, 0);
+      const claddingFraction = Math.max(0, 1 - core - stack.substrate - layerTotal);
+      const components = [
+        { fraction: core, value: material.core },
+        { fraction: stack.substrate, value: material.substrate },
+        { fraction: claddingFraction, value: material.cladding },
+        ...stack.layers.map((fraction, layerIndex) => ({ fraction, value: material.layers[layerIndex] })),
+      ];
+      coreFraction[index] = core;
+      epsilonCellX[index] = components.reduce((sum, component) => sum + component.fraction * (component.value.nx ** 2 - component.value.k ** 2), 0);
+      epsilonCellY[index] = components.reduce((sum, component) => sum + component.fraction * (component.value.ny ** 2 - component.value.k ** 2), 0);
+      epsilonCellZ[index] = components.reduce((sum, component) => sum + component.fraction * (component.value.nz ** 2 - component.value.k ** 2), 0);
+      epsilonCellXImaginary[index] = 2 * components.reduce((sum, component) => sum + component.fraction * component.value.nx * component.value.k, 0);
+      epsilonCellYImaginary[index] = 2 * components.reduce((sum, component) => sum + component.fraction * component.value.ny * component.value.k, 0);
+      epsilonCellZImaginary[index] = 2 * components.reduce((sum, component) => sum + component.fraction * component.value.nz * component.value.k, 0);
       epsilonCell[index] = (epsilonCellX[index] + epsilonCellY[index] + epsilonCellZ[index]) / 3;
-      extinctionCell[index] = fractions.core * material.core.k + fractions.substrate * material.substrate.k + claddingFraction * material.cladding.k;
+      extinctionCell[index] = components.reduce((sum, component) => sum + component.fraction * component.value.k, 0);
       cellArea[index] = dxCell[column] * dyCell[row];
     }
   }
@@ -1167,16 +1263,24 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
   };
   const transverseElectricEnergy = exEnergy + eyEnergy;
   const polarization = exEnergy >= eyEnergy ? "quasi-TE" : "quasi-TM";
+  const classification = classifyField(polarization === "quasi-TE" ? fields.Ex : fields.Ey);
+  const label = `${polarization === "quasi-TE" ? "TE" : "TM"}${classification.horizontalOrder}${classification.verticalOrder}`;
+  const { exteriorIndex, maximumIndex } = guidanceBounds(config);
+  const effectiveIndex = beta / k0;
+  const guidanceMargin = effectiveIndex - exteriorIndex;
+  const electricConfinement = electricCore / weightedElectricTotal;
 
   return {
-    id: `${polarization === "quasi-TE" ? "TE" : "TM"}${order}`,
+    id: `${label}-${order}`,
+    label,
     order,
+    ...classification,
     polarization,
-    effectiveIndex: beta / k0,
+    effectiveIndex,
     effectiveIndexImaginary: Math.abs(betaComplex.imaginary / k0),
     propagationConstantPerUm: beta,
     residual: pair.residual,
-    electricConfinement: electricCore / weightedElectricTotal,
+    electricConfinement,
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,
     longitudinalElectricFraction: ezEnergy / electricTotal,
     xPolarizedElectricFraction: exEnergy / transverseElectricEnergy,
@@ -1186,8 +1290,48 @@ function buildMode(pair: RitzPair, order: number, config: WaveguideConfig, opera
         * (lossWeightedEnergy / Math.max(weightedElectricTotal, 1e-30)),
     modalPowerW,
     peakPoyntingWPerM2: Math.max(...physicalPoynting),
+    guidanceMargin,
+    nearCutoff: guidanceMargin < Math.max(1e-3, 0.01 * (maximumIndex - exteriorIndex)) || electricConfinement < 0.02,
     fields,
   };
+}
+
+function classifyField(field: number[][]): { horizontalOrder: number; verticalOrder: number; symmetryX: number; symmetryY: number } {
+  let peakRow = 0;
+  let peakColumn = 0;
+  let peak = 0;
+  for (let row = 0; row < field.length; row += 1) {
+    for (let column = 0; column < field[row].length; column += 1) {
+      if (Math.abs(field[row][column]) > peak) { peak = Math.abs(field[row][column]); peakRow = row; peakColumn = column; }
+    }
+  }
+  return {
+    horizontalOrder: countNodes(field[peakRow]),
+    verticalOrder: countNodes(field.map((row) => row[peakColumn])),
+    symmetryX: mirrorCorrelation(field, false),
+    symmetryY: mirrorCorrelation(field, true),
+  };
+}
+
+function countNodes(values: number[]): number {
+  const threshold = Math.max(...values.map(Math.abs)) * 0.08;
+  const significant = values.filter((value) => Math.abs(value) >= threshold);
+  let nodes = 0;
+  for (let index = 1; index < significant.length; index += 1) if (significant[index] * significant[index - 1] < 0) nodes += 1;
+  return nodes;
+}
+
+function mirrorCorrelation(field: number[][], vertical: boolean): number {
+  let numerator = 0;
+  let denominator = 0;
+  for (let row = 0; row < field.length; row += 1) {
+    for (let column = 0; column < field[row].length; column += 1) {
+      const mirrored = vertical ? field[field.length - 1 - row][column] : field[row][field[row].length - 1 - column];
+      numerator += field[row][column] * mirrored;
+      denominator += field[row][column] ** 2;
+    }
+  }
+  return numerator / Math.max(denominator, 1e-30);
 }
 
 function complexSquareRoot(real: number, imaginary: number): { real: number; imaginary: number } {

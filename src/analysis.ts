@@ -37,6 +37,14 @@ export interface DirectionalCouplerResult {
   oddParity: number;
 }
 
+export interface WaveguideComparisonResult {
+  sourceLabels: string[];
+  targetLabels: string[];
+  powerOverlap: number[][];
+  effectiveIndexMismatch: number[][];
+  wavelengthUm: number;
+}
+
 export interface ToleranceSettings {
   widthStdDevNm: number;
   heightStdDevNm: number;
@@ -149,6 +157,24 @@ export function analyzeDirectionalCoupler(config: WaveguideConfig, settings: Dir
     couplingLengthUm: Math.PI / Math.max(propagationSplitting, 1e-30),
     evenParity: even.parity,
     oddParity: odd.parity,
+  };
+}
+
+export function compareWaveguides(sourceConfig: WaveguideConfig, targetConfig: WaveguideConfig, maximumModes = 3): WaveguideComparisonResult {
+  if (!Number.isInteger(maximumModes) || maximumModes < 1 || maximumModes > 4) throw new Error("Comparison modes must be an integer between 1 and 4.");
+  const sourceResult = solveWaveguide({ ...sourceConfig, modeCount: maximumModes });
+  const targetResult = solveWaveguide({ ...targetConfig, wavelengthUm: sourceConfig.wavelengthUm, modeCount: maximumModes });
+  if (sourceResult.modes.length === 0 || targetResult.modes.length === 0) throw new Error("Both cross-sections need at least one guided mode.");
+  return {
+    sourceLabels: sourceResult.modes.map((mode) => mode.label),
+    targetLabels: targetResult.modes.map((mode) => mode.label),
+    powerOverlap: sourceResult.modes.map((sourceMode) => targetResult.modes.map((targetMode) => (
+      resampledModeOverlap(sourceResult, sourceMode, targetResult, targetMode) ** 2
+    ))),
+    effectiveIndexMismatch: sourceResult.modes.map((sourceMode) => targetResult.modes.map((targetMode) => (
+      Math.abs(sourceMode.effectiveIndex - targetMode.effectiveIndex)
+    ))),
+    wavelengthUm: sourceConfig.wavelengthUm,
   };
 }
 

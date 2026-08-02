@@ -140,28 +140,40 @@ function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
   const expansion = geometry === "slot" ? 0 : etchedHeight / Math.tan((config.sidewallAngleDeg ?? 90) * Math.PI / 180);
   if (geometry === "slot") {
     const gap = config.slotGapUm ?? config.widthUm / 5;
-    return [
+    return withStackBoundaries([
       rectangle(-config.widthUm / 2, -gap / 2, -config.heightUm / 2, config.heightUm / 2),
       rectangle(gap / 2, config.widthUm / 2, -config.heightUm / 2, config.heightUm / 2),
-    ];
+    ], config, config.widthUm, line);
   }
   if (geometry === "coupler") {
     const gap = config.couplerGapUm ?? config.widthUm / 2;
     const bottomWidth = config.widthUm + 2 * expansion;
-    return [
+    return withStackBoundaries([
       trapezoid(-gap / 2 - config.widthUm / 2, config.widthUm, bottomWidth, -config.heightUm / 2, config.heightUm / 2),
       trapezoid(gap / 2 + config.widthUm / 2, config.widthUm, bottomWidth, -config.heightUm / 2, config.heightUm / 2),
-    ];
+    ], config, 2 * config.widthUm + gap + 2 * expansion, line);
   }
   if (geometry === "rib") {
     const slabTop = -config.heightUm / 2 + (config.slabHeightUm ?? config.heightUm / 2);
-    return [
+    return withStackBoundaries([
       rectangle(-config.paddingUm - config.widthUm / 2 - expansion, config.paddingUm + config.widthUm / 2 + expansion, -config.heightUm / 2, slabTop),
       trapezoid(0, config.widthUm, config.widthUm + 2 * expansion, slabTop, config.heightUm / 2),
-    ];
+    ], config, config.widthUm + 2 * expansion, line);
   }
   const bottomWidth = config.widthUm + 2 * expansion;
   const shapes: Partial<Plotly.Shape>[] = [trapezoid(0, config.widthUm, bottomWidth, -config.heightUm / 2, config.heightUm / 2)];
-  if (geometry === "multilayer") shapes.push({ type: "line", x0: -config.paddingUm - bottomWidth / 2, x1: config.paddingUm + bottomWidth / 2, y0: -config.heightUm / 2, y1: -config.heightUm / 2, line });
+  return withStackBoundaries(shapes, config, bottomWidth, line);
+}
+
+function withStackBoundaries(shapes: Partial<Plotly.Shape>[], config: WaveguideConfig, span: number, line: Partial<Plotly.ShapeLine>): Partial<Plotly.Shape>[] {
+  if ((config.geometry ?? "channel") !== "multilayer" && (config.stackLayers?.length ?? 0) === 0) return shapes;
+  let boundaryY = -config.heightUm / 2;
+  const x0 = -config.paddingUm - span / 2;
+  const x1 = config.paddingUm + span / 2;
+  shapes.push({ type: "line", x0, x1, y0: boundaryY, y1: boundaryY, line });
+  for (const layer of config.stackLayers ?? []) {
+    boundaryY -= layer.thicknessUm;
+    shapes.push({ type: "line", x0, x1, y0: boundaryY, y1: boundaryY, line });
+  }
   return shapes;
 }

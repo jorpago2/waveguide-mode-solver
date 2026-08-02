@@ -4,7 +4,7 @@ import { runSolverWorker } from "./workerClient";
 import { ModeMapPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
   DirectionalCouplerResult, DirectionalCouplerSettings, GaussianCouplingResult, GaussianCouplingSettings,
-  ModeMapParameter, ModeMapResult, ModeMapSettings, ToleranceResult, ToleranceSettings,
+  ModeMapParameter, ModeMapResult, ModeMapSettings, ToleranceResult, ToleranceSettings, WaveguideComparisonResult,
 } from "./analysis";
 import type { SolverResult, WaveguideConfig } from "./solver";
 
@@ -12,6 +12,7 @@ interface Props {
   config: WaveguideConfig;
   result?: SolverResult;
   selectedMode: number;
+  presets: Record<string, WaveguideConfig>;
 }
 
 const initialTolerance: ToleranceSettings = { widthStdDevNm: 10, heightStdDevNm: 5, gapStdDevNm: 5, coreIndexStdDev: 0.001, samples: 12, seed: 2026, modeIndex: 0 };
@@ -19,7 +20,7 @@ const initialGaussian: GaussianCouplingSettings = { waistUm: 1.5, offsetXUm: 0, 
 const initialCoupler: DirectionalCouplerSettings = { gapUm: 0.2, polarization: "quasi-TE" };
 const initialMap: ModeMapSettings = { parameter: "widthUm", startValueUm: 0.5, stopValueUm: 1.5, geometryPoints: 5, startWavelengthUm: 1.45, stopWavelengthUm: 1.65, wavelengthPoints: 5, maximumModes: 4, gridResolution: 24, modeIndex: 0 };
 
-export function AdvancedAnalyses({ config, result, selectedMode }: Props) {
+export function AdvancedAnalyses({ config, result, selectedMode, presets }: Props) {
   const [active, setActive] = useState<string>();
   const [error, setError] = useState("");
   const [tolerance, setTolerance] = useState(initialTolerance);
@@ -30,6 +31,9 @@ export function AdvancedAnalyses({ config, result, selectedMode }: Props) {
   const [couplerResult, setCouplerResult] = useState<DirectionalCouplerResult>();
   const [modeMap, setModeMap] = useState(initialMap);
   const [modeMapResult, setModeMapResult] = useState<ModeMapResult>();
+  const [targetPreset, setTargetPreset] = useState(Object.keys(presets)[1] ?? Object.keys(presets)[0]);
+  const [comparisonModes, setComparisonModes] = useState(3);
+  const [comparisonResult, setComparisonResult] = useState<WaveguideComparisonResult>();
 
   async function runTolerance(event: FormEvent) {
     event.preventDefault(); setActive("tolerance"); setError("");
@@ -52,6 +56,12 @@ export function AdvancedAnalyses({ config, result, selectedMode }: Props) {
   async function runModeMap(event: FormEvent) {
     event.preventDefault(); setActive("map"); setError("");
     try { setModeMapResult(await runSolverWorker<ModeMapResult>({ kind: "modeMap", config, settings: { ...modeMap, modeIndex: selectedMode } })); }
+    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+  }
+
+  async function runComparison(event: FormEvent) {
+    event.preventDefault(); setActive("comparison"); setError("");
+    try { setComparisonResult(await runSolverWorker<WaveguideComparisonResult>({ kind: "compareWaveguides", sourceConfig: config, targetConfig: presets[targetPreset], maximumModes: comparisonModes })); }
     catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
   }
 
@@ -92,8 +102,19 @@ export function AdvancedAnalyses({ config, result, selectedMode }: Props) {
       <p className="limitation">Gaussian overlap neglects facet reflection. Coupler length assumes identical, lossless guides and no longitudinal discontinuities.</p>
     </section>
 
+    <section className="sweep-section" aria-labelledby="comparison-title">
+      <div className="panel-heading"><div><span className="step">07</span><h2 id="comparison-title">Cross-section comparison</h2></div></div>
+      <p className="section-intro">Compare modal power overlap between the current guide and a target platform at the current wavelength. This estimates an abrupt interface, not an optimized taper.</p>
+      <form className="analysis-controls" onSubmit={runComparison}>
+        <label className="select-field">Target preset<select value={targetPreset} onChange={(event) => setTargetPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
+        <AnalysisNumber label="Modes per guide" unit="modes" value={comparisonModes} min={1} max={4} step={1} onChange={setComparisonModes} />
+        <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "comparison" ? "Comparing…" : "Compare modes"}<span aria-hidden="true">→</span></button>
+      </form>
+      {comparisonResult && <div className="comparison-scroll"><table className="comparison-table"><caption>Power overlap at {comparisonResult.wavelengthUm.toFixed(3)} µm</caption><thead><tr><th>Source \ Target</th>{comparisonResult.targetLabels.map((label, index) => <th key={`${label}-${index}`}>{label}</th>)}</tr></thead><tbody>{comparisonResult.sourceLabels.map((sourceLabel, row) => <tr key={`${sourceLabel}-${row}`}><th>{sourceLabel}</th>{comparisonResult.targetLabels.map((targetLabel, column) => <td key={`${targetLabel}-${column}`}><strong>{(100 * comparisonResult.powerOverlap[row][column]).toFixed(2)}%</strong><small>Δn = {comparisonResult.effectiveIndexMismatch[row][column].toExponential(2)}</small></td>)}</tr>)}</tbody></table></div>}
+    </section>
+
     <section className="sweep-section" aria-labelledby="map-title">
-      <div className="panel-heading"><div><span className="step">07</span><h2 id="map-title">Mode map</h2></div></div>
+      <div className="panel-heading"><div><span className="step">08</span><h2 id="map-title">Mode map</h2></div></div>
       <p className="section-intro">Map guided-mode count and the selected effective index versus wavelength and one geometry parameter.</p>
       <form className="analysis-controls" onSubmit={runModeMap}>
         <label className="select-field">Parameter<select value={modeMap.parameter} onChange={(event) => setModeMap((current) => ({ ...current, parameter: event.target.value as ModeMapParameter }))}><option value="widthUm">Core width</option><option value="heightUm">Core height</option>{geometry === "slot" && <option value="slotGapUm">Slot gap</option>}{geometry === "coupler" && <option value="couplerGapUm">Coupler gap</option>}</select></label>

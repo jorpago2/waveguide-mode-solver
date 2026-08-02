@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap } from "./analysis";
-import { evaluateMaterial } from "./materials";
+import { analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides } from "./analysis";
+import { evaluateMaterial, evaluateMaterialAxes } from "./materials";
 import { solveWaveguide, validateWaveguide, type WaveguideConfig } from "./solver";
 
 const config: WaveguideConfig = {
@@ -21,6 +21,34 @@ describe("photonic design analyses", () => {
     const result = solveWaveguide({ ...config, coreMaterial: "silicon-nitride", claddingMaterial: "silica" });
     expect(result.modes[0].effectiveIndex).toBeGreaterThan(evaluateMaterial("silica", 1.55));
     expect(result.modes[0].effectiveIndex).toBeLessThan(evaluateMaterial("silicon-nitride", 1.55));
+  });
+
+  it("maps anisotropic material axes, temperature and a uniform LiNbO3 Pockels bias", () => {
+    const room = evaluateMaterialAxes("lithium-niobate", 1.55, 21, "y", 0);
+    const hot = evaluateMaterialAxes("lithium-niobate", 1.55, 80, "y", 0);
+    const biased = evaluateMaterialAxes("lithium-niobate", 1.55, 21, "y", 1);
+    expect(room.nx).toBeGreaterThan(room.ny);
+    expect(hot.nx).toBeGreaterThan(room.nx);
+    expect(biased.ny).toBeLessThan(room.ny);
+    for (const material of ["aluminum-nitride", "gallium-arsenide", "indium-phosphide", "silicon-carbide"] as const) {
+      expect(evaluateMaterial(material, 1.55)).toBeGreaterThan(2);
+      expect(evaluateMaterial(material, 1.55)).toBeLessThan(4);
+    }
+  });
+
+  it("classifies the fundamental mode and includes a finite lower stack", () => {
+    const nominal = solveWaveguide({ ...config, modeCount: 1 });
+    const stacked = solveWaveguide({ ...config, modeCount: 1, substrateIndex: 1.444,
+      stackLayers: [{ name: "buffer", thicknessUm: 0.5, material: "custom", index: 1.5 }] });
+    expect(nominal.modes[0].label).toMatch(/^(TE|TM)00$/);
+    expect(stacked.modes[0].effectiveIndex).toBeGreaterThan(nominal.modes[0].effectiveIndex);
+  });
+
+  it("compares modal power overlap between two cross-sections", () => {
+    const comparison = compareWaveguides(config, { ...config, widthUm: 1.05 }, 2);
+    expect(comparison.powerOverlap[0][0]).toBeGreaterThan(0.8);
+    expect(comparison.powerOverlap.flat().every((value) => value >= 0 && value <= 1)).toBe(true);
+    expect(comparison.effectiveIndexMismatch[0][0]).toBeGreaterThan(0);
   });
 
   it("computes a bounded Gaussian coupling efficiency", () => {

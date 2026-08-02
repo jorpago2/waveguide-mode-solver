@@ -13,7 +13,8 @@ export function SweepPlot({ result }: { result: SweepResult }) {
       {
         type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: wavelength,
         y: result.points.map((point) => point.effectiveIndex), line: { color: "#087f8c", width: 2.5 },
-        marker: { size: 5 }, hovertemplate: "λ = %{x:.4f} µm<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>",
+        marker: { size: result.points.map((point) => point.nearCutoff ? 9 : 5), color: result.points.map((point) => point.nearCutoff ? "#ed6a3a" : "#087f8c") },
+        text: result.points.map((point) => `${point.modeLabel}${point.nearCutoff ? " · near cutoff" : ""}`), hovertemplate: "%{text}<br>λ = %{x:.4f} µm<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>",
       },
       {
         type: "scatter", mode: "lines+markers", name: "n<sub>g</sub>", x: wavelength,
