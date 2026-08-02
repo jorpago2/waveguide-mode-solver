@@ -4,7 +4,7 @@ import {
   opticAxisDirection, uniaxialPermittivityTensor, validateTabulatedMaterial,
   type MaterialId, type OpticAxis, type SymmetricTensor, type TabulatedMaterialData,
 } from "./materials";
-import { createTidyBendOperator } from "./tidyBend";
+import { createRadialBendOperator } from "./radialBend";
 
 type TensorWasmModule = typeof import("./wasm/tensor.js");
 let tensorWasm: TensorWasmModule | undefined;
@@ -1377,21 +1377,21 @@ function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContex
   const signedRadius = (config.bendDirection ?? "positive-x") === "positive-x"
     ? config.bendRadiusUm as number
     : -(config.bendRadiusUm as number);
-  const tidyOperator = createTidyBendOperator(grid, config.wavelengthUm, signedRadius);
+  const bendOperator = createRadialBendOperator(grid, config.wavelengthUm, signedRadius);
   return {
     grid,
     k0,
     hxSize,
     hySize,
-    apply: tidyOperator.apply,
-    complex: tidyOperator.complex,
-    physicalVectorSize: tidyOperator.size,
+    apply: bendOperator.apply,
+    complex: bendOperator.complex,
+    physicalVectorSize: bendOperator.size,
     eigenvaluePower: 2,
     formulation: "transverse-e",
     linearSolver: "direct",
     backend: "Rust WASM LU",
-    solveShifted: tidyOperator.solveShifted,
-    reconstructTransverse: tidyOperator.reconstructMagnetic,
+    solveShifted: bendOperator.solveShifted,
+    reconstructTransverse: bendOperator.reconstructMagnetic,
   };
 }
 

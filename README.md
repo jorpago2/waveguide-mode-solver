@@ -17,7 +17,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
-- Rigorous constant-radius bends using Tidy3D's radial coordinate-transformation strategy: the metric factor 1 + x/R enters the material operators, a reduced transverse-electric eigenproblem is solved, and all six fields are reconstructed.
+- Rigorous constant-radius bends using a radial coordinate transformation: the metric factor 1 + x/R enters the material operators, a reduced transverse-electric eigenproblem is solved, and all six fields are reconstructed.
 - Wavelength sweeps with field-overlap mode tracking.
 - Width, height, slot-gap and bend-radius sweeps with resampled field-overlap mode tracking.
 - Effective and imaginary index, group index, D and β₂ dispersion, attenuation, electric and power confinement, polarization fractions and effective area.
@@ -72,7 +72,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 
 A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modesolver for Anisotropic Dielectric Waveguides,” *Journal of Lightwave Technology* 26(11), 1423–1431 (2008). [doi:10.1109/JLT.2008.923643](https://doi.org/10.1109/JLT.2008.923643)
 
-The curved formulation follows the radial coordinate transformation and reduced diagonal-material mode operator in the open-source [Tidy3D mode solver](https://github.com/flexcompute/tidy3d/blob/develop/tidy3d/components/mode/solver.py) and [radial transform](https://github.com/flexcompute/tidy3d/blob/develop/tidy3d/components/mode/transforms.py). Its cylindrical finite-difference basis is described by J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848).
+The cylindrical finite-difference basis for the curved formulation is described by J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848).
 
 Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), and [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068).
 

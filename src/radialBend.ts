@@ -10,7 +10,7 @@ import { factorizeSparseLu, solveSparseLu } from "./wasm/bendSolver";
 
 type Numeric = number | Complex;
 
-export interface TidyBendGrid {
+export interface RadialBendGrid {
   nx: number;
   ny: number;
   dxCell: number[];
@@ -35,7 +35,7 @@ export interface TidyBendGrid {
   inverseStretchYNodeImaginary: Float64Array;
 }
 
-export interface TidyBendOperator {
+export interface RadialBendOperator {
   size: number;
   complex: boolean;
   apply(vector: Float64Array): Float64Array;
@@ -162,7 +162,7 @@ function repeatedMetric(coordinates: number[], repeats: number, signedRadius: nu
   return values;
 }
 
-function derivativeMatrices(grid: TidyBendGrid): {
+function derivativeMatrices(grid: RadialBendGrid): {
   ax: Matrix<Numeric>;
   ay: Matrix<Numeric>;
   bx: Matrix<Numeric>;
@@ -330,11 +330,11 @@ function divideComplexVector(
   return { real, imaginary };
 }
 
-export function createTidyBendOperator(
-  grid: TidyBendGrid,
+export function createRadialBendOperator(
+  grid: RadialBendGrid,
   wavelengthUm: number,
   signedRadiusUm: number,
-): TidyBendOperator {
+): RadialBendOperator {
   const { nx, ny } = grid;
   const k0 = 2 * Math.PI / wavelengthUm;
   const horizontalEdges = ny * (nx + 1);
@@ -349,7 +349,7 @@ export function createTidyBendOperator(
   const epsilonX = Array.from(grid.epsilonX, (value, index) => numeric(value, grid.epsilonXImaginary[index]));
   const epsilonY = Array.from(grid.epsilonY, (value, index) => numeric(value, grid.epsilonYImaginary[index]));
 
-  // Radial material transformation followed by Tidy3D's reduced P Q E_t = beta^2 E_t formulation.
+  // Radial material transformation followed by the reduced P Q E_t = beta^2 E_t formulation.
   const longitudinalH = horizontal(derivatives.dy, scaleMatrix(derivatives.dx, -1));
   const longitudinalE = horizontal(derivatives.by, scaleMatrix(derivatives.bx, -1));
   const transformedInverseEpsilonZ = diagonal(inverseEpsilonZ.map((value, index) => multiplyNumeric(value, tNodes[index])));
