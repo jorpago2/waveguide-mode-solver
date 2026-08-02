@@ -65,6 +65,13 @@ describe("full-vector finite-difference mode solver", () => {
     expect(validateWaveguide({ ...benchmark, coreIndex: 1.4, claddingIndex: 1.5 })).not.toHaveLength(0);
   });
 
+  it("models etched sidewalls as a wider trapezoidal base", () => {
+    const vertical = solveWaveguide({ ...benchmark, modeCount: 1, sidewallAngleDeg: 90 }).modes[0];
+    const angled = solveWaveguide({ ...benchmark, modeCount: 1, sidewallAngleDeg: 70 }).modes[0];
+    expect(angled.effectiveIndex).toBeGreaterThan(vertical.effectiveIndex);
+    expect(validateWaveguide({ ...benchmark, sidewallAngleDeg: 10 })).not.toHaveLength(0);
+  });
+
   it("accepts the expanded parameter range", () => {
     expect(validateWaveguide({
       ...benchmark,

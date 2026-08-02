@@ -2,11 +2,13 @@
 
 Browser-based educational full-vector finite-difference eigenmode solver for integrated photonics.
 
-It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and reconstructs all six field components. Supported cross-sections are channel, rib, slot and multilayer ridge waveguides.
+It solves the coupled transverse magnetic-field eigenproblem on a Yee grid and reconstructs all six field components. Supported cross-sections are channel, rib, slot, two-guide coupler and multilayer ridge waveguides.
 
 ## Features
 
 - Uniform or center-graded transverse mesh with subpixel interface averaging.
+- Technology presets for SOI strip, rib and slot guides, SiN, thin-film lithium niobate, weak-guidance silica and polymer platforms.
+- Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
 - Complex diagonal anisotropy: ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²].
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
@@ -46,6 +48,7 @@ The tests exercise subpixel convergence, the finest supported grid, every geomet
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.
 - Library materials are isotropic reference models. Deposited-film composition, temperature and process variation require custom measured data.
+- The Z-cut TFLN preset uses representative ordinary and extraordinary indices at 1.55 µm; quantitative designs require process-specific dispersion and film data.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
 
 ## Reference

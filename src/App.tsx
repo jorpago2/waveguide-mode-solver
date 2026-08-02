@@ -39,26 +39,48 @@ const common = {
   claddingMaterial: "custom" as MaterialId,
   substrateMaterial: "custom" as MaterialId,
   couplerGapUm: 0.2,
+  sidewallAngleDeg: 90,
 };
 
 const presets: Record<string, WaveguideConfig> = {
-  "Silicon nitride": {
+  "SiN · channel": {
     ...common, wavelengthUm: 1.55, widthUm: 1, heightUm: 0.4, coreIndex: 2,
     claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon-nitride", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 1.2, gridResolution: 40, modeCount: 3,
   },
-  Silicon: {
+  "SOI · strip": {
     ...common, wavelengthUm: 1.55, widthUm: 0.45, heightUm: 0.22, slabHeightUm: 0.09,
     slotGapUm: 0.08, coreIndex: 3.476, claddingIndex: 1.444,
     substrateIndex: 1.444, coreMaterial: "silicon", claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 52, modeCount: 2,
   },
-  Polymer: {
+  "SOI · rib": {
+    ...common, geometry: "rib", wavelengthUm: 1.55, widthUm: 0.5, heightUm: 0.22, slabHeightUm: 0.09,
+    coreIndex: 3.476, claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon",
+    claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 52, modeCount: 3,
+  },
+  "SOI · slot": {
+    ...common, geometry: "slot", wavelengthUm: 1.55, widthUm: 0.52, heightUm: 0.22, slotGapUm: 0.08,
+    coreIndex: 3.476, claddingIndex: 1.444, substrateIndex: 1.444, coreMaterial: "silicon",
+    claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 0.8, gridResolution: 56, modeCount: 3,
+  },
+  "TFLN · Z-cut rib": {
+    ...common, geometry: "rib", wavelengthUm: 1.55, widthUm: 1.2, heightUm: 0.6, slabHeightUm: 0.3,
+    sidewallAngleDeg: 70, coreIndex: 2.211, coreIndexY: 2.138, coreIndexZ: 2.211,
+    claddingIndex: 1.444, substrateIndex: 1.444, claddingMaterial: "silica", substrateMaterial: "silica",
+    paddingUm: 1.5, gridResolution: 52, modeCount: 3,
+  },
+  "Silica · weak guidance": {
+    ...common, wavelengthUm: 1.55, widthUm: 4, heightUm: 4, coreIndex: 1.46, claddingIndex: 1.444,
+    substrateIndex: 1.444, claddingMaterial: "silica", substrateMaterial: "silica", paddingUm: 5,
+    gridResolution: 48, modeCount: 3,
+  },
+  "Polymer · channel": {
     ...common, wavelengthUm: 1.55, widthUm: 2, heightUm: 1.2, slabHeightUm: 0.5,
     slotGapUm: 0.25, coreIndex: 1.59, claddingIndex: 1.49,
     substrateIndex: 1.49, paddingUm: 2, gridResolution: 44, modeCount: 3,
   },
 };
 
-const initialConfig = presets["Silicon nitride"];
+const initialConfig = presets["SiN · channel"];
 const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm: 1.65, points: 9, modeIndex: 0 };
 const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
 const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity", "poynting"];
@@ -222,7 +244,7 @@ export function App() {
         <aside className="control-panel">
           <div className="panel-heading"><div><span className="step">01</span><h2>Waveguide</h2></div><span className="method-chip">FDM</span></div>
           <form onSubmit={solve} noValidate>
-            <label>Platform preset<select defaultValue="Silicon nitride" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
+            <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
             <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => ({ ...current, geometry: event.target.value as GeometryType }))}>
               <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option>
             </select></label>
@@ -239,6 +261,7 @@ export function App() {
               {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
               {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
               {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
+              {(draft.geometry ?? "channel") !== "slot" && <NumberField label="Sidewall angle" unit="°" value={draft.sidewallAngleDeg ?? 90} min={20} max={90} step={1} onChange={(v) => updateNumber("sidewallAngleDeg", v)} />}
               {(draft.geometry ?? "channel") === "multilayer" && <NumberField label="Substrate n" unit="n" value={draft.substrateIndex ?? draft.claddingIndex} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} onChange={(v) => updateNumber("substrateIndex", v)} />}
               <NumberField label="Core nₓ" unit="n" value={displayMaterialIndex(draft.coreMaterial, draft.wavelengthUm, draft.coreIndex)} min={1.01} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndex", v)} />
               <NumberField label="Cladding nₓ" unit="n" value={displayMaterialIndex(draft.claddingMaterial, draft.wavelengthUm, draft.claddingIndex)} min={1} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndex", v)} />
@@ -271,7 +294,7 @@ export function App() {
                 </>}
               </div>
               <MaterialSources config={draft} />
-              <p>Diagonal complex tensor ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²]. The PML uses cubic complex-coordinate stretching; dn/dλ is linear around the reference wavelength.</p>
+              <p>Diagonal complex tensor ε = diag[(nₓ + iκ)², (nᵧ + iκ)², (n_z + iκ)²]. Sidewall angle is measured from the substrate plane (90° is vertical). The PML uses cubic complex-coordinate stretching; dn/dλ is linear around the reference wavelength.</p>
             </details>
             <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
             <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}

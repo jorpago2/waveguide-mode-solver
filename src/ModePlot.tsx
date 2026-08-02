@@ -130,7 +130,14 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
 function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
   const line = { color: "rgba(255,255,255,0.9)", width: 1.5, dash: "dot" as const };
   const rectangle = (x0: number, x1: number, y0: number, y1: number) => ({ type: "rect" as const, x0, x1, y0, y1, line });
+  const trapezoid = (centerX: number, topWidth: number, bottomWidth: number, bottomY: number, topY: number) => ({
+    type: "path" as const,
+    path: `M ${centerX - bottomWidth / 2},${bottomY} L ${centerX + bottomWidth / 2},${bottomY} L ${centerX + topWidth / 2},${topY} L ${centerX - topWidth / 2},${topY} Z`,
+    line,
+  });
   const geometry = config.geometry ?? "channel";
+  const etchedHeight = geometry === "rib" ? config.heightUm - (config.slabHeightUm ?? config.heightUm / 2) : config.heightUm;
+  const expansion = geometry === "slot" ? 0 : etchedHeight / Math.tan((config.sidewallAngleDeg ?? 90) * Math.PI / 180);
   if (geometry === "slot") {
     const gap = config.slotGapUm ?? config.widthUm / 5;
     return [
@@ -140,19 +147,21 @@ function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
   }
   if (geometry === "coupler") {
     const gap = config.couplerGapUm ?? config.widthUm / 2;
+    const bottomWidth = config.widthUm + 2 * expansion;
     return [
-      rectangle(-gap / 2 - config.widthUm, -gap / 2, -config.heightUm / 2, config.heightUm / 2),
-      rectangle(gap / 2, gap / 2 + config.widthUm, -config.heightUm / 2, config.heightUm / 2),
+      trapezoid(-gap / 2 - config.widthUm / 2, config.widthUm, bottomWidth, -config.heightUm / 2, config.heightUm / 2),
+      trapezoid(gap / 2 + config.widthUm / 2, config.widthUm, bottomWidth, -config.heightUm / 2, config.heightUm / 2),
     ];
   }
   if (geometry === "rib") {
     const slabTop = -config.heightUm / 2 + (config.slabHeightUm ?? config.heightUm / 2);
     return [
-      rectangle(-config.paddingUm - config.widthUm / 2, config.paddingUm + config.widthUm / 2, -config.heightUm / 2, slabTop),
-      rectangle(-config.widthUm / 2, config.widthUm / 2, slabTop, config.heightUm / 2),
+      rectangle(-config.paddingUm - config.widthUm / 2 - expansion, config.paddingUm + config.widthUm / 2 + expansion, -config.heightUm / 2, slabTop),
+      trapezoid(0, config.widthUm, config.widthUm + 2 * expansion, slabTop, config.heightUm / 2),
     ];
   }
-  const shapes: Partial<Plotly.Shape>[] = [rectangle(-config.widthUm / 2, config.widthUm / 2, -config.heightUm / 2, config.heightUm / 2)];
-  if (geometry === "multilayer") shapes.push({ type: "line", x0: -config.paddingUm - config.widthUm / 2, x1: config.paddingUm + config.widthUm / 2, y0: -config.heightUm / 2, y1: -config.heightUm / 2, line });
+  const bottomWidth = config.widthUm + 2 * expansion;
+  const shapes: Partial<Plotly.Shape>[] = [trapezoid(0, config.widthUm, bottomWidth, -config.heightUm / 2, config.heightUm / 2)];
+  if (geometry === "multilayer") shapes.push({ type: "line", x0: -config.paddingUm - bottomWidth / 2, x1: config.paddingUm + bottomWidth / 2, y0: -config.heightUm / 2, y1: -config.heightUm / 2, line });
   return shapes;
 }

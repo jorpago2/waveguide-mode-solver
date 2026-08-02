@@ -52,6 +52,7 @@ export interface WaveguideConfig {
   substrateMaterial?: MaterialId;
   couplerGapUm?: number;
   coreIndexOffset?: number;
+  sidewallAngleDeg?: number;
 }
 
 export interface WaveguideMode {
@@ -220,6 +221,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.coreExtinction, config.claddingExtinction, config.substrateIndex, config.substrateIndexY, config.substrateIndexZ,
     config.substrateExtinction, config.coreDispersionPerUm, config.claddingDispersionPerUm,
     config.substrateDispersionPerUm, config.meshBias, config.coreIndexOffset,
+    config.sidewallAngleDeg,
   ].every((value) => value === undefined || Number.isFinite(value));
   if (!finiteOptional) errors.push("Optional material and mesh values must be finite.");
   if ([config.coreExtinction ?? 0, config.claddingExtinction ?? 0, config.substrateExtinction ?? 0]
@@ -248,6 +250,11 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   }
   if ((config.geometry ?? "channel") === "coupler" && (!Number.isFinite(config.couplerGapUm) || (config.couplerGapUm ?? 0) <= 0 || (config.couplerGapUm ?? 0) > PARAMETER_MAXIMUMS.dimensionUm)) {
     errors.push(`Coupler gap must be positive and no larger than ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
+  }
+  const sidewallAngle = config.sidewallAngleDeg ?? 90;
+  if (sidewallAngle < 20 || sidewallAngle > 90) errors.push("Sidewall angle must be between 20° and 90°, measured from the substrate plane.");
+  if ((config.geometry ?? "channel") === "coupler" && (config.couplerGapUm ?? 0) <= 2 * sidewallExpansion(config)) {
+    errors.push("The coupler sidewalls overlap at the guide base; increase the gap or sidewall angle.");
   }
   if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 1 || (config.substrateIndex ?? 0) > PARAMETER_MAXIMUMS.refractiveIndex)) {
     errors.push(`Substrate index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
@@ -482,22 +489,84 @@ function regionFractions(x0: number, x1: number, y0: number, y1: number, config:
   if (geometry === "rib") {
     const slabTop = coreBottom + (config.slabHeightUm ?? config.heightUm / 2);
     core = rectangleFraction(x0, x1, y0, y1, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, coreBottom, slabTop)
-      + rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, config.widthUm / 2, slabTop, coreTop);
+      + trapezoidFraction(x0, x1, y0, y1, 0, config.widthUm, config.widthUm + 2 * sidewallExpansion(config), slabTop, coreTop);
   } else if (geometry === "slot") {
     const gap = config.slotGapUm ?? config.widthUm / 5;
     core = rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, -gap / 2, coreBottom, coreTop)
       + rectangleFraction(x0, x1, y0, y1, gap / 2, config.widthUm / 2, coreBottom, coreTop);
   } else if (geometry === "coupler") {
     const gap = config.couplerGapUm ?? config.widthUm / 2;
-    core = rectangleFraction(x0, x1, y0, y1, -gap / 2 - config.widthUm, -gap / 2, coreBottom, coreTop)
-      + rectangleFraction(x0, x1, y0, y1, gap / 2, gap / 2 + config.widthUm, coreBottom, coreTop);
+    const bottomWidth = config.widthUm + 2 * sidewallExpansion(config);
+    core = trapezoidFraction(x0, x1, y0, y1, -gap / 2 - config.widthUm / 2, config.widthUm, bottomWidth, coreBottom, coreTop)
+      + trapezoidFraction(x0, x1, y0, y1, gap / 2 + config.widthUm / 2, config.widthUm, bottomWidth, coreBottom, coreTop);
   } else {
-    core = rectangleFraction(x0, x1, y0, y1, -config.widthUm / 2, config.widthUm / 2, coreBottom, coreTop);
+    core = trapezoidFraction(x0, x1, y0, y1, 0, config.widthUm, config.widthUm + 2 * sidewallExpansion(config), coreBottom, coreTop);
   }
   const substrate = geometry === "multilayer"
     ? rectangleFraction(x0, x1, y0, y1, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, coreBottom)
     : 0;
   return { core: clamp(core, 0, 1), substrate: clamp(substrate, 0, 1) };
+}
+
+function sidewallExpansion(config: WaveguideConfig): number {
+  if ((config.geometry ?? "channel") === "slot") return 0;
+  const etchedHeight = (config.geometry ?? "channel") === "rib"
+    ? config.heightUm - (config.slabHeightUm ?? config.heightUm / 2)
+    : config.heightUm;
+  return etchedHeight / Math.tan((config.sidewallAngleDeg ?? 90) * Math.PI / 180);
+}
+
+function trapezoidFraction(
+  x0: number, x1: number, y0: number, y1: number,
+  centerX: number, topWidth: number, bottomWidth: number, bottomY: number, topY: number,
+): number {
+  return polygonFraction(x0, x1, y0, y1, [
+    { x: centerX - bottomWidth / 2, y: bottomY },
+    { x: centerX + bottomWidth / 2, y: bottomY },
+    { x: centerX + topWidth / 2, y: topY },
+    { x: centerX - topWidth / 2, y: topY },
+  ]);
+}
+
+function polygonFraction(x0: number, x1: number, y0: number, y1: number, polygon: Array<{ x: number; y: number }>): number {
+  let clipped = clipPolygon(polygon, (point) => point.x >= x0, (first, second) => intersectX(first, second, x0));
+  clipped = clipPolygon(clipped, (point) => point.x <= x1, (first, second) => intersectX(first, second, x1));
+  clipped = clipPolygon(clipped, (point) => point.y >= y0, (first, second) => intersectY(first, second, y0));
+  clipped = clipPolygon(clipped, (point) => point.y <= y1, (first, second) => intersectY(first, second, y1));
+  if (clipped.length < 3) return 0;
+  let twiceArea = 0;
+  for (let index = 0; index < clipped.length; index += 1) {
+    const next = clipped[(index + 1) % clipped.length];
+    twiceArea += clipped[index].x * next.y - next.x * clipped[index].y;
+  }
+  return Math.abs(twiceArea) / 2 / ((x1 - x0) * (y1 - y0));
+}
+
+function clipPolygon(
+  polygon: Array<{ x: number; y: number }>,
+  inside: (point: { x: number; y: number }) => boolean,
+  intersect: (first: { x: number; y: number }, second: { x: number; y: number }) => { x: number; y: number },
+): Array<{ x: number; y: number }> {
+  const output: Array<{ x: number; y: number }> = [];
+  for (let index = 0; index < polygon.length; index += 1) {
+    const current = polygon[index];
+    const previous = polygon[(index + polygon.length - 1) % polygon.length];
+    if (inside(current)) {
+      if (!inside(previous)) output.push(intersect(previous, current));
+      output.push(current);
+    } else if (inside(previous)) output.push(intersect(previous, current));
+  }
+  return output;
+}
+
+function intersectX(first: { x: number; y: number }, second: { x: number; y: number }, x: number): { x: number; y: number } {
+  const fraction = (x - first.x) / (second.x - first.x);
+  return { x, y: first.y + fraction * (second.y - first.y) };
+}
+
+function intersectY(first: { x: number; y: number }, second: { x: number; y: number }, y: number): { x: number; y: number } {
+  const fraction = (y - first.y) / (second.y - first.y);
+  return { x: first.x + fraction * (second.x - first.x), y };
 }
 
 function rectangleFraction(
@@ -609,7 +678,10 @@ function secondDerivative(x: number[], y: number[]): number[] {
 }
 
 function createGrid(config: WaveguideConfig): Grid {
-  const coreSpan = (config.geometry ?? "channel") === "coupler" ? 2 * config.widthUm + (config.couplerGapUm ?? config.widthUm / 2) : config.widthUm;
+  const expansion = sidewallExpansion(config);
+  const coreSpan = (config.geometry ?? "channel") === "coupler"
+    ? 2 * config.widthUm + (config.couplerGapUm ?? config.widthUm / 2) + 2 * expansion
+    : config.widthUm + 2 * expansion;
   const domainWidth = coreSpan + 2 * config.paddingUm;
   const domainHeight = config.heightUm + 2 * config.paddingUm;
   const nominalStep = Math.max(domainWidth, domainHeight) / config.gridResolution;
