@@ -44,7 +44,8 @@ export function runSolverWorker<T>(request: SolverWorkerRequest): Promise<T> {
       return;
     }
     const id = nextRequestId++;
-    const timeoutMs = request.kind === "solve" && request.config.gridResolution <= 96 ? 60_000 : 300_000;
+    const bentSolve = request.kind === "solve" && (request.config.bendRadiusUm ?? 0) > 0;
+    const timeoutMs = bentSolve ? 900_000 : request.kind === "solve" && request.config.gridResolution <= 96 ? 60_000 : 300_000;
     const timeout = globalThis.setTimeout(() => {
       stopWorker(new Error(`The ${request.kind === "solve" ? "mode solve" : "analysis"} timed out. Reduce the mesh resolution, requested modes or sweep samples and try again.`));
     }, timeoutMs);

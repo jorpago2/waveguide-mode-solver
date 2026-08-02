@@ -447,7 +447,7 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   const arnoldiDimension = Math.min(
     operator.physicalVectorSize * (operator.complex ? 2 : 1) - 1,
     operator.formulation === "transverse-e" && operator.complex
-      ? Math.max(64, config.modeCount * 16 + 32)
+      ? Math.max(28, config.modeCount * 8 + 8)
       : operator.formulation === "first-order" && (config.bendRadiusUm ?? 0) === 0
       ? Math.max(32, config.modeCount * 10 + 12)
       : Math.max(operator.complex ? (operator.eigenvaluePower === 1 ? 48 : 28) : 16, config.modeCount * (operator.complex ? 12 : 7) + (operator.eigenvaluePower === 1 ? 8 : 0)),
