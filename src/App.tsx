@@ -54,8 +54,8 @@ const common = {
   bendDirection: "positive-x" as const,
 };
 
-const STANDARD_GRID_RESOLUTION = 64;
-const THIN_FILM_GRID_RESOLUTION = 80;
+const STANDARD_GRID_RESOLUTION = 96;
+const THIN_FILM_GRID_RESOLUTION = 128;
 
 const presets: Record<string, WaveguideConfig> = {
   "SiN · channel": {
@@ -241,9 +241,9 @@ export function App() {
     setError("");
     setBusy(true);
     setMessage((draft.bendRadiusUm ?? 0) > 0
-      ? `Solving a ${draft.gridResolution}-cell bent-waveguide eigenproblem with PML; this can take several minutes…`
+      ? `Solving a ${draft.gridResolution}-cell bent-waveguide eigenproblem with PML; fine meshes or several modes can take longer…`
       : draft.gridResolution > 96
-        ? `Solving a high-resolution ${draft.gridResolution}-cell eigenproblem; this can take several minutes…`
+        ? `Solving a high-resolution ${draft.gridResolution}-cell eigenproblem; this can take tens of seconds…`
         : "Solving the vector eigenproblem…");
     try {
         const next = await runSolverWorker<SolverResult>({ kind: "solve", config: draft });
