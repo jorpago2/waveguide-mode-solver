@@ -21,7 +21,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Wavelength sweeps with field-overlap mode tracking.
 - Width, height, slot-gap and bend-radius sweeps with resampled field-overlap mode tracking.
 - Effective and imaginary index, group index, D and β₂ dispersion, attenuation, electric and power confinement, polarization fractions and effective area.
-- Complex Poynting-vector normalization to 1 W modal power.
+- Complex Poynting-vector normalization to 1 mW modal power.
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.

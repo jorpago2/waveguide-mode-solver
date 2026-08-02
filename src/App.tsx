@@ -483,7 +483,7 @@ export function App() {
               <Metric label="x-polarized E fraction" value={`${(mode.xPolarizedElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
               <Metric label={<>Imaginary index Im(<i>n</i><sub>eff</sub>)</>} value={mode.effectiveIndexImaginary.toExponential(3)} />
-              <Metric label="Normalized power" value={`${mode.modalPowerW.toFixed(3)} W`} />
+              <Metric label="Normalized modal power" value={`${(mode.modalPowerW * 1e3).toFixed(3)} mW`} />
               <Metric label="Guidance margin" value={`${mode.guidanceMargin.toExponential(3)}${mode.nearCutoff ? " · review" : ""}`} />
               {mode.bendRadiusUm && <Metric label="Bend radius" value={`${mode.bendRadiusUm.toFixed(3)} µm`} />}
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}

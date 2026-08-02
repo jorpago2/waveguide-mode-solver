@@ -45,6 +45,8 @@ export const PARAMETER_MAXIMUMS = {
   bendRadiusUm: 1_000_000,
 } as const;
 
+export const NORMALIZED_MODAL_POWER_W = 1e-3;
+
 export interface WaveguideConfig {
   wavelengthUm: number;
   widthUm: number;
@@ -1838,7 +1840,7 @@ function finalizeMode(
   for (let index = 0; index < rawPoynting.length; index += 1) {
     powerForUnitMagneticFieldW += vacuumImpedanceOhm * rawPoynting[index] * grid.cellArea[index] * 1e-12;
   }
-  const hScale = 1 / Math.sqrt(Math.max(Math.abs(powerForUnitMagneticFieldW), 1e-30));
+  const hScale = Math.sqrt(NORMALIZED_MODAL_POWER_W / Math.max(Math.abs(powerForUnitMagneticFieldW), 1e-30));
   const eScale = vacuumImpedanceOhm * hScale * Math.sign(powerForUnitMagneticFieldW || 1);
   const physicalEx = complexScaleScalar(collocatedEx, eScale, 0);
   const physicalEy = complexScaleScalar(collocatedEy, eScale, 0);

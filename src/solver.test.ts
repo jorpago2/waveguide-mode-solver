@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseNumericInput } from "./numericInput";
-import { solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
+import { NORMALIZED_MODAL_POWER_W, solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
   wavelengthUm: 1.55,
@@ -75,7 +75,7 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.longitudinalElectricFraction).toBeGreaterThanOrEqual(0);
     expect(mode.fields.Ex).toHaveLength(26);
     expect(mode.fields.Ex[0]).toHaveLength(32);
-    expect(mode.modalPowerW).toBeCloseTo(1, 8);
+    expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(mode.peakPoyntingWPerM2).toBeGreaterThan(0);
     expect(result.xEdgesUm).toHaveLength(result.nx + 1);
     expect(result.yEdgesUm).toHaveLength(result.ny + 1);
@@ -182,7 +182,7 @@ describe("full-vector finite-difference mode solver", () => {
     }).modes[0];
     expect(mode.effectiveIndexImaginary).toBeGreaterThan(0);
     expect(mode.lossDbPerCm).toBeGreaterThan(0);
-    expect(mode.modalPowerW).toBeCloseTo(1, 8);
+    expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(mode.residual).toBeLessThan(5e-3);
   });
 
@@ -194,7 +194,7 @@ describe("full-vector finite-difference mode solver", () => {
     }).modes[0];
     expect(bent).toBeDefined();
     expect(bent.effectiveIndex).toBeCloseTo(straight.effectiveIndex, 2);
-    expect(bent.modalPowerW).toBeCloseTo(1, 8);
+    expect(bent.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(bent.residual).toBeLessThan(5e-3);
   }, 10_000);
 
@@ -223,7 +223,7 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode).toBeDefined();
     expect(mode.effectiveIndexImaginary).toBeGreaterThan(0);
     expect(mode.lossDbPerCm).toBeGreaterThan(0);
-    expect(mode.modalPowerW).toBeCloseTo(1, 8);
+    expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(mode.residual).toBeLessThan(1e-2);
   }, 20_000);
 
