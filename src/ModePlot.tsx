@@ -55,7 +55,6 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       zmax: 1,
       zmid: signedField ? 0 : undefined,
       colorscale: signedField ? "RdBu" : "Viridis",
-      reversescale: signedField,
       colorbar: {
         title: { text: labels[component], side: "right" },
         thickness: 12,
