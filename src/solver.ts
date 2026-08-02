@@ -7,6 +7,7 @@ import {
 
 type TensorWasmModule = typeof import("./wasm/tensor.js");
 let tensorWasm: TensorWasmModule | undefined;
+let recycledArnoldiSubspace: { key: string; vectors: Float64Array[] } | undefined;
 try {
   tensorWasm = await import("./wasm/tensor.js");
 } catch {
@@ -257,6 +258,7 @@ interface OperatorContext {
   eigenvaluePower: 1 | 2;
   formulation: "transverse-h" | "first-order";
   linearSolver: "bicgstab" | "gmres";
+  backend: "TypeScript" | "WebAssembly";
   solveShifted?: (shift: number, rightHandSide: Float64Array) => Float64Array;
 }
 
@@ -423,7 +425,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   return errors;
 }
 
-export function solveWaveguide(config: WaveguideConfig): SolverResult {
+export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false): SolverResult {
   const errors = validateWaveguide(config);
   if (errors.length > 0) throw new Error(errors.join(" "));
 
@@ -439,7 +441,7 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
       ? Math.max(32, config.modeCount * 10 + 12)
       : Math.max(operator.complex ? (operator.eigenvaluePower === 1 ? 48 : 28) : 16, config.modeCount * (operator.complex ? 12 : 7) + (operator.eigenvaluePower === 1 ? 8 : 0)),
   );
-  const pairs = solveLargestEigenpairs(operator, arnoldiDimension, requestedRitzPairs, config);
+  const pairs = solveLargestEigenpairs(operator, arnoldiDimension, requestedRitzPairs, config, recycleSubspace);
   const { exteriorIndex, maximumIndex } = guidanceBounds(config);
   const guidedPairs = pairs.filter((pair) => {
     const effectiveIndex = pairEffectiveIndex(pair, operator);
@@ -489,7 +491,7 @@ export function solveWaveguide(config: WaveguideConfig): SolverResult {
     warnings,
     arnoldiDimension,
     formulation: operator.formulation,
-    backend: operator.formulation === "first-order" && tensorWasm ? "WebAssembly" : "TypeScript",
+    backend: operator.backend,
   };
 }
 
@@ -499,6 +501,7 @@ function pairEffectiveIndex(pair: RitzPair, operator: OperatorContext): number {
 }
 
 export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings): SweepResult {
+  recycledArnoldiSubspace = undefined;
   if (!(settings.startWavelengthUm >= 0.2 && settings.stopWavelengthUm <= PARAMETER_MAXIMUMS.wavelengthUm && settings.stopWavelengthUm > settings.startWavelengthUm)) {
     throw new Error(`Sweep limits must be ordered and stay between 0.2 and ${PARAMETER_MAXIMUMS.wavelengthUm} µm.`);
   }
@@ -512,12 +515,14 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
     Math.abs(value - config.wavelengthUm) < Math.abs(wavelengths[best] - config.wavelengthUm) ? index : best
   ), 0);
   const tracked: Array<{ mode: WaveguideMode; overlap: number } | undefined> = new Array(settings.points);
-  const solveAt = (index: number) => solveWaveguide({ ...config, wavelengthUm: wavelengths[index] }).modes;
+  const solveAt = (index: number) => solveWaveguide({ ...config, wavelengthUm: wavelengths[index] }, true).modes;
   const anchorModes = solveAt(anchor);
   if (anchorModes.length === 0) throw new Error("No guided mode exists at the sweep anchor wavelength.");
   tracked[anchor] = { mode: anchorModes[Math.min(settings.modeIndex, anchorModes.length - 1)], overlap: 1 };
+  const anchorSubspace = recycledArnoldiSubspace;
 
   for (const direction of [1, -1]) {
+    recycledArnoldiSubspace = anchorSubspace;
     for (let index = anchor + direction; index >= 0 && index < wavelengths.length; index += direction) {
       const previous = tracked[index - direction]?.mode;
       const candidates = solveAt(index);
@@ -562,6 +567,7 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
 }
 
 export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSettings): GeometrySweepResult {
+  recycledArnoldiSubspace = undefined;
   const maximumSweepValue = settings.parameter === "bendRadiusUm" ? PARAMETER_MAXIMUMS.bendRadiusUm : PARAMETER_MAXIMUMS.dimensionUm;
   if (!(settings.startValueUm > 0 && settings.stopValueUm > settings.startValueUm && settings.stopValueUm <= maximumSweepValue)) {
     throw new Error(`Geometry sweep limits must be positive, ordered and no larger than ${maximumSweepValue} µm.`);
@@ -590,7 +596,7 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
     const nextConfig = { ...config, [settings.parameter]: values[index] };
     const errors = validateWaveguide(nextConfig);
     if (errors.length > 0) return undefined;
-    return solveWaveguide(nextConfig);
+    return solveWaveguide(nextConfig, true);
   };
   const anchorResult = solveAt(anchor);
   if (!anchorResult?.modes.length) throw new Error("No guided mode exists at the geometry-sweep anchor.");
@@ -599,8 +605,10 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
     mode: anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)],
     overlap: 1,
   };
+  const anchorSubspace = recycledArnoldiSubspace;
 
   for (const direction of [1, -1]) {
+    recycledArnoldiSubspace = anchorSubspace;
     for (let index = anchor + direction; index >= 0 && index < values.length; index += direction) {
       const previous = tracked[index - direction];
       const candidateResult = solveAt(index);
@@ -865,6 +873,49 @@ function stretchedEdges(length: number, cells: number, bias: number): number[] {
   });
 }
 
+function alignEdgesToInterfaces(edges: number[], interfaces: number[]): number[] {
+  const aligned = edges.slice();
+  const minimumSpacing = (edges[edges.length - 1] - edges[0]) / (edges.length - 1) * 0.05;
+  const claimed = new Set<number>();
+  for (const coordinate of [...new Set(interfaces)].sort((first, second) => first - second)) {
+    if (coordinate <= aligned[0] || coordinate >= aligned[aligned.length - 1]) continue;
+    let best = -1;
+    let distance = Number.POSITIVE_INFINITY;
+    for (let index = 1; index < aligned.length - 1; index += 1) {
+      if (claimed.has(index) || coordinate - aligned[index - 1] < minimumSpacing || aligned[index + 1] - coordinate < minimumSpacing) continue;
+      if (Math.abs(aligned[index] - coordinate) < distance) { best = index; distance = Math.abs(aligned[index] - coordinate); }
+    }
+    if (best >= 0) { aligned[best] = coordinate; claimed.add(best); }
+  }
+  return aligned;
+}
+
+function geometryInterfaces(config: WaveguideConfig): { x: number[]; y: number[] } {
+  const geometry = config.geometry ?? "channel";
+  const bottom = -config.heightUm / 2;
+  const top = config.heightUm / 2;
+  const expansion = sidewallExpansion(config);
+  const x: number[] = [];
+  const y = [bottom, top];
+  if (geometry === "slot") {
+    const gap = config.slotGapUm ?? config.widthUm / 5;
+    x.push(-config.widthUm / 2, -gap / 2, gap / 2, config.widthUm / 2);
+  } else if (geometry === "coupler") {
+    const gap = config.couplerGapUm ?? config.widthUm / 2;
+    const centers = [-gap / 2 - config.widthUm / 2, gap / 2 + config.widthUm / 2];
+    for (const center of centers) x.push(
+      center - config.widthUm / 2 - expansion, center - config.widthUm / 2,
+      center + config.widthUm / 2, center + config.widthUm / 2 + expansion,
+    );
+  } else {
+    x.push(-config.widthUm / 2 - expansion, -config.widthUm / 2, config.widthUm / 2, config.widthUm / 2 + expansion);
+  }
+  if (geometry === "rib") y.push(bottom + (config.slabHeightUm ?? config.heightUm / 2));
+  let layerTop = bottom;
+  for (const layer of config.stackLayers ?? []) { layerTop -= layer.thicknessUm; y.push(layerTop); }
+  return { x, y };
+}
+
 function differences(values: number[]): number[] {
   return values.slice(1).map((value, index) => value - values[index]);
 }
@@ -968,8 +1019,12 @@ function createGrid(config: WaveguideConfig): Grid {
   const nominalStep = Math.max(domainWidth, domainHeight) / config.gridResolution;
   const nx = Math.max(12, Math.round(domainWidth / nominalStep));
   const ny = Math.max(12, Math.round(domainHeight / nominalStep));
-  const xEdges = stretchedEdges(domainWidth, nx, config.meshBias ?? 0);
-  const yEdges = stretchedEdges(domainHeight, ny, config.meshBias ?? 0);
+  const interfaces = geometryInterfaces(config);
+  const baseXEdges = stretchedEdges(domainWidth, nx, config.meshBias ?? 0);
+  const baseYEdges = stretchedEdges(domainHeight, ny, config.meshBias ?? 0);
+  // ponytail: coarse meshes retain smooth grading; interface snapping starts when each feature can keep distinct cells.
+  const xEdges = config.gridResolution >= 48 ? alignEdgesToInterfaces(baseXEdges, interfaces.x) : baseXEdges;
+  const yEdges = config.gridResolution >= 48 ? alignEdgesToInterfaces(baseYEdges, interfaces.y) : baseYEdges;
   const dxCell = differences(xEdges);
   const dyCell = differences(yEdges);
   const dxDual = dualSpacing(dxCell);
@@ -1199,7 +1254,7 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     || grid.epsilonYImaginary.some((value) => value !== 0)
     || grid.inverseStretchXCellImaginary.some((value) => value !== 0)
     || grid.inverseStretchYCellImaginary.some((value) => value !== 0);
-  const apply = complex ? (vector: Float64Array): Float64Array => {
+  let apply = complex ? (vector: Float64Array): Float64Array => {
     const vectorSize = hxSize + hySize;
     const hx = complexSlice(vector, 0, hxSize, vectorSize);
     const hy = complexSlice(vector, hxSize, vectorSize, vectorSize);
@@ -1223,8 +1278,19 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     complexAddProductInPlace(outputHy, hy, epsilonX, grid.epsilonXImaginary, k0 ** 2);
     return complexJoin(outputHx, outputHy);
   } : applyReal;
+  let solveShifted: OperatorContext["solveShifted"];
+  if (!complex && tensorWasm && grid.nx <= 128 && grid.ny <= 128) {
+    tensorWasm.configureVectorOperator(
+      nx, ny, k0,
+      Float64Array.from(dxCell), Float64Array.from(dyCell),
+      Float64Array.from(dxDual), Float64Array.from(dyDual),
+      epsilonX, epsilonY, inverseEpsilonZ,
+    );
+    apply = (vector: Float64Array) => tensorWasm?.applyVectorOperator(vector) ?? applyReal(vector);
+    solveShifted = (shift, rightHandSide) => tensorWasm?.solveShiftedVectorSystem(rightHandSide, shift, 180, 1e-5) ?? rightHandSide.slice();
+  }
 
-  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab" };
+  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab", backend: solveShifted ? "WebAssembly" : "TypeScript", solveShifted };
 }
 
 function gridHasOffDiagonalTensor(grid: Grid): boolean {
@@ -1287,7 +1353,7 @@ function createTensorOperator(grid: Grid, wavelengthUm: number): OperatorContext
   const solveShifted = tensorWasm
     ? (shift: number, rightHandSide: Float64Array) => tensorWasm?.solveShiftedTensorSystem(rightHandSide, shift, 180, 1e-5) ?? rightHandSide.slice()
     : undefined;
-  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab", solveShifted };
+  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab", backend: tensorWasm ? "WebAssembly" : "TypeScript", solveShifted };
 }
 
 function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContext {
@@ -1375,7 +1441,7 @@ function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContex
     return complexJoinMany([outputEx, outputEy, outputHx, outputHy]);
   } : applyReal;
 
-  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: complex ? "gmres" : "bicgstab" };
+  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: complex ? "gmres" : "bicgstab", backend: "TypeScript" };
 }
 
 function bendMetric(coordinates: number[], signedRadius: number, config: WaveguideConfig): ComplexArray {
@@ -1401,6 +1467,7 @@ function solveLargestEigenpairs(
   arnoldiDimension: number,
   requestedPairs: number,
   config: WaveguideConfig,
+  recycleSubspace: boolean,
 ): RitzPair[] {
   const physicalVectorSize = operator.physicalVectorSize;
   const vectorSize = physicalVectorSize * (operator.complex ? 2 : 1);
@@ -1409,7 +1476,13 @@ function solveLargestEigenpairs(
   const shift = (operator.k0 * targetIndex) ** operator.eigenvaluePower;
   const basis: Float64Array[] = [];
   const hessenberg = Array.from({ length: arnoldiDimension + 1 }, () => new Float64Array(arnoldiDimension));
+  const recycleKey = `${operator.formulation}:${operator.eigenvaluePower}:${operator.complex}:${vectorSize}`;
   let vector = deterministicUnitVector(vectorSize);
+  if (recycleSubspace && recycledArnoldiSubspace?.key === recycleKey) {
+    multiplyScalarInPlace(vector, 0.2);
+    recycledArnoldiSubspace.vectors.forEach((recycled, index) => addScaledInPlace(vector, recycled, 1 / (index + 1)));
+    multiplyScalarInPlace(vector, 1 / Math.max(norm(vector), 1e-30));
+  }
 
   for (let column = 0; column < arnoldiDimension; column += 1) {
     basis.push(vector);
@@ -1485,9 +1558,15 @@ function solveLargestEigenpairs(
     });
   }
 
-  return candidates
-    .sort((first, second) => second.eigenvalue - first.eigenvalue)
-    .slice(0, requestedPairs);
+  const sorted = candidates.sort((first, second) => second.eigenvalue - first.eigenvalue);
+  const reusable = sorted.filter((pair) => {
+    const index = pairEffectiveIndex(pair, operator);
+    return index > exteriorIndex && index < maximumIndex * 1.01;
+  }).slice(0, 3).map((pair) => operator.complex
+    ? complexBlock(pair.vector, pair.vectorImaginary as Float64Array)
+    : pair.vector.slice());
+  if (recycleSubspace && reusable.length > 0) recycledArnoldiSubspace = { key: recycleKey, vectors: reusable };
+  return sorted.slice(0, requestedPairs);
 }
 
 function complexBlock(real: Float64Array, imaginary: Float64Array): Float64Array {

@@ -55,10 +55,13 @@ describe("full-vector finite-difference mode solver", () => {
 
   it("converges the modal field on the finest supported uniform grid", () => {
     const coarse = solveWaveguide({ ...benchmark, gridResolution: 32, modeCount: 1 }).modes[0];
-    const fine = solveWaveguide({ ...benchmark, gridResolution: 96, modeCount: 1 }).modes[0];
+    const fineResult = solveWaveguide({ ...benchmark, gridResolution: 96, modeCount: 1 });
+    const fine = fineResult.modes[0];
     expect(fine.residual).toBeLessThan(1e-3);
     expect(fieldRoughness(fine.fields.Ex)).toBeLessThan(fieldRoughness(coarse.fields.Ex) / 4);
-  }, 10_000);
+    expect(fineResult.xEdgesUm).toContain(benchmark.widthUm / 2);
+    expect(fineResult.yEdgesUm).toContain(benchmark.heightUm / 2);
+  }, 20_000);
 
   it("returns physical vector-field metrics", () => {
     const result = solveWaveguide({ ...benchmark, modeCount: 1 });

@@ -13,6 +13,18 @@ let epsilonYZAtNodes = new Float64Array(0);
 let epsilonZAtNodes = new Float64Array(0);
 let epsilonXZAtEx = new Float64Array(0);
 let epsilonYZAtEy = new Float64Array(0);
+let inverseEpsilonZ = new Float64Array(0);
+let vectorDivergence = new Float64Array(0);
+let vectorCurl = new Float64Array(0);
+let vectorAxCurl = new Float64Array(0);
+let vectorAyCurl = new Float64Array(0);
+let vectorSolution = new Float64Array(0);
+let vectorResidual = new Float64Array(0);
+let vectorShadow = new Float64Array(0);
+let vectorDirection = new Float64Array(0);
+let vectorOperatorDirection = new Float64Array(0);
+let vectorOperatorIntermediate = new Float64Array(0);
+let vectorIntermediate = new Float64Array(0);
 
 export const Float64Array_ID = idof<Float64Array>();
 
@@ -92,6 +104,210 @@ export function configureTensorOperator(
     }
   }
   return 2 * (ny * (nx + 1) + (ny + 1) * nx);
+}
+
+export function configureVectorOperator(
+  nextNx: i32,
+  nextNy: i32,
+  nextK0: f64,
+  nextDxCell: Float64Array,
+  nextDyCell: Float64Array,
+  nextDxDual: Float64Array,
+  nextDyDual: Float64Array,
+  nextEpsilonX: Float64Array,
+  nextEpsilonY: Float64Array,
+  nextInverseEpsilonZ: Float64Array,
+): i32 {
+  nx = nextNx;
+  ny = nextNy;
+  k0 = nextK0;
+  dxCell = nextDxCell;
+  dyCell = nextDyCell;
+  dxDual = nextDxDual;
+  dyDual = nextDyDual;
+  epsilonX = nextEpsilonX;
+  epsilonY = nextEpsilonY;
+  inverseEpsilonZ = nextInverseEpsilonZ;
+  vectorDivergence = new Float64Array(nx * ny);
+  vectorCurl = new Float64Array((nx + 1) * (ny + 1));
+  vectorAxCurl = new Float64Array((ny + 1) * nx);
+  vectorAyCurl = new Float64Array(ny * (nx + 1));
+  const size = ny * (nx + 1) + (ny + 1) * nx;
+  vectorSolution = new Float64Array(size);
+  vectorResidual = new Float64Array(size);
+  vectorShadow = new Float64Array(size);
+  vectorDirection = new Float64Array(size);
+  vectorOperatorDirection = new Float64Array(size);
+  vectorOperatorIntermediate = new Float64Array(size);
+  vectorIntermediate = new Float64Array(size);
+  return size;
+}
+
+function applyVectorOperatorInto(input: Float64Array, output: Float64Array): void {
+  const hxSize = ny * (nx + 1);
+  const hySize = (ny + 1) * nx;
+  const divergence = vectorDivergence;
+  const curl = vectorCurl;
+  const axCurl = vectorAxCurl;
+  const ayCurl = vectorAyCurl;
+  const inverseK0Squared = 1.0 / (k0 * k0);
+
+  for (let row = 0; row < ny; row += 1) {
+    for (let column = 0; column < nx; column += 1) {
+      const index = cell(row, column);
+      divergence[index] = (
+        input[row * (nx + 1) + column + 1] - input[row * (nx + 1) + column]
+      ) / dxCell[column] + (
+        input[hxSize + (row + 1) * nx + column] - input[hxSize + row * nx + column]
+      ) / dyCell[row];
+    }
+  }
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      const south = row > 0 ? input[(row - 1) * (nx + 1) + column] : 0.0;
+      const north = row < ny ? input[row * (nx + 1) + column] : 0.0;
+      const west = column > 0 ? input[hxSize + row * nx + column - 1] : 0.0;
+      const east = column < nx ? input[hxSize + row * nx + column] : 0.0;
+      const index = row * (nx + 1) + column;
+      curl[index] = ((north - south) / dyDual[row] - (east - west) / dxDual[column]) * inverseEpsilonZ[index];
+    }
+  }
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column < nx; column += 1) {
+      axCurl[row * nx + column] = (curl[row * (nx + 1) + column + 1] - curl[row * (nx + 1) + column]) / dxCell[column];
+    }
+  }
+  for (let row = 0; row < ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      ayCurl[row * (nx + 1) + column] = (curl[(row + 1) * (nx + 1) + column] - curl[row * (nx + 1) + column]) / dyCell[row];
+    }
+  }
+  for (let row = 0; row < ny; row += 1) {
+    for (let column = 0; column < nx; column += 1) {
+      const index = cell(row, column);
+      divergence[index] += inverseK0Squared * (
+        (ayCurl[row * (nx + 1) + column + 1] - ayCurl[row * (nx + 1) + column]) / dxCell[column]
+        - (axCurl[(row + 1) * nx + column] - axCurl[row * nx + column]) / dyCell[row]
+      );
+    }
+  }
+
+  for (let row = 0; row < ny; row += 1) {
+    for (let column = 0; column <= nx; column += 1) {
+      const west = column > 0 ? divergence[cell(row, column - 1)] : 0.0;
+      const east = column < nx ? divergence[cell(row, column)] : 0.0;
+      const index = row * (nx + 1) + column;
+      output[index] = (east - west) / dxDual[column]
+        + epsilonY[index] * ayCurl[index] + k0 * k0 * epsilonY[index] * input[index];
+    }
+  }
+  for (let row = 0; row <= ny; row += 1) {
+    for (let column = 0; column < nx; column += 1) {
+      const south = row > 0 ? divergence[cell(row - 1, column)] : 0.0;
+      const north = row < ny ? divergence[cell(row, column)] : 0.0;
+      const edge = row * nx + column;
+      output[hxSize + edge] = (north - south) / dyDual[row]
+        - epsilonX[edge] * axCurl[edge] + k0 * k0 * epsilonX[edge] * input[hxSize + edge];
+    }
+  }
+}
+
+export function applyVectorOperator(input: Float64Array): Float64Array {
+  const output = new Float64Array(ny * (nx + 1) + (ny + 1) * nx);
+  applyVectorOperatorInto(input, output);
+  return output;
+}
+
+function applyShiftedVectorInto(vector: Float64Array, shift: f64, output: Float64Array): void {
+  applyVectorOperatorInto(vector, output);
+  addScaled(output, vector, -shift);
+}
+
+function diagonalPreconditionVector(vector: Float64Array, shift: f64): Float64Array {
+  const hxSize = ny * (nx + 1);
+  const output = new Float64Array(vector.length);
+  const floor = 0.1 * k0 * k0;
+  for (let index = 0; index < hxSize; index += 1) {
+    const diagonal = k0 * k0 * epsilonY[index] - shift;
+    output[index] = vector[index] / (Math.abs(diagonal) > floor ? diagonal : (diagonal < 0.0 ? -floor : floor));
+  }
+  for (let index = 0; index < vector.length - hxSize; index += 1) {
+    const diagonal = k0 * k0 * epsilonX[index] - shift;
+    output[hxSize + index] = vector[hxSize + index] / (Math.abs(diagonal) > floor ? diagonal : (diagonal < 0.0 ? -floor : floor));
+  }
+  return output;
+}
+
+export function solveShiftedVectorSystem(
+  rightHandSide: Float64Array,
+  shift: f64,
+  maximumIterations: i32 = 180,
+  relativeTolerance: f64 = 1e-5,
+): Float64Array {
+  const size = rightHandSide.length;
+  const solution = vectorSolution;
+  let residual = vectorResidual;
+  const shadow = vectorShadow;
+  const direction = vectorDirection;
+  const operatorDirection = vectorOperatorDirection;
+  const operatorIntermediate = vectorOperatorIntermediate;
+  let intermediate = vectorIntermediate;
+  solution.fill(0.0);
+  direction.fill(0.0);
+  operatorDirection.fill(0.0);
+  residual.set(rightHandSide);
+  shadow.set(rightHandSide);
+  let rhoPrevious = 1.0;
+  let alpha = 1.0;
+  let omega = 1.0;
+  let usePreconditioner = false;
+  const tolerance = relativeTolerance * max(norm(rightHandSide), 1.0);
+
+  for (let iteration = 0; iteration < maximumIterations; iteration += 1) {
+    const rho = dot(shadow, residual);
+    if (Math.abs(rho) < 1e-30) break;
+    const beta = (rho / rhoPrevious) * (alpha / omega);
+    updateBiCgStabDirection(direction, residual, operatorDirection, beta, omega);
+    let preconditionedDirection = usePreconditioner ? diagonalPreconditionVector(direction, shift) : direction;
+    if (iteration == 0 && nx <= 64 && ny <= 64) {
+      const diagonalDirection = diagonalPreconditionVector(direction, shift);
+      applyShiftedVectorInto(direction, shift, operatorDirection);
+      applyShiftedVectorInto(diagonalDirection, shift, operatorIntermediate);
+      const rawDenominator = dot(shadow, operatorDirection);
+      const diagonalDenominator = dot(shadow, operatorIntermediate);
+      if (Math.abs(rawDenominator) > 1e-30 && Math.abs(diagonalDenominator) > 1e-30) {
+        subtractScaledInto(intermediate, residual, operatorDirection, rho / rawDenominator);
+        subtractScaledInto(solution, residual, operatorIntermediate, rho / diagonalDenominator);
+        usePreconditioner = norm(solution) < 0.5 * norm(intermediate);
+      }
+      preconditionedDirection = usePreconditioner ? diagonalDirection : direction;
+      if (usePreconditioner) operatorDirection.set(operatorIntermediate);
+      solution.fill(0.0);
+    } else applyShiftedVectorInto(preconditionedDirection, shift, operatorDirection);
+    const denominator = dot(shadow, operatorDirection);
+    if (Math.abs(denominator) < 1e-30) break;
+    alpha = rho / denominator;
+    subtractScaledInto(intermediate, residual, operatorDirection, alpha);
+    if (norm(intermediate) <= tolerance) {
+      addScaled(solution, preconditionedDirection, alpha);
+      return solution;
+    }
+    const preconditionedIntermediate = usePreconditioner ? diagonalPreconditionVector(intermediate, shift) : intermediate;
+    applyShiftedVectorInto(preconditionedIntermediate, shift, operatorIntermediate);
+    const omegaDenominator = dot(operatorIntermediate, operatorIntermediate);
+    if (omegaDenominator < 1e-30) break;
+    omega = dot(operatorIntermediate, intermediate) / omegaDenominator;
+    addScaled(solution, preconditionedDirection, alpha);
+    addScaled(solution, preconditionedIntermediate, omega);
+    subtractScaledInto(intermediate, intermediate, operatorIntermediate, omega);
+    const previousResidual = residual;
+    residual = intermediate;
+    intermediate = previousResidual;
+    if (norm(residual) <= tolerance) return solution;
+    if (Math.abs(omega) < 1e-30) break;
+    rhoPrevious = rho;
+  }
+  return solution;
 }
 
 export function applyTensorOperator(input: Float64Array): Float64Array {
@@ -180,8 +396,16 @@ export function applyTensorOperator(input: Float64Array): Float64Array {
 
 @inline
 function dot(first: Float64Array, second: Float64Array): f64 {
-  let sum = 0.0;
-  for (let index = 0; index < first.length; index += 1) sum += first[index] * second[index];
+  let index = 0;
+  let packed = f64x2(0.0, 0.0);
+  for (; index + 1 < first.length; index += 2) {
+    packed = v128.add<f64>(packed, v128.mul<f64>(
+      v128.load(first.dataStart + (<usize>index << 3)),
+      v128.load(second.dataStart + (<usize>index << 3)),
+    ));
+  }
+  let sum = v128.extract_lane<f64>(packed, 0) + v128.extract_lane<f64>(packed, 1);
+  if (index < first.length) sum += first[index] * second[index];
   return sum;
 }
 
@@ -192,7 +416,47 @@ function norm(values: Float64Array): f64 {
 
 @inline
 function addScaled(target: Float64Array, source: Float64Array, factor: f64): void {
-  for (let index = 0; index < target.length; index += 1) target[index] += factor * source[index];
+  let index = 0;
+  const packedFactor = v128.splat<f64>(factor);
+  for (; index + 1 < target.length; index += 2) {
+    const address = target.dataStart + (<usize>index << 3);
+    v128.store(address, v128.add<f64>(v128.load(address), v128.mul<f64>(
+      packedFactor, v128.load(source.dataStart + (<usize>index << 3)),
+    )));
+  }
+  if (index < target.length) target[index] += factor * source[index];
+}
+
+@inline
+function subtractScaledInto(output: Float64Array, first: Float64Array, second: Float64Array, factor: f64): void {
+  let index = 0;
+  const packedFactor = v128.splat<f64>(factor);
+  for (; index + 1 < output.length; index += 2) {
+    v128.store(output.dataStart + (<usize>index << 3), v128.sub<f64>(
+      v128.load(first.dataStart + (<usize>index << 3)),
+      v128.mul<f64>(packedFactor, v128.load(second.dataStart + (<usize>index << 3))),
+    ));
+  }
+  if (index < output.length) output[index] = first[index] - factor * second[index];
+}
+
+@inline
+function updateBiCgStabDirection(
+  direction: Float64Array, residual: Float64Array, operatorDirection: Float64Array, beta: f64, omega: f64,
+): void {
+  let index = 0;
+  const packedBeta = v128.splat<f64>(beta);
+  const packedOmega = v128.splat<f64>(omega);
+  for (; index + 1 < direction.length; index += 2) {
+    const address = direction.dataStart + (<usize>index << 3);
+    v128.store(address, v128.add<f64>(
+      v128.load(residual.dataStart + (<usize>index << 3)),
+      v128.mul<f64>(packedBeta, v128.sub<f64>(v128.load(address), v128.mul<f64>(
+        packedOmega, v128.load(operatorDirection.dataStart + (<usize>index << 3)),
+      ))),
+    ));
+  }
+  if (index < direction.length) direction[index] = residual[index] + beta * (direction[index] - omega * operatorDirection[index]);
 }
 
 function applyShifted(vector: Float64Array, shift: f64): Float64Array {

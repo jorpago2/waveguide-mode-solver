@@ -6,7 +6,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 
 ## Features
 
-- Uniform or center-graded transverse mesh with subpixel interface averaging.
+- Uniform or center-graded transverse mesh with subpixel interface averaging and geometry-aligned interfaces on resolved grids.
 - Technology presets for SOI strip, rib and slot guides, SiN, thin-film lithium niobate, weak-guidance silica and polymer platforms.
 - Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
 - Dominant-field TE/TM mode labels with transverse node counts, symmetry metrics, cutoff warnings and family-aware sweep tracking.
@@ -26,8 +26,8 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Solved cross-section inspector with principal-index maps, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
-- Matrix-free shift-invert Arnoldi with BiCGSTAB inner solves, a WebAssembly tensor-operator kernel, restarted GMRES for non-Hermitian bent-PML systems and residual rejection.
-- Solver and sweeps run in a Web Worker so the interface remains responsive.
+- Matrix-free shift-invert Arnoldi with adaptively preconditioned BiCGSTAB inner solves, SIMD WebAssembly kernels for diagonal and tensor operators, restarted GMRES for non-Hermitian bent-PML systems and residual rejection.
+- Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
 - Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.
 - Gaussian-beam overlap and identical two-guide directional-coupler supermode analysis.

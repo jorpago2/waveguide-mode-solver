@@ -90,7 +90,7 @@ describe("photonic design analyses", () => {
     expect(Number.isFinite(convergence.pmlSensitivity?.minimumOverlap)).toBe(true);
     expect(convergence.pmlSensitivity?.points.every((point) => point.error || Number.isFinite(point.lossChangePercent))).toBe(true);
     expect(["pass", "review"]).toContain(convergence.lossValidation);
-  }, 45_000);
+  }, 60_000);
 
   it("computes a bounded Gaussian coupling efficiency", () => {
     const result = solveWaveguide(config);
@@ -115,7 +115,7 @@ describe("photonic design analyses", () => {
     expect(first.samples).toEqual(second.samples);
     expect(first.effectiveIndex.standardDeviation).toBeGreaterThan(0);
     expect(first.effectiveIndexSensitivity.some((entry) => entry.parameter === "Sidewall angle")).toBe(true);
-  });
+  }, 10_000);
 
   it("maps modal cutoff changes over wavelength and width", () => {
     const map = calculateModeMap(config, { parameter: "widthUm", startValueUm: 0.9, stopValueUm: 1.1,

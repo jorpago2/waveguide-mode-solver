@@ -19,7 +19,7 @@ describe("mesh limits", () => {
     expect(result.modes.length).toBeGreaterThan(0);
     expect(result.modes.every((mode) => Number.isFinite(mode.effectiveIndex))).toBe(true);
     expect(result.modes[0].residual).toBeLessThan(2e-3);
-    const reference = solveWaveguide({ ...maximumMeshCase, gridResolution: 96 });
+    const reference = solveWaveguide({ ...maximumMeshCase, gridResolution: 128 });
     expect(result.modes[0].effectiveIndex).toBeCloseTo(reference.modes[0].effectiveIndex, 2);
   }, 300_000);
 

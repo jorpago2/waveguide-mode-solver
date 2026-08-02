@@ -1,5 +1,6 @@
 import type { GeometrySweepSettings, SweepSettings, WaveguideConfig } from "./solver";
 import type { ConvergenceSettings, DirectionalCouplerSettings, GaussianCouplingSettings, ModeMapSettings, ToleranceSettings } from "./analysis";
+import { packSolverResult } from "./solverTransfer";
 
 export type SolverWorkerRequest =
   | { kind: "solve"; config: WaveguideConfig }
@@ -12,22 +13,29 @@ export type SolverWorkerRequest =
   | { kind: "compareWaveguides"; sourceConfig: WaveguideConfig; targetConfig: WaveguideConfig; maximumModes: number }
   | { kind: "modeMap"; config: WaveguideConfig; settings: ModeMapSettings };
 
-self.onmessage = async ({ data }: MessageEvent<SolverWorkerRequest>) => {
+self.onmessage = async ({ data }: MessageEvent<{ id?: number; request?: SolverWorkerRequest } | SolverWorkerRequest>) => {
+  const envelope = data as { id?: number; request?: SolverWorkerRequest };
+  const id = envelope.request ? envelope.id : undefined;
+  const request = envelope.request ?? data as SolverWorkerRequest;
   try {
     const [{ solveWaveguide, sweepGeometry, sweepWaveguide }, { analyzeConvergence, analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides }] = await Promise.all([
       import("./solver"), import("./analysis"),
     ]);
-    const result = data.kind === "solve" ? solveWaveguide(data.config)
-      : data.kind === "wavelengthSweep" ? sweepWaveguide(data.config, data.settings)
-        : data.kind === "geometrySweep" ? sweepGeometry(data.config, data.settings)
-          : data.kind === "convergence" ? analyzeConvergence(data.config, data.settings)
-            : data.kind === "tolerances" ? analyzeTolerances(data.config, data.settings)
-              : data.kind === "gaussianCoupling" ? analyzeGaussianCoupling(data.result, data.modeIndex, data.settings)
-                : data.kind === "directionalCoupler" ? analyzeDirectionalCoupler(data.config, data.settings)
-                  : data.kind === "compareWaveguides" ? compareWaveguides(data.sourceConfig, data.targetConfig, data.maximumModes)
-                    : calculateModeMap(data.config, data.settings);
-    self.postMessage({ result });
+    const result = request.kind === "solve" ? solveWaveguide(request.config)
+      : request.kind === "wavelengthSweep" ? sweepWaveguide(request.config, request.settings)
+        : request.kind === "geometrySweep" ? sweepGeometry(request.config, request.settings)
+          : request.kind === "convergence" ? analyzeConvergence(request.config, request.settings)
+            : request.kind === "tolerances" ? analyzeTolerances(request.config, request.settings)
+              : request.kind === "gaussianCoupling" ? analyzeGaussianCoupling(request.result, request.modeIndex, request.settings)
+                : request.kind === "directionalCoupler" ? analyzeDirectionalCoupler(request.config, request.settings)
+                  : request.kind === "compareWaveguides" ? compareWaveguides(request.sourceConfig, request.targetConfig, request.maximumModes)
+                    : calculateModeMap(request.config, request.settings);
+    if (request.kind === "solve" && id !== undefined) {
+      const packed = packSolverResult(result as import("./solver").SolverResult);
+      self.postMessage({ id, result: packed.result, packed: true }, { transfer: packed.transfer });
+    } else self.postMessage(id === undefined ? { result } : { id, result });
   } catch (error) {
-    self.postMessage({ error: error instanceof Error ? error.message : "The solver failed." });
+    const response = { error: error instanceof Error ? error.message : "The solver failed." };
+    self.postMessage(id === undefined ? response : { id, ...response });
   }
 };

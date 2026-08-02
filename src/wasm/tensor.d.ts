@@ -30,6 +30,36 @@ export declare const Float64Array_ID: {
  */
 export declare function configureTensorOperator(nextNx: number, nextNy: number, nextK0: number, nextDxCell: Float64Array, nextDyCell: Float64Array, nextDxDual: Float64Array, nextDyDual: Float64Array, epsilonXXCell: Float64Array, epsilonYYCell: Float64Array, epsilonZZCell: Float64Array, epsilonXYCell: Float64Array, epsilonXZCell: Float64Array, epsilonYZCell: Float64Array): number;
 /**
+ * assembly/tensor/configureVectorOperator
+ * @param nextNx `i32`
+ * @param nextNy `i32`
+ * @param nextK0 `f64`
+ * @param nextDxCell `~lib/typedarray/Float64Array`
+ * @param nextDyCell `~lib/typedarray/Float64Array`
+ * @param nextDxDual `~lib/typedarray/Float64Array`
+ * @param nextDyDual `~lib/typedarray/Float64Array`
+ * @param nextEpsilonX `~lib/typedarray/Float64Array`
+ * @param nextEpsilonY `~lib/typedarray/Float64Array`
+ * @param nextInverseEpsilonZ `~lib/typedarray/Float64Array`
+ * @returns `i32`
+ */
+export declare function configureVectorOperator(nextNx: number, nextNy: number, nextK0: number, nextDxCell: Float64Array, nextDyCell: Float64Array, nextDxDual: Float64Array, nextDyDual: Float64Array, nextEpsilonX: Float64Array, nextEpsilonY: Float64Array, nextInverseEpsilonZ: Float64Array): number;
+/**
+ * assembly/tensor/applyVectorOperator
+ * @param input `~lib/typedarray/Float64Array`
+ * @returns `~lib/typedarray/Float64Array`
+ */
+export declare function applyVectorOperator(input: Float64Array): Float64Array;
+/**
+ * assembly/tensor/solveShiftedVectorSystem
+ * @param rightHandSide `~lib/typedarray/Float64Array`
+ * @param shift `f64`
+ * @param maximumIterations `i32`
+ * @param relativeTolerance `f64`
+ * @returns `~lib/typedarray/Float64Array`
+ */
+export declare function solveShiftedVectorSystem(rightHandSide: Float64Array, shift: number, maximumIterations?: number, relativeTolerance?: number): Float64Array;
+/**
  * assembly/tensor/applyTensorOperator
  * @param input `~lib/typedarray/Float64Array`
  * @returns `~lib/typedarray/Float64Array`

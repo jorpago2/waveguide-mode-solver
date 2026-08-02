@@ -50,6 +50,37 @@ async function instantiate(module, imports = {}) {
         __release(epsilonXZCell);
       }
     },
+    configureVectorOperator(nextNx, nextNy, nextK0, nextDxCell, nextDyCell, nextDxDual, nextDyDual, nextEpsilonX, nextEpsilonY, nextInverseEpsilonZ) {
+      // assembly/tensor/configureVectorOperator(i32, i32, f64, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array, ~lib/typedarray/Float64Array) => i32
+      nextDxCell = __retain(__lowerTypedArray(Float64Array, 4, 3, nextDxCell) || __notnull());
+      nextDyCell = __retain(__lowerTypedArray(Float64Array, 4, 3, nextDyCell) || __notnull());
+      nextDxDual = __retain(__lowerTypedArray(Float64Array, 4, 3, nextDxDual) || __notnull());
+      nextDyDual = __retain(__lowerTypedArray(Float64Array, 4, 3, nextDyDual) || __notnull());
+      nextEpsilonX = __retain(__lowerTypedArray(Float64Array, 4, 3, nextEpsilonX) || __notnull());
+      nextEpsilonY = __retain(__lowerTypedArray(Float64Array, 4, 3, nextEpsilonY) || __notnull());
+      nextInverseEpsilonZ = __lowerTypedArray(Float64Array, 4, 3, nextInverseEpsilonZ) || __notnull();
+      try {
+        return exports.configureVectorOperator(nextNx, nextNy, nextK0, nextDxCell, nextDyCell, nextDxDual, nextDyDual, nextEpsilonX, nextEpsilonY, nextInverseEpsilonZ);
+      } finally {
+        __release(nextDxCell);
+        __release(nextDyCell);
+        __release(nextDxDual);
+        __release(nextDyDual);
+        __release(nextEpsilonX);
+        __release(nextEpsilonY);
+      }
+    },
+    applyVectorOperator(input) {
+      // assembly/tensor/applyVectorOperator(~lib/typedarray/Float64Array) => ~lib/typedarray/Float64Array
+      input = __lowerTypedArray(Float64Array, 4, 3, input) || __notnull();
+      return __liftTypedArray(Float64Array, exports.applyVectorOperator(input) >>> 0);
+    },
+    solveShiftedVectorSystem(rightHandSide, shift, maximumIterations, relativeTolerance) {
+      // assembly/tensor/solveShiftedVectorSystem(~lib/typedarray/Float64Array, f64, i32?, f64?) => ~lib/typedarray/Float64Array
+      rightHandSide = __lowerTypedArray(Float64Array, 4, 3, rightHandSide) || __notnull();
+      exports.__setArgumentsLength(arguments.length);
+      return __liftTypedArray(Float64Array, exports.solveShiftedVectorSystem(rightHandSide, shift, maximumIterations, relativeTolerance) >>> 0);
+    },
     applyTensorOperator(input) {
       // assembly/tensor/applyTensorOperator(~lib/typedarray/Float64Array) => ~lib/typedarray/Float64Array
       input = __lowerTypedArray(Float64Array, 4, 3, input) || __notnull();
@@ -142,6 +173,9 @@ export const {
   __rtti_base,
   Float64Array_ID,
   configureTensorOperator,
+  configureVectorOperator,
+  applyVectorOperator,
+  solveShiftedVectorSystem,
   applyTensorOperator,
   solveShiftedTensorSystem,
 } = await (async url => instantiate(
