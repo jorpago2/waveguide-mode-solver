@@ -77,7 +77,28 @@ a { color: inherit; }
 .header-meta span { color: #9fb5ba; }
 .header-meta a { color: var(--mint); font-weight: 600; text-underline-offset: 4px; }
 
+.app-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  color: #52676d;
+  background: rgba(245, 248, 246, 0.94);
+  border-bottom: 1px solid rgba(199, 213, 210, 0.9);
+  backdrop-filter: blur(12px);
+}
+.app-nav > div { width: min(1320px, calc(100% - 32px)); min-height: 46px; margin: 0 auto; display: flex; align-items: stretch; gap: 6px; }
+.app-nav a { padding: 0 14px; display: inline-flex; align-items: center; border-bottom: 2px solid transparent; font-size: 0.76rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.app-nav a:hover { color: var(--teal); }
+.app-nav a.active { color: #075d68; border-bottom-color: var(--teal); }
+.app-nav a:focus-visible { outline: 3px solid rgba(8,127,140,0.25); outline-offset: -3px; }
+
 main { width: min(1320px, calc(100% - 32px)); margin: 0 auto; }
+[hidden] { display: none !important; }
+.app-view { min-height: calc(100vh - 156px); }
+
+.view-heading { padding: 28px 0 10px; }
+.view-heading h1 { margin: 0; color: #0c252e; font-size: clamp(1.8rem, 3vw, 2.8rem); line-height: 1; letter-spacing: -0.04em; }
+.view-heading > p:last-child { max-width: 720px; margin: 10px 0 0; color: #65787e; font-size: 0.88rem; line-height: 1.5; }
 
 .intro {
   max-width: 1040px;
@@ -120,6 +141,7 @@ main { width: min(1320px, calc(100% - 32px)); margin: 0 auto; }
   gap: 14px;
   align-items: start;
 }
+.mobile-pane-tabs { display: none; }
 
 .control-panel, .results-panel, .method-card, .checks-card {
   background: rgba(251, 252, 250, 0.94);
@@ -349,12 +371,23 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
 @media (max-width: 780px) {
   .site-header { min-height: 58px; padding-inline: 16px; }
   .header-meta span { display: none; }
+  .app-nav { overflow-x: auto; scrollbar-width: none; }
+  .app-nav::-webkit-scrollbar { display: none; }
+  .app-nav > div { width: max-content; min-width: 100%; min-height: 44px; padding-inline: 10px; }
+  .app-nav a { padding-inline: 12px; }
   select, input { min-height: 40px; }
   .solve-button { min-height: 42px; }
   main { width: min(100% - 24px, 680px); }
+  .view-heading { padding: 22px 2px 6px; }
   .intro { padding: 26px 2px 22px; }
   .intro h1 { font-size: clamp(2rem, 9vw, 2.7rem); }
   .workspace, .validation-section { grid-template-columns: 1fr; }
+  .mobile-pane-tabs { margin-bottom: 10px; padding: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #dfe8e5; border-radius: 10px; }
+  .mobile-pane-tabs button { min-height: 38px; color: #61757a; background: transparent; border: 0; border-radius: 7px; font-size: 0.76rem; font-weight: 700; cursor: pointer; }
+  .mobile-pane-tabs button.active { color: #075d68; background: var(--paper); box-shadow: 0 2px 8px rgba(20,48,55,0.08); }
+  .mobile-pane-tabs button:focus-visible { outline: 3px solid rgba(8,127,140,0.25); }
+  .workspace[data-mobile-pane="configure"] .results-panel { display: none; }
+  .workspace[data-mobile-pane="results"] .control-panel { display: none; }
   .control-panel, .results-panel { padding: 18px; }
   .field-plot { min-height: 340px; }
   .geometry-plot { min-height: 360px; }

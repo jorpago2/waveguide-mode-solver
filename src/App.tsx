@@ -110,8 +110,22 @@ const fieldLabels: Record<FieldComponent, ReactNode> = {
   Ex: <>E<sub>x</sub></>, Ey: <>E<sub>y</sub></>, Ez: <>E<sub>z</sub></>,
   Hx: <>H<sub>x</sub></>, Hy: <>H<sub>y</sub></>, Hz: <>H<sub>z</sub></>, intensity: "|E|²", poynting: <>S<sub>z</sub></>,
 };
+type AppView = "solver" | "sweeps" | "analysis" | "validation";
+const appViews: Array<{ id: AppView; label: string }> = [
+  { id: "solver", label: "Mode Solver" },
+  { id: "sweeps", label: "Sweeps" },
+  { id: "analysis", label: "Analysis" },
+  { id: "validation", label: "Validation" },
+];
+
+function viewFromHash(): AppView {
+  const hash = window.location.hash.slice(1);
+  return appViews.some((view) => view.id === hash) ? hash as AppView : "solver";
+}
 
 export function App() {
+  const [activeView, setActiveView] = useState<AppView>(() => typeof window === "undefined" ? "solver" : viewFromHash());
+  const [solverPane, setSolverPane] = useState<"configure" | "results">("configure");
   const [draft, setDraft] = useState<WaveguideConfig>(initialConfig);
   const [config, setConfig] = useState<WaveguideConfig>(initialConfig);
   const [result, setResult] = useState<SolverResult>();
@@ -151,6 +165,23 @@ export function App() {
       .catch((caught) => { setError(caught instanceof Error ? caught.message : "The initial mode solve failed."); setMessage("Solve failed."); })
       .finally(() => setBusy(false));
   }, []);
+
+  useEffect(() => {
+    const syncView = () => setActiveView(viewFromHash());
+    window.addEventListener("popstate", syncView);
+    return () => window.removeEventListener("popstate", syncView);
+  }, []);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeView, solverPane]);
+
+  function navigateToView(view: AppView) {
+    window.history.pushState(null, "", `#${view}`);
+    setActiveView(view);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   function updateNumber(key: keyof WaveguideConfig, value: number) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -214,6 +245,7 @@ export function App() {
         setSelectedMode(0);
         setSweepResult(undefined);
         setGeometrySweepResult(undefined);
+        setSolverPane("results");
         setGeometrySweep((current) => (
           (current.parameter === "slotGapUm" && (draft.geometry ?? "channel") !== "slot")
           || (current.parameter === "couplerGapUm" && (draft.geometry ?? "channel") !== "coupler")
@@ -323,17 +355,25 @@ export function App() {
       </a>
       <div className="header-meta"><span>v{packageJson.version} · Full-vector FDM</span><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">GitHub</a></div>
     </header>
+    <nav className="app-nav" aria-label="Solver sections">
+      <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}>{view.label}</a>)}</div>
+    </nav>
 
     <main>
+      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
       <section className="intro" aria-labelledby="page-title">
         <p className="eyebrow">Integrated photonics · educational solver</p>
-        <h1 id="page-title">Inspect and sweep complete vector modes.</h1>
-        <p>Model, validate and explore straight and curved channel, rib, slot, coupler and multilayer waveguides with dispersive materials, fabrication tolerances and coupling analysis.</p>
+        <h1 id="page-title">Solve and inspect complete vector modes.</h1>
+        <p>Configure straight or curved waveguides, solve their guided modes and inspect the fields, structure and mesh in one focused workspace.</p>
         <div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project JSON</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div>
       </section>
 
-      <div className="workspace">
-        <aside className="control-panel">
+      <div className="mobile-pane-tabs" role="tablist" aria-label="Mode solver workspace">
+        <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" className={solverPane === "configure" ? "active" : ""} onClick={() => setSolverPane("configure")}>Configure</button>
+        <button type="button" role="tab" aria-selected={solverPane === "results"} aria-controls="results-panel" className={solverPane === "results" ? "active" : ""} onClick={() => setSolverPane("results")}>Results</button>
+      </div>
+      <div className="workspace" data-mobile-pane={solverPane}>
+        <aside className="control-panel" id="configuration-panel">
           <div className="panel-heading"><div><span className="step">01</span><h2>Waveguide</h2></div><span className="method-chip">FDM</span></div>
           <form onSubmit={solve} noValidate>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
@@ -422,7 +462,7 @@ export function App() {
           </form>
         </aside>
 
-        <section className="results-panel" aria-labelledby="results-title">
+        <section className="results-panel" id="results-panel" aria-labelledby="results-title">
           <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
           {result ? <>
             <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} className={resultView === "mode" ? "active" : ""} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} className={resultView === "geometry" ? "active" : ""} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
@@ -449,7 +489,10 @@ export function App() {
           </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
         </section>
       </div>
+      </section>
 
+      <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
+      <ViewHeading eyebrow="Parametric exploration" title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry while preserving field-overlap continuity.</ViewHeading>
       <section className="sweep-section">
         <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runSweep}>
@@ -478,16 +521,27 @@ export function App() {
         <p className="status" aria-live="polite">{geometrySweepMessage}</p>
         {geometrySweepResult && <><GeometrySweepPlot result={geometrySweepResult} />{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
+      </section>
 
+      <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title">
+      <ViewHeading eyebrow="Research tools" title="Analysis" id="analysis-title">Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
       <AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} />
+      </section>
 
+      <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title">
+      <ViewHeading eyebrow="Scientific confidence" title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
       <section className="validation-section">
         <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver discretizes all six Maxwell field components on a Yee grid in local cylindrical coordinates. The metric 1 + x/R is retained explicitly, so curvature is not replaced by an equivalent-index approximation.</> : result?.formulation === "first-order" ? <>The WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses the coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, non-magnetic dielectrics; arbitrary real symmetric tensors are supported for straight guides with hard boundaries. Constant-radius bends, PML and material loss currently require a diagonal local tensor. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
         <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label}</dd></div><div><dt>x/y symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
       </section>
+      </section>
     </main>
     <footer><span>Waveguide Mode Solver</span><span>Built for photonics education · Check mesh, boundary and sweep convergence before design use.</span></footer>
   </div>;
+}
+
+function ViewHeading({ eyebrow, title, id, children }: { eyebrow: string; title: string; id: string; children: ReactNode }) {
+  return <header className="view-heading"><p className="eyebrow">{eyebrow}</p><h1 id={id}>{title}</h1><p>{children}</p></header>;
 }
 
 function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
