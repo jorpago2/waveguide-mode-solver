@@ -138,7 +138,7 @@ export interface SolverResult {
   yUm: number[];
   xEdgesUm: number[];
   yEdgesUm: number[];
-  refractiveIndex: Record<"x" | "y" | "z", number[][]>;
+  permittivity: Record<"real" | "imaginary", Record<"x" | "y" | "z", number[][]>>;
   nx: number;
   ny: number;
   dxUm: number;
@@ -504,10 +504,17 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     yUm: grid.y,
     xEdgesUm: grid.xNodes,
     yEdgesUm: grid.yNodes,
-    refractiveIndex: {
-      x: toMatrix(complexIndex(grid.epsilonCellX, grid.epsilonCellXImaginary), grid.nx, grid.ny),
-      y: toMatrix(complexIndex(grid.epsilonCellY, grid.epsilonCellYImaginary), grid.nx, grid.ny),
-      z: toMatrix(complexIndex(grid.epsilonCellZ, grid.epsilonCellZImaginary), grid.nx, grid.ny),
+    permittivity: {
+      real: {
+        x: toMatrix(grid.epsilonCellX, grid.nx, grid.ny),
+        y: toMatrix(grid.epsilonCellY, grid.nx, grid.ny),
+        z: toMatrix(grid.epsilonCellZ, grid.nx, grid.ny),
+      },
+      imaginary: {
+        x: toMatrix(grid.epsilonCellXImaginary, grid.nx, grid.ny),
+        y: toMatrix(grid.epsilonCellYImaginary, grid.nx, grid.ny),
+        z: toMatrix(grid.epsilonCellZImaginary, grid.nx, grid.ny),
+      },
     },
     nx: grid.nx,
     ny: grid.ny,
@@ -1283,10 +1290,6 @@ function complexReciprocal(real: Float64Array, imaginary: Float64Array): { real:
     outputImaginary[index] = -imaginary[index] / denominator;
   }
   return { real: outputReal, imaginary: outputImaginary };
-}
-
-function complexIndex(permittivityReal: Float64Array, permittivityImaginary: Float64Array): Float64Array {
-  return Float64Array.from(permittivityReal, (real, index) => Math.sqrt((Math.hypot(real, permittivityImaginary[index]) + real) / 2));
 }
 
 function stretchProfile(coordinates: number[], halfDomain: number, thickness: number, strength: number): { real: Float64Array; imaginary: Float64Array } {

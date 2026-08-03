@@ -7,9 +7,10 @@ interface PackedMatrix {
 }
 
 type PackedMode = Omit<WaveguideMode, "fields"> & { fields: Record<FieldComponent, PackedMatrix> };
-export type PackedSolverResult = Omit<SolverResult, "modes" | "refractiveIndex"> & {
+type PackedAxisMap = Record<"x" | "y" | "z", PackedMatrix>;
+export type PackedSolverResult = Omit<SolverResult, "modes" | "permittivity"> & {
   modes: PackedMode[];
-  refractiveIndex: Record<"x" | "y" | "z", PackedMatrix>;
+  permittivity: Record<"real" | "imaginary", PackedAxisMap>;
 };
 
 function packMatrix(matrix: number[][]): PackedMatrix {
@@ -31,11 +32,13 @@ export function packSolverResult(result: SolverResult): { result: PackedSolverRe
     ...mode,
     fields: Object.fromEntries(Object.entries(mode.fields).map(([name, matrix]) => [name, packMatrix(matrix)])) as Record<FieldComponent, PackedMatrix>,
   }));
-  const refractiveIndex = Object.fromEntries(Object.entries(result.refractiveIndex).map(([name, matrix]) => [name, packMatrix(matrix)])) as PackedSolverResult["refractiveIndex"];
-  const packed = { ...result, modes, refractiveIndex };
+  const permittivity = Object.fromEntries(Object.entries(result.permittivity).map(([part, axes]) => [part,
+    Object.fromEntries(Object.entries(axes).map(([axis, matrix]) => [axis, packMatrix(matrix)])),
+  ])) as PackedSolverResult["permittivity"];
+  const packed = { ...result, modes, permittivity };
   const transfer = [
     ...modes.flatMap((mode) => Object.values(mode.fields).map((matrix) => matrix.data.buffer)),
-    ...Object.values(refractiveIndex).map((matrix) => matrix.data.buffer),
+    ...Object.values(permittivity).flatMap((axes) => Object.values(axes).map((matrix) => matrix.data.buffer)),
   ];
   return { result: packed, transfer };
 }
@@ -47,6 +50,8 @@ export function unpackSolverResult(result: PackedSolverResult): SolverResult {
       ...mode,
       fields: Object.fromEntries(Object.entries(mode.fields).map(([name, matrix]) => [name, unpackMatrix(matrix)])) as WaveguideMode["fields"],
     })),
-    refractiveIndex: Object.fromEntries(Object.entries(result.refractiveIndex).map(([name, matrix]) => [name, unpackMatrix(matrix)])) as SolverResult["refractiveIndex"],
+    permittivity: Object.fromEntries(Object.entries(result.permittivity).map(([part, axes]) => [part,
+      Object.fromEntries(Object.entries(axes).map(([axis, matrix]) => [axis, unpackMatrix(matrix)])),
+    ])) as SolverResult["permittivity"],
   };
 }

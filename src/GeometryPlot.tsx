@@ -3,10 +3,21 @@ import Plotly from "plotly.js-cartesian-dist-min";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
+type MaterialQuantity = "n-real" | "n-imaginary" | "n-magnitude" | "epsilon-real" | "epsilon-imaginary" | "epsilon-magnitude";
+
+const quantities: Array<{ id: MaterialQuantity; label: string }> = [
+  { id: "n-real", label: "Re(n)" },
+  { id: "n-imaginary", label: "Im(n)" },
+  { id: "n-magnitude", label: "|n|" },
+  { id: "epsilon-real", label: "Re(ε)" },
+  { id: "epsilon-imaginary", label: "Im(ε)" },
+  { id: "epsilon-magnitude", label: "|ε|" },
+];
 
 export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig; result: SolverResult; mode?: WaveguideMode }) {
   const plotRef = useRef<HTMLDivElement>(null);
   const [axis, setAxis] = useState<PrincipalAxis>("x");
+  const [quantity, setQuantity] = useState<MaterialQuantity>("n-real");
   const [showMesh, setShowMesh] = useState(true);
   const [showMode, setShowMode] = useState(true);
 
@@ -26,15 +37,33 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum - pmlThickness, y1: yMaximum - pmlThickness },
     ].map((shape) => ({ ...shape, line: { color: "#d55e00", width: 1.5, dash: "dash" as const } })) : [];
 
+    const epsilonReal = result.permittivity.real[axis];
+    const epsilonImaginary = result.permittivity.imaginary[axis];
+    const epsilonMagnitude = epsilonReal.map((row, rowIndex) => row.map((value, columnIndex) => Math.hypot(value, epsilonImaginary[rowIndex][columnIndex])));
+    const map = quantity === "n-real" ? epsilonMagnitude.map((row, rowIndex) => row.map((magnitude, columnIndex) => Math.sqrt(Math.max(0, (magnitude + epsilonReal[rowIndex][columnIndex]) / 2))))
+      : quantity === "n-imaginary" ? epsilonMagnitude.map((row, rowIndex) => row.map((magnitude, columnIndex) => Math.sqrt(Math.max(0, (magnitude - epsilonReal[rowIndex][columnIndex]) / 2))))
+        : quantity === "n-magnitude" ? epsilonMagnitude.map((row) => row.map(Math.sqrt))
+          : quantity === "epsilon-real" ? epsilonReal
+            : quantity === "epsilon-imaginary" ? epsilonImaginary : epsilonMagnitude;
+    const epsilonComponent = `ε<sub>${axis}${axis}</sub>`;
+    const indexComponent = `n<sub>${axis}</sub>`;
+    const label = quantity === "n-real" ? `Re(${indexComponent})`
+      : quantity === "n-imaginary" ? `Im(${indexComponent})`
+        : quantity === "n-magnitude" ? `|${indexComponent}|`
+          : quantity === "epsilon-real" ? `Re(${epsilonComponent})`
+            : quantity === "epsilon-imaginary" ? `Im(${epsilonComponent})` : `|${epsilonComponent}|`;
+
     const data: Plotly.Data[] = [{
       type: "heatmap",
       x: result.xEdgesUm,
       y: result.yEdgesUm,
-      z: result.refractiveIndex[axis],
+      z: map,
       zsmooth: false,
-      colorscale: "Cividis",
-      colorbar: { title: { text: `n<sub>${axis}</sub>`, side: "right" }, thickness: 13, len: 0.84 },
-      hovertemplate: `x = %{x:.4f} µm<br>y = %{y:.4f} µm<br>n<sub>${axis}</sub> = %{z:.6f}<extra></extra>`,
+      colorscale: quantity === "epsilon-real" ? "RdBu" : "Cividis",
+      reversescale: quantity === "epsilon-real",
+      ...(quantity === "epsilon-real" ? { zmid: 0 } : {}),
+      colorbar: { title: { text: label, side: "right" }, thickness: 13, len: 0.84 },
+      hovertemplate: `x = %{x:.4f} µm<br>y = %{y:.4f} µm<br>${label} = %{z:.6f}<extra></extra>`,
     } as Plotly.Data];
     if (showMode && mode) {
       const maximumIntensity = Math.max(...mode.fields.intensity.flat(), Number.EPSILON);
@@ -57,17 +86,19 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       shapes: [...meshShapes, ...pmlShapes],
     }, { displaylogo: false, responsive: true, scrollZoom: false });
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [axis, config, mode, result, showMesh, showMode]);
+  }, [axis, config, mode, quantity, result, showMesh, showMode]);
 
   return <>
-    <div className="field-toolbar geometry-toolbar" aria-label="Refractive-index component">
-      <span>Principal index</span>
-      {(["x", "y", "z"] as const).map((component) => <button type="button" className={axis === component ? "active" : ""} aria-pressed={axis === component} key={component} onClick={() => setAxis(component)}>n<sub>{component}</sub></button>)}
+    <div className="field-toolbar geometry-toolbar" aria-label="Material quantity and tensor component">
+      <span>Quantity</span>
+      {quantities.map((option) => <button type="button" className={quantity === option.id ? "active" : ""} aria-pressed={quantity === option.id} key={option.id} onClick={() => setQuantity(option.id)}>{option.label}</button>)}
+      <span>Component</span>
+      {(["x", "y", "z"] as const).map((component) => <button type="button" className={axis === component ? "active" : ""} aria-pressed={axis === component} aria-label={`${component}${component} component`} key={component} onClick={() => setAxis(component)}>{component}{component}</button>)}
       <label className="checkbox-field"><input type="checkbox" checked={showMesh} onChange={(event) => setShowMesh(event.target.checked)} />Show mesh</label>
       <label className="checkbox-field"><input type="checkbox" checked={showMode} disabled={!mode} onChange={(event) => setShowMode(event.target.checked)} />Mode |E|²</label>
       <small>{result.nx} × {result.ny} cells</small>
     </div>
-    <div ref={plotRef} className="geometry-plot" aria-label={`Waveguide geometry, ${axis}-axis refractive index and computational mesh`} />
-    <p className="plot-note">Cell-centred principal index after subpixel material averaging. Contours show normalized modal |E|²; mesh lines are the actual finite-difference cell boundaries and dashed orange lines mark the PML onset.</p>
+    <div ref={plotRef} className="geometry-plot" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} />
+    <p className="plot-note">Cell-centred material values after subpixel averaging. The complex index uses the passive branch of n² = ε, with Im(n) = κ ≥ 0. Contours show normalized modal |E|²; mesh lines are the actual finite-difference cell boundaries and dashed orange lines mark the PML onset.</p>
   </>;
 }

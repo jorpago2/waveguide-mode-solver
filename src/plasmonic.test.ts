@@ -43,6 +43,8 @@ describe("plasmonic mode solver", () => {
     expect(result.modes[0].polarization).toBe("quasi-TM");
     expect(Math.abs(result.modes[0].effectiveIndex - analyticSurfacePlasmonIndex())).toBeLessThan(0.01);
     expect(result.modes[0].effectiveIndexImaginary).toBeGreaterThan(0);
+    expect(Math.min(...result.permittivity.real.x.flat())).toBeLessThan(0);
+    expect(Math.max(...result.permittivity.imaginary.x.flat())).toBeGreaterThan(0);
   }, 20_000);
 
   it("finds the lossy mode of a gold stripe in silica", () => {

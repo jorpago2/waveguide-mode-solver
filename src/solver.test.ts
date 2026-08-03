@@ -74,8 +74,10 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.peakPoyntingWPerM2).toBeGreaterThan(0);
     expect(result.xEdgesUm).toHaveLength(result.nx + 1);
     expect(result.yEdgesUm).toHaveLength(result.ny + 1);
-    expect(result.refractiveIndex.x).toHaveLength(result.ny);
-    expect(Math.max(...result.refractiveIndex.x.flat())).toBeGreaterThan(Math.min(...result.refractiveIndex.x.flat()));
+    expect(result.permittivity.real.x).toHaveLength(result.ny);
+    expect(result.permittivity.imaginary.x).toHaveLength(result.ny);
+    expect(result.permittivity.real.x[0]).toHaveLength(result.nx);
+    expect(Math.max(...result.permittivity.real.x.flat())).toBeGreaterThan(Math.min(...result.permittivity.real.x.flat()));
   });
 
   it("rejects a non-guiding index profile", () => {

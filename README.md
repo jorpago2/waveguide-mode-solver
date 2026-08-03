@@ -26,7 +26,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
-- Solved cross-section inspector with principal-index maps, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
+- Solved cross-section inspector with real, imaginary and magnitude maps of complex refractive index and permittivity, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
 - A unified Rust/WebAssembly core evaluates diagonal, tensor and transformed-bend operators, runs shifted linear solves and computes the shift-invert Arnoldi eigensystem. Complex bent modes retain the validated TypeScript reduced-matrix eigendecomposition for stable conjugate-pair selection while their operator and sparse LU remain in Rust.
 - Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
