@@ -330,6 +330,7 @@ export function analyzeConvergence(config: WaveguideConfig, settings: Convergenc
     : undefined;
   if (pmlSensitivity?.failedChecks) warnings.push(`${pmlSensitivity.failedChecks} PML robustness check${pmlSensitivity.failedChecks === 1 ? "" : "s"} failed to return the tracked mode.`);
   if (pmlSensitivity?.gridLimited) warnings.push("The boundary-distance check reached the 96-cell grid limit, so its mesh spacing is not held exactly constant.");
+  if (pmlSensitivity && (config.periodicX || config.periodicY)) warnings.push("The boundary-distance PML check is omitted because changing the shared padding would also change the periodic lattice constant.");
   if (lossApplicable && !meshLossStable) warnings.push(`Fine-grid loss changes by ${lossFineChangePercent.toPrecision(3)}%, above the ${settings.lossTolerancePercent}% tolerance.`);
   if (pmlSensitivity && !pmlSensitivity.stable) warnings.push(`Boundary or PML loss sensitivity exceeds the ${settings.lossTolerancePercent}% tolerance, mode overlap falls below 80%, or a check failed.`);
   const lossValidation = !lossApplicable ? "not-applicable"
@@ -473,7 +474,7 @@ function analyzePmlSensitivity(config: WaveguideConfig, baselineResult: SolverRe
   const boundaryResolution = Math.min(PARAMETER_MAXIMUMS.gridResolution, requestedBoundaryResolution);
   const variants: Array<{ name: string; config: WaveguideConfig }> = [
     { name: "Baseline", config },
-    { name: "+25% boundary distance", config: { ...config, paddingUm: boundaryPadding, pmlThicknessUm: thickness, gridResolution: boundaryResolution } },
+    ...(!config.periodicX && !config.periodicY ? [{ name: "+25% boundary distance", config: { ...config, paddingUm: boundaryPadding, pmlThicknessUm: thickness, gridResolution: boundaryResolution } }] : []),
     { name: "+10% PML thickness", config: { ...config, pmlThicknessUm: Math.min(config.paddingUm * 0.9, thickness * 1.1) } },
     { name: "+25% PML strength", config: { ...config, pmlStrength: Math.min(50, strength * 1.25) } },
   ];
@@ -527,7 +528,7 @@ function analyzePmlSensitivity(config: WaveguideConfig, baselineResult: SolverRe
       && minimumOverlap !== undefined && minimumOverlap >= 0.8,
     tolerancePercent,
     failedChecks,
-    gridLimited: boundaryResolution < requestedBoundaryResolution,
+    gridLimited: !config.periodicX && !config.periodicY && boundaryResolution < requestedBoundaryResolution,
   };
 }
 

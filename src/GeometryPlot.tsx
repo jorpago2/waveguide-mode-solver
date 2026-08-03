@@ -31,11 +31,25 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
     ] : [];
     const pmlThickness = (config.boundary ?? "hard") === "pml" ? (config.pmlThicknessUm ?? config.paddingUm * 0.6) : 0;
     const pmlShapes = pmlThickness > 0 ? [
-      { type: "line" as const, x0: xMinimum + pmlThickness, x1: xMinimum + pmlThickness, y0: yMinimum, y1: yMaximum },
-      { type: "line" as const, x0: xMaximum - pmlThickness, x1: xMaximum - pmlThickness, y0: yMinimum, y1: yMaximum },
-      { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMinimum + pmlThickness, y1: yMinimum + pmlThickness },
-      { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum - pmlThickness, y1: yMaximum - pmlThickness },
+      ...(!config.periodicX ? [
+        { type: "line" as const, x0: xMinimum + pmlThickness, x1: xMinimum + pmlThickness, y0: yMinimum, y1: yMaximum },
+        { type: "line" as const, x0: xMaximum - pmlThickness, x1: xMaximum - pmlThickness, y0: yMinimum, y1: yMaximum },
+      ] : []),
+      ...(!config.periodicY ? [
+        { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMinimum + pmlThickness, y1: yMinimum + pmlThickness },
+        { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum - pmlThickness, y1: yMaximum - pmlThickness },
+      ] : []),
     ].map((shape) => ({ ...shape, line: { color: "#d55e00", width: 1.5, dash: "dash" as const } })) : [];
+    const periodicShapes = [
+      ...(config.periodicX ? [
+        { type: "line" as const, x0: xMinimum, x1: xMinimum, y0: yMinimum, y1: yMaximum },
+        { type: "line" as const, x0: xMaximum, x1: xMaximum, y0: yMinimum, y1: yMaximum },
+      ] : []),
+      ...(config.periodicY ? [
+        { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMinimum, y1: yMinimum },
+        { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum, y1: yMaximum },
+      ] : []),
+    ].map((shape) => ({ ...shape, line: { color: "#0072b2", width: 2, dash: "dot" as const } }));
 
     const epsilonReal = result.permittivity.real[axis];
     const epsilonImaginary = result.permittivity.imaginary[axis];
@@ -83,7 +97,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
       xaxis: { title: { text: "x (µm)" }, color: "#53636a", ticks: "outside", constrain: "domain" },
       yaxis: { title: { text: "y (µm)" }, color: "#53636a", ticks: "outside", scaleanchor: "x", scaleratio: 1 },
-      shapes: [...meshShapes, ...pmlShapes],
+      shapes: [...meshShapes, ...pmlShapes, ...periodicShapes],
     }, { displaylogo: false, responsive: true, scrollZoom: false });
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [axis, config, mode, quantity, result, showMesh, showMode]);
@@ -99,6 +113,6 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       <small>{result.nx} × {result.ny} cells</small>
     </div>
     <div ref={plotRef} className="geometry-plot" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} />
-    <p className="plot-note">Cell-centred material values after subpixel averaging. The complex index uses the passive branch of n² = ε, with Im(n) = κ ≥ 0. Contours show normalized modal |E|²; mesh lines are the actual finite-difference cell boundaries and dashed orange lines mark the PML onset.</p>
+    <p className="plot-note">Cell-centred material values after subpixel averaging. The complex index uses the passive branch of n² = ε, with Im(n) = κ ≥ 0. Contours show normalized modal |E|²; dashed orange lines mark PML onset and dotted blue boundary pairs are Bloch-periodic.</p>
   </>;
 }

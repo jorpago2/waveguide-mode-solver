@@ -28,6 +28,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Brillouin dispersive stored energy, energy confinement, energy effective area and energy-velocity group index, with explicit loss-regime validity labels.
 - Stored-energy PML participation, boundary participation and automatic straight-guide PML-mode rejection; bent modes remain subject to convergence checks rather than participation-only rejection.
 - PEC/PMC x/y symmetry projections for compatible straight cross-sections, reducing the modal state by approximately 2× per selected plane while retaining full-domain field exports.
+- Bloch-periodic x/y boundary pairs with independent phase in [−π, π]; zero phase gives ordinary periodicity and PML can remain on the non-periodic transverse axis.
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
@@ -58,7 +59,7 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, dispersive energy, PML participation, PEC/PMC symmetry projection, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
+The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, dispersive energy, PML participation, PEC/PMC symmetry projection, reciprocal Bloch phases in x/y, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
 
 ## Numerical scope
 
@@ -69,6 +70,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 - The reported GCI applies to effective-index mesh discretization only and is valid only when the three grids converge monotonically in the asymptotic range.
 - The PML is intended for open-boundary mode studies; a nonzero imaginary effective index alone does not establish that a physical mode is leaky.
 - PEC/PMC symmetry requires a genuinely mirror-symmetric straight geometry and diagonal material tensor. The solver rejects incompatible bends, vertical stacks, ribs or angled-sidewall y symmetry.
+- Bloch-periodic boundaries represent an infinite transverse array, require matching material distributions on paired faces and currently support straight guides with diagonal tensors. Longitudinally periodic Bragg or photonic-crystal waveguides require a separate 3D unit-cell or propagation formulation.
 - Brillouin stored-energy metrics are rigorous for lossless dispersive media, approximate for weak loss and diagnostic for strongly absorptive media.
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.

@@ -94,6 +94,10 @@ pub unsafe extern "C" fn configure_vector_operator(
     nx: usize,
     ny: usize,
     k0: f64,
+    periodic_x: u32,
+    bloch_phase_x: f64,
+    periodic_y: u32,
+    bloch_phase_y: f64,
     dx_cell: *const f64,
     dy_cell: *const f64,
     dx_dual: *const f64,
@@ -139,6 +143,10 @@ pub unsafe extern "C" fn configure_vector_operator(
             copy_f64(stretch_y_cell_imaginary, ny)?,
             copy_f64(stretch_y_node_real, ny + 1)?,
             copy_f64(stretch_y_node_imaginary, ny + 1)?,
+            periodic_x != 0,
+            bloch_phase_x,
+            periodic_y != 0,
+            bloch_phase_y,
         )?)
     })();
     set_operator(result.map(CoreOperator::Vector))

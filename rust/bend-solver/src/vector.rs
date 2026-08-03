@@ -16,6 +16,10 @@ pub struct VectorOperator {
     stretch_x_node: Vec<c64>,
     stretch_y_cell: Vec<c64>,
     stretch_y_node: Vec<c64>,
+    periodic_x: bool,
+    periodic_y: bool,
+    phase_x: c64,
+    phase_y: c64,
     complex: bool,
 }
 
@@ -43,6 +47,10 @@ impl VectorOperator {
         stretch_y_cell_imaginary: Vec<f64>,
         stretch_y_node_real: Vec<f64>,
         stretch_y_node_imaginary: Vec<f64>,
+        periodic_x: bool,
+        bloch_phase_x: f64,
+        periodic_y: bool,
+        bloch_phase_y: f64,
     ) -> Result<Self, u32> {
         let hx_size = ny * (nx + 1);
         let hy_size = (ny + 1) * nx;
@@ -70,10 +78,12 @@ impl VectorOperator {
             || stretch_y_node_real.len() != ny + 1
             || stretch_y_node_imaginary.len() != ny + 1
             || dx_cell.iter().chain(&dy_cell).chain(&dx_dual).chain(&dy_dual).any(|value| !value.is_finite() || *value <= 0.0)
+            || !bloch_phase_x.is_finite()
+            || !bloch_phase_y.is_finite()
         {
             return Err(10);
         }
-        let complex = epsilon_x_imaginary
+        let complex = periodic_x || periodic_y || epsilon_x_imaginary
             .iter()
             .chain(&epsilon_y_imaginary)
             .chain(&inverse_epsilon_z_imaginary)
@@ -97,12 +107,17 @@ impl VectorOperator {
             stretch_x_node: zip_complex(stretch_x_node_real, stretch_x_node_imaginary),
             stretch_y_cell: zip_complex(stretch_y_cell_real, stretch_y_cell_imaginary),
             stretch_y_node: zip_complex(stretch_y_node_real, stretch_y_node_imaginary),
+            periodic_x,
+            periodic_y,
+            phase_x: c64::new(bloch_phase_x.cos(), bloch_phase_x.sin()),
+            phase_y: c64::new(bloch_phase_y.cos(), bloch_phase_y.sin()),
             complex,
         })
     }
 
     pub fn physical_size(&self) -> usize {
-        self.ny * (self.nx + 1) + (self.ny + 1) * self.nx
+        self.ny * if self.periodic_x { self.nx } else { self.nx + 1 }
+            + (if self.periodic_y { self.ny } else { self.ny + 1 }) * self.nx
     }
 
     pub fn is_complex(&self) -> bool {
@@ -119,7 +134,7 @@ impl VectorOperator {
         } else {
             input.iter().map(|value| c64::new(*value, 0.0)).collect()
         };
-        let output = self.apply_complex(&values);
+        let output = self.restrict(&self.apply_complex(&self.expand(&values)));
         if self.complex {
             let mut joined = Vec::with_capacity(2 * size);
             joined.extend(output.iter().map(|value| value.re));
@@ -128,6 +143,51 @@ impl VectorOperator {
         } else {
             Ok(output.into_iter().map(|value| value.re).collect())
         }
+    }
+
+    fn expand(&self, input: &[c64]) -> Vec<c64> {
+        let reduced_hx_columns = if self.periodic_x { self.nx } else { self.nx + 1 };
+        let reduced_hx_size = self.ny * reduced_hx_columns;
+        let full_hx_size = self.ny * (self.nx + 1);
+        let mut output = vec![c64::new(0.0, 0.0); full_hx_size + (self.ny + 1) * self.nx];
+        for row in 0..self.ny {
+            for column in 0..=self.nx {
+                output[row * (self.nx + 1) + column] = if self.periodic_x && column == self.nx {
+                    input[row * reduced_hx_columns] * self.phase_x
+                } else {
+                    input[row * reduced_hx_columns + column]
+                };
+            }
+        }
+        for row in 0..=self.ny {
+            for column in 0..self.nx {
+                output[full_hx_size + row * self.nx + column] = if self.periodic_y && row == self.ny {
+                    input[reduced_hx_size + column] * self.phase_y
+                } else {
+                    input[reduced_hx_size + row * self.nx + column]
+                };
+            }
+        }
+        output
+    }
+
+    fn restrict(&self, input: &[c64]) -> Vec<c64> {
+        let reduced_hx_columns = if self.periodic_x { self.nx } else { self.nx + 1 };
+        let reduced_hx_size = self.ny * reduced_hx_columns;
+        let full_hx_size = self.ny * (self.nx + 1);
+        let reduced_hy_rows = if self.periodic_y { self.ny } else { self.ny + 1 };
+        let mut output = vec![c64::new(0.0, 0.0); reduced_hx_size + reduced_hy_rows * self.nx];
+        for row in 0..self.ny {
+            for column in 0..reduced_hx_columns {
+                output[row * reduced_hx_columns + column] = input[row * (self.nx + 1) + column];
+            }
+        }
+        for row in 0..reduced_hy_rows {
+            for column in 0..self.nx {
+                output[reduced_hx_size + row * self.nx + column] = input[full_hx_size + row * self.nx + column];
+            }
+        }
+        output
     }
 
     fn apply_complex(&self, input: &[c64]) -> Vec<c64> {
@@ -206,8 +266,8 @@ impl VectorOperator {
         let mut output = vec![c64::new(0.0, 0.0); self.ny * (self.nx + 1)];
         for row in 0..self.ny {
             for column in 0..=self.nx {
-                let west = if column > 0 { cells[row * self.nx + column - 1] } else { c64::new(0.0, 0.0) };
-                let east = if column < self.nx { cells[row * self.nx + column] } else { c64::new(0.0, 0.0) };
+                let west = if column > 0 { cells[row * self.nx + column - 1] } else if self.periodic_x { cells[row * self.nx + self.nx - 1] / self.phase_x } else { c64::new(0.0, 0.0) };
+                let east = if column < self.nx { cells[row * self.nx + column] } else if self.periodic_x { cells[row * self.nx] * self.phase_x } else { c64::new(0.0, 0.0) };
                 output[row * (self.nx + 1) + column] = (east - west) / self.dx_dual[column] * self.stretch_x_node[column];
             }
         }
@@ -218,8 +278,8 @@ impl VectorOperator {
         let mut output = vec![c64::new(0.0, 0.0); (self.ny + 1) * self.nx];
         for row in 0..=self.ny {
             for column in 0..self.nx {
-                let south = if row > 0 { cells[(row - 1) * self.nx + column] } else { c64::new(0.0, 0.0) };
-                let north = if row < self.ny { cells[row * self.nx + column] } else { c64::new(0.0, 0.0) };
+                let south = if row > 0 { cells[(row - 1) * self.nx + column] } else if self.periodic_y { cells[(self.ny - 1) * self.nx + column] / self.phase_y } else { c64::new(0.0, 0.0) };
+                let north = if row < self.ny { cells[row * self.nx + column] } else if self.periodic_y { cells[column] * self.phase_y } else { c64::new(0.0, 0.0) };
                 output[row * self.nx + column] = (north - south) / self.dy_dual[row] * self.stretch_y_node[row];
             }
         }
@@ -230,8 +290,8 @@ impl VectorOperator {
         let mut output = vec![c64::new(0.0, 0.0); (self.nx + 1) * (self.ny + 1)];
         for row in 0..=self.ny {
             for column in 0..=self.nx {
-                let west = if column > 0 { edges[row * self.nx + column - 1] } else { c64::new(0.0, 0.0) };
-                let east = if column < self.nx { edges[row * self.nx + column] } else { c64::new(0.0, 0.0) };
+                let west = if column > 0 { edges[row * self.nx + column - 1] } else if self.periodic_x { edges[row * self.nx + self.nx - 1] / self.phase_x } else { c64::new(0.0, 0.0) };
+                let east = if column < self.nx { edges[row * self.nx + column] } else if self.periodic_x { edges[row * self.nx] * self.phase_x } else { c64::new(0.0, 0.0) };
                 output[row * (self.nx + 1) + column] = (east - west) / self.dx_dual[column] * self.stretch_x_node[column];
             }
         }
@@ -242,8 +302,8 @@ impl VectorOperator {
         let mut output = vec![c64::new(0.0, 0.0); (self.nx + 1) * (self.ny + 1)];
         for row in 0..=self.ny {
             for column in 0..=self.nx {
-                let south = if row > 0 { edges[(row - 1) * (self.nx + 1) + column] } else { c64::new(0.0, 0.0) };
-                let north = if row < self.ny { edges[row * (self.nx + 1) + column] } else { c64::new(0.0, 0.0) };
+                let south = if row > 0 { edges[(row - 1) * (self.nx + 1) + column] } else if self.periodic_y { edges[(self.ny - 1) * (self.nx + 1) + column] / self.phase_y } else { c64::new(0.0, 0.0) };
+                let north = if row < self.ny { edges[row * (self.nx + 1) + column] } else if self.periodic_y { edges[column] * self.phase_y } else { c64::new(0.0, 0.0) };
                 output[row * (self.nx + 1) + column] = (north - south) / self.dy_dual[row] * self.stretch_y_node[row];
             }
         }

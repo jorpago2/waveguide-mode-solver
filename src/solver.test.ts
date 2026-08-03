@@ -222,6 +222,30 @@ describe("full-vector finite-difference mode solver", () => {
     expect(validateWaveguide({ ...benchmark, bendRadiusUm: 10, symmetryX: "pmc" }).join(" ")).toMatch(/straight guides/);
   }, 20_000);
 
+  it("applies reciprocal transverse Bloch-periodic boundaries", () => {
+    const periodic = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicX: true, blochPhaseXRad: 0 });
+    const positive = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicX: true, blochPhaseXRad: 0.45 });
+    const negative = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicX: true, blochPhaseXRad: -0.45 });
+    const positiveY = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicY: true, blochPhaseYRad: 0.35 });
+    const negativeY = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicY: true, blochPhaseYRad: -0.35 });
+    const openY = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicX: true, boundary: "pml", pmlThicknessUm: 0.6 });
+    const periodicCell = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, periodicX: true, periodicY: true });
+    expect(periodic.backend).toBe("Rust/WASM");
+    expect(periodic.modes).toHaveLength(1);
+    expect(periodic.modes[0].effectiveIndexImaginary).toBeLessThan(1e-7);
+    expect(positive.modes[0].effectiveIndex).toBeCloseTo(negative.modes[0].effectiveIndex, 6);
+    expect(positiveY.modes[0].effectiveIndex).toBeCloseTo(negativeY.modes[0].effectiveIndex, 6);
+    expect(positive.modes[0].modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
+    expect(openY.modes).toHaveLength(1);
+    expect(openY.modes[0].pmlEnergyFraction).toBeGreaterThanOrEqual(0);
+    expect(periodicCell.modes).toHaveLength(1);
+    expect(validateWaveguide({ ...benchmark, periodicX: true, blochPhaseXRad: Math.PI + 0.1 }).join(" ")).toMatch(/between −π and π/);
+    expect(validateWaveguide({ ...benchmark, blochPhaseXRad: 0.2 }).join(" ")).toMatch(/requires the corresponding periodic boundary/);
+    expect(validateWaveguide({ ...benchmark, periodicX: true, symmetryX: "pec" }).join(" ")).toMatch(/cannot be combined/);
+    expect(validateWaveguide({ ...benchmark, periodicX: true, periodicY: true, boundary: "pml" }).join(" ")).toMatch(/at least one non-periodic/);
+    expect(validateWaveguide({ ...benchmark, periodicY: true, geometry: "multilayer", substrateIndex: 1.44 }).join(" ")).toMatch(/matching top and bottom/);
+  }, 20_000);
+
   it("recovers the straight-guide limit with the radial-transformed bend operator", () => {
     const straight = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1 }).modes[0];
     const bentResult = solveWaveguide({

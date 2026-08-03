@@ -39,10 +39,16 @@ export function configureVectorOperator(
   nx: number,
   ny: number,
   k0: number,
+  periodicX: boolean,
+  blochPhaseXRad: number,
+  periodicY: boolean,
+  blochPhaseYRad: number,
   arrays: readonly Float64Array[],
 ): void {
   if (arrays.length !== 18) throw new Error("The vector operator requires 18 coefficient arrays.");
-  withF64Arrays(arrays, (pointers) => checkStatus(wasm.configure_vector_operator(nx, ny, k0, ...pointers), "configure vector operator"));
+  withF64Arrays(arrays, (pointers) => checkStatus(wasm.configure_vector_operator(
+    nx, ny, k0, periodicX ? 1 : 0, blochPhaseXRad, periodicY ? 1 : 0, blochPhaseYRad, ...pointers,
+  ), "configure vector operator"));
 }
 
 export function configureTensorOperator(

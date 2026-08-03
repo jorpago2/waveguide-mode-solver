@@ -81,6 +81,10 @@ export interface WaveguideConfig {
   boundary?: BoundaryType;
   symmetryX?: SymmetryBoundary;
   symmetryY?: SymmetryBoundary;
+  periodicX?: boolean;
+  periodicY?: boolean;
+  blochPhaseXRad?: number;
+  blochPhaseYRad?: number;
   pmlThicknessUm?: number;
   pmlStrength?: number;
   coreMaterial?: MaterialId;
@@ -304,6 +308,10 @@ interface Grid {
   inverseStretchYCellImaginary: Float64Array;
   inverseStretchYNodeReal: Float64Array;
   inverseStretchYNodeImaginary: Float64Array;
+  periodicX: boolean;
+  periodicY: boolean;
+  blochPhaseXRad: number;
+  blochPhaseYRad: number;
 }
 
 interface OperatorContext {
@@ -380,6 +388,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.substrateDispersionPerUm, config.meshBias, config.coreIndexOffset,
     config.sidewallAngleDeg, config.materialTemperatureC, config.coreElectricFieldVPerUm, config.bendRadiusUm,
     config.targetEffectiveIndex, config.targetEffectiveIndexImaginary,
+    config.blochPhaseXRad, config.blochPhaseYRad,
     config.coreOpticAxisTiltDeg, config.coreOpticAxisAzimuthDeg, config.claddingOpticAxisTiltDeg,
     config.claddingOpticAxisAzimuthDeg, config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg,
   ].every((value) => value === undefined || Number.isFinite(value));
@@ -409,7 +418,17 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if (config.bendDirection !== undefined && !["positive-x", "negative-x"].includes(config.bendDirection)) errors.push("Bend direction must be positive-x or negative-x.");
   const symmetryX = config.symmetryX ?? "none";
   const symmetryY = config.symmetryY ?? "none";
+  const periodicX = config.periodicX ?? false;
+  const periodicY = config.periodicY ?? false;
+  const blochPhaseX = config.blochPhaseXRad ?? 0;
+  const blochPhaseY = config.blochPhaseYRad ?? 0;
   if (!["none", "pec", "pmc"].includes(symmetryX) || !["none", "pec", "pmc"].includes(symmetryY)) errors.push("Symmetry boundaries must be none, PEC or PMC.");
+  if (Math.abs(blochPhaseX) > Math.PI || Math.abs(blochPhaseY) > Math.PI) errors.push("Bloch phases must stay between −π and π radians.");
+  if ((!periodicX && Math.abs(blochPhaseX) > 1e-12) || (!periodicY && Math.abs(blochPhaseY) > 1e-12)) errors.push("A nonzero Bloch phase requires the corresponding periodic boundary.");
+  if ((periodicX || periodicY) && (symmetryX !== "none" || symmetryY !== "none")) errors.push("Bloch-periodic and PEC/PMC symmetry boundaries cannot be combined in the same solve.");
+  if (bendRadiusUm > 0 && (periodicX || periodicY)) errors.push("Bloch-periodic boundaries are currently limited to straight guides.");
+  if (periodicY && ((config.geometry ?? "channel") === "multilayer" || (config.stackLayers?.length ?? 0) > 0)) errors.push("y periodicity requires matching top and bottom materials, so vertical stacks and multilayer substrates are not supported.");
+  if ((config.boundary ?? "hard") === "pml" && periodicX && periodicY) errors.push("PML requires at least one non-periodic transverse axis.");
   if (bendRadiusUm > 0 && (symmetryX !== "none" || symmetryY !== "none")) errors.push("PEC/PMC symmetry planes are currently limited to straight guides.");
   if (symmetryY !== "none" && ((config.geometry ?? "channel") === "rib" || (config.geometry ?? "channel") === "multilayer"
     || (config.stackLayers?.length ?? 0) > 0 || Math.abs((config.sidewallAngleDeg ?? 90) - 90) > 1e-9)) {
@@ -512,6 +531,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
       errors.push("Rotated off-diagonal anisotropy is currently limited to straight guides; a constant local tensor is not rigorous along a curved crystal path.");
     }
     if (hasOffDiagonalRotation && (symmetryX !== "none" || symmetryY !== "none")) errors.push("PEC/PMC symmetry planes currently require diagonal material tensors.");
+    if (hasOffDiagonalRotation && (periodicX || periodicY)) errors.push("Bloch-periodic boundaries currently require diagonal material tensors.");
     if (bendRadiusUm > 0 && hasMetal) errors.push("Metallic modes are currently limited to straight guides; curved-plasmonic validation is not yet available.");
   }
   return errors;
@@ -607,6 +627,7 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     warnings.push("The requested effective-index target lies outside the physical search window; inspect rejected candidates or revise the target.");
   }
   if ((config.bendRadiusUm ?? 0) > 0 && (config.boundary ?? "hard") !== "pml") warnings.push("A bent guide with hard walls cannot yield physical radiation loss; use PML and verify mesh, padding and absorber convergence.");
+  if (config.periodicX || config.periodicY) warnings.push("Bloch-periodic boundaries model an infinite transverse array; the result is not an isolated-waveguide mode.");
   if (guidanceBounds(config).plasmonic) {
     warnings.push("Metal results use a local bulk permittivity model. Thin-film morphology, surface scattering and nonlocal response are not included.");
     warnings.push("Plasmonic fields vary sharply at interfaces; verify both mesh and domain-size convergence before using effective index or loss quantitatively.");
@@ -1439,10 +1460,10 @@ function createGrid(config: WaveguideConfig): Grid {
   const inverseEpsilonY = complexReciprocal(epsilonY, epsilonYImaginary);
   const pmlThickness = (config.boundary ?? "hard") === "pml" ? (config.pmlThicknessUm ?? config.paddingUm * 0.6) : 0;
   const pmlStrength = config.pmlStrength ?? 4;
-  const xCellStretch = stretchProfile(x, domainWidth / 2, pmlThickness, pmlStrength);
-  const yCellStretch = stretchProfile(y, domainHeight / 2, pmlThickness, pmlStrength);
-  const xNodeStretch = stretchProfile(xEdges, domainWidth / 2, pmlThickness, pmlStrength);
-  const yNodeStretch = stretchProfile(yEdges, domainHeight / 2, pmlThickness, pmlStrength);
+  const xCellStretch = stretchProfile(x, domainWidth / 2, config.periodicX ? 0 : pmlThickness, pmlStrength);
+  const yCellStretch = stretchProfile(y, domainHeight / 2, config.periodicY ? 0 : pmlThickness, pmlStrength);
+  const xNodeStretch = stretchProfile(xEdges, domainWidth / 2, config.periodicX ? 0 : pmlThickness, pmlStrength);
+  const yNodeStretch = stretchProfile(yEdges, domainHeight / 2, config.periodicY ? 0 : pmlThickness, pmlStrength);
 
   return {
     nx,
@@ -1491,6 +1512,10 @@ function createGrid(config: WaveguideConfig): Grid {
     inverseStretchYCellImaginary: yCellStretch.imaginary,
     inverseStretchYNodeReal: yNodeStretch.real,
     inverseStretchYNodeImaginary: yNodeStretch.imaginary,
+    periodicX: config.periodicX ?? false,
+    periodicY: config.periodicY ?? false,
+    blochPhaseXRad: config.blochPhaseXRad ?? 0,
+    blochPhaseYRad: config.blochPhaseYRad ?? 0,
   };
 }
 
@@ -1523,6 +1548,9 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
   const { nx, ny, dxCell, dyCell, dxDual, dyDual, epsilonX, epsilonY, inverseEpsilonZ } = grid;
   const hxSize = ny * (nx + 1);
   const hySize = (ny + 1) * nx;
+  const reducedHxSize = ny * (grid.periodicX ? nx : nx + 1);
+  const reducedHySize = (grid.periodicY ? ny : ny + 1) * nx;
+  const reducedSize = reducedHxSize + reducedHySize;
   const k0 = (2 * Math.PI) / wavelengthUm;
   const inverseK0Squared = 1 / k0 ** 2;
 
@@ -1550,14 +1578,13 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     output.set(outputHy, hxSize);
     return output;
   };
-  const complex = grid.epsilonXImaginary.some((value) => value !== 0)
+  const complex = grid.periodicX || grid.periodicY || grid.epsilonXImaginary.some((value) => value !== 0)
     || grid.epsilonYImaginary.some((value) => value !== 0)
     || grid.inverseStretchXCellImaginary.some((value) => value !== 0)
     || grid.inverseStretchYCellImaginary.some((value) => value !== 0);
   let apply = complex ? (vector: Float64Array): Float64Array => {
-    const vectorSize = hxSize + hySize;
-    const hx = complexSlice(vector, 0, hxSize, vectorSize);
-    const hy = complexSlice(vector, hxSize, vectorSize, vectorSize);
+    const hx = expandBlochHx(complexSlice(vector, 0, reducedHxSize, reducedSize), grid);
+    const hy = expandBlochHy(complexSlice(vector, reducedHxSize, reducedHySize, reducedSize), grid);
     const transverseDivergence = complexAdd(
       complexBx(hx, grid), complexBy(hy, grid),
     );
@@ -1576,11 +1603,11 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     complexAddProductInPlace(outputHy, complexAx(longitudinalCurl, grid), epsilonX, grid.epsilonXImaginary, -1);
     complexAddProductInPlace(outputHx, hx, epsilonY, grid.epsilonYImaginary, k0 ** 2);
     complexAddProductInPlace(outputHy, hy, epsilonX, grid.epsilonXImaginary, k0 ** 2);
-    return complexJoin(outputHx, outputHy);
+    return complexJoin(restrictBlochHx(outputHx, grid), restrictBlochHy(outputHy, grid));
   } : applyReal;
   let solveEigenpairs: OperatorContext["solveEigenpairs"];
   if (modeSolverCore) {
-    modeSolverCore.configureVectorOperator(nx, ny, k0, [
+    modeSolverCore.configureVectorOperator(nx, ny, k0, grid.periodicX, grid.blochPhaseXRad, grid.periodicY, grid.blochPhaseYRad, [
       Float64Array.from(dxCell), Float64Array.from(dyCell),
       Float64Array.from(dxDual), Float64Array.from(dyDual),
       epsilonX, grid.epsilonXImaginary,
@@ -1594,8 +1621,18 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     apply = modeSolverCore.applyConfiguredOperator;
     solveEigenpairs = modeSolverCore.solveConfiguredEigenpairs;
   }
+  const liftEigenpair = grid.periodicX || grid.periodicY ? (pair: RitzPair): RitzPair => {
+    const imaginary = pair.vectorImaginary ?? new Float64Array(reducedSize);
+    const hx = expandBlochHx({ real: pair.vector.subarray(0, reducedHxSize), imaginary: imaginary.subarray(0, reducedHxSize) }, grid);
+    const hy = expandBlochHy({ real: pair.vector.subarray(reducedHxSize), imaginary: imaginary.subarray(reducedHxSize) }, grid);
+    const fullReal = new Float64Array(hxSize + hySize);
+    const fullImaginary = new Float64Array(hxSize + hySize);
+    fullReal.set(hx.real); fullReal.set(hy.real, hxSize);
+    fullImaginary.set(hx.imaginary); fullImaginary.set(hy.imaginary, hxSize);
+    return { ...pair, vector: fullReal, vectorImaginary: fullImaginary };
+  } : undefined;
 
-  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab", backend: solveEigenpairs ? "Rust/WASM" : "TypeScript", solveEigenpairs };
+  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: reducedSize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab", backend: solveEigenpairs ? "Rust/WASM" : "TypeScript", solveEigenpairs, liftEigenpair };
 }
 
 function gridHasOffDiagonalTensor(grid: Grid): boolean {
@@ -2285,7 +2322,7 @@ function finalizeMode(
     storedEnergyMagnitudePerM += magnitude;
     const row = Math.floor(index / nx);
     const column = index % nx;
-    if (pmlThickness > 0 && (Math.abs(grid.x[column]) >= pmlXStart || Math.abs(grid.y[row]) >= pmlYStart)) pmlEnergyMagnitudePerM += magnitude;
+    if (pmlThickness > 0 && ((!grid.periodicX && Math.abs(grid.x[column]) >= pmlXStart) || (!grid.periodicY && Math.abs(grid.y[row]) >= pmlYStart))) pmlEnergyMagnitudePerM += magnitude;
     if (row < 2 || row >= ny - 2 || column < 2 || column >= nx - 2) boundaryEnergyMagnitudePerM += magnitude;
   }
   const angularFrequency = 2 * Math.PI * 299_792_458 / (config.wavelengthUm * 1e-6);
@@ -2338,7 +2375,7 @@ function finalizeMode(
   const energyMetricValidity = maximumLossTangent < 1e-8 ? "lossless" : maximumLossTangent < 0.1 ? "weak-loss" : "diagnostic";
   const pmlEnergyFraction = pmlEnergyMagnitudePerM / Math.max(storedEnergyMagnitudePerM, 1e-30);
   const boundaryEnergyFraction = boundaryEnergyMagnitudePerM / Math.max(storedEnergyMagnitudePerM, 1e-30);
-  const physicalClass = pmlEnergyFraction >= 0.8 && (config.bendRadiusUm ?? 0) === 0 ? "pml"
+  const physicalClass = pmlEnergyFraction >= 0.8 && (config.bendRadiusUm ?? 0) === 0 && !config.periodicX && !config.periodicY ? "pml"
     : plasmonic ? "plasmonic"
       : pmlEnergyFraction >= 0.05 && radiationBetaImaginaryPerUm > Math.max(1e-10, 0.1 * absorptionBetaImaginaryPerUm) ? "leaky" : "guided";
 
@@ -2529,6 +2566,56 @@ function complexSlice(vector: Float64Array, start: number, length: number, vecto
   return { real: vector.subarray(start, start + length), imaginary: vector.subarray(vectorSize + start, vectorSize + start + length) };
 }
 
+function expandBlochHx(values: ComplexArray, grid: Grid): ComplexArray {
+  if (!grid.periodicX) return values;
+  const output = { real: new Float64Array(grid.ny * (grid.nx + 1)), imaginary: new Float64Array(grid.ny * (grid.nx + 1)) };
+  const cosine = Math.cos(grid.blochPhaseXRad);
+  const sine = Math.sin(grid.blochPhaseXRad);
+  for (let row = 0; row < grid.ny; row += 1) {
+    const reducedOffset = row * grid.nx;
+    const fullOffset = row * (grid.nx + 1);
+    output.real.set(values.real.subarray(reducedOffset, reducedOffset + grid.nx), fullOffset);
+    output.imaginary.set(values.imaginary.subarray(reducedOffset, reducedOffset + grid.nx), fullOffset);
+    const real = values.real[reducedOffset];
+    const imaginary = values.imaginary[reducedOffset];
+    output.real[fullOffset + grid.nx] = cosine * real - sine * imaginary;
+    output.imaginary[fullOffset + grid.nx] = sine * real + cosine * imaginary;
+  }
+  return output;
+}
+
+function expandBlochHy(values: ComplexArray, grid: Grid): ComplexArray {
+  if (!grid.periodicY) return values;
+  const output = { real: new Float64Array((grid.ny + 1) * grid.nx), imaginary: new Float64Array((grid.ny + 1) * grid.nx) };
+  output.real.set(values.real);
+  output.imaginary.set(values.imaginary);
+  const cosine = Math.cos(grid.blochPhaseYRad);
+  const sine = Math.sin(grid.blochPhaseYRad);
+  for (let column = 0; column < grid.nx; column += 1) {
+    const real = values.real[column];
+    const imaginary = values.imaginary[column];
+    const index = grid.ny * grid.nx + column;
+    output.real[index] = cosine * real - sine * imaginary;
+    output.imaginary[index] = sine * real + cosine * imaginary;
+  }
+  return output;
+}
+
+function restrictBlochHx(values: ComplexArray, grid: Grid): ComplexArray {
+  if (!grid.periodicX) return values;
+  const output = { real: new Float64Array(grid.nx * grid.ny), imaginary: new Float64Array(grid.nx * grid.ny) };
+  for (let row = 0; row < grid.ny; row += 1) {
+    output.real.set(values.real.subarray(row * (grid.nx + 1), row * (grid.nx + 1) + grid.nx), row * grid.nx);
+    output.imaginary.set(values.imaginary.subarray(row * (grid.nx + 1), row * (grid.nx + 1) + grid.nx), row * grid.nx);
+  }
+  return output;
+}
+
+function restrictBlochHy(values: ComplexArray, grid: Grid): ComplexArray {
+  if (!grid.periodicY) return values;
+  return { real: values.real.slice(0, grid.nx * grid.ny), imaginary: values.imaginary.slice(0, grid.nx * grid.ny) };
+}
+
 function complexJoin(first: ComplexArray, second: ComplexArray): Float64Array {
   const vectorSize = first.real.length + second.real.length;
   const output = new Float64Array(2 * vectorSize);
@@ -2633,12 +2720,85 @@ function complexDerivative(
   stretchIndex: (index: number) => number,
 ): ComplexArray {
   const output = { real: derivative(values.real), imaginary: derivative(values.imaginary) };
+  applyComplexStretch(output, stretchReal, stretchImaginary, stretchIndex);
+  return output;
+}
+
+function applyComplexStretch(
+  output: ComplexArray,
+  stretchReal: Float64Array,
+  stretchImaginary: Float64Array,
+  stretchIndex: (index: number) => number,
+): void {
   for (let index = 0; index < output.real.length; index += 1) {
     const factor = stretchIndex(index);
     const nextReal = output.real[index] * stretchReal[factor] - output.imaginary[index] * stretchImaginary[factor];
     output.imaginary[index] = output.real[index] * stretchImaginary[factor] + output.imaginary[index] * stretchReal[factor];
     output.real[index] = nextReal;
   }
+}
+
+function complexPeriodicDifferenceX(values: ComplexArray, rows: number, grid: Grid): ComplexArray {
+  const output = { real: new Float64Array(rows * (grid.nx + 1)), imaginary: new Float64Array(rows * (grid.nx + 1)) };
+  const cosine = Math.cos(grid.blochPhaseXRad);
+  const sine = Math.sin(grid.blochPhaseXRad);
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column <= grid.nx; column += 1) {
+      const outputIndex = row * (grid.nx + 1) + column;
+      let westReal = 0; let westImaginary = 0; let eastReal = 0; let eastImaginary = 0;
+      if (column > 0) {
+        westReal = values.real[row * grid.nx + column - 1];
+        westImaginary = values.imaginary[row * grid.nx + column - 1];
+      } else {
+        const index = row * grid.nx + grid.nx - 1;
+        westReal = cosine * values.real[index] + sine * values.imaginary[index];
+        westImaginary = cosine * values.imaginary[index] - sine * values.real[index];
+      }
+      if (column < grid.nx) {
+        eastReal = values.real[row * grid.nx + column];
+        eastImaginary = values.imaginary[row * grid.nx + column];
+      } else {
+        const index = row * grid.nx;
+        eastReal = cosine * values.real[index] - sine * values.imaginary[index];
+        eastImaginary = sine * values.real[index] + cosine * values.imaginary[index];
+      }
+      output.real[outputIndex] = (eastReal - westReal) / grid.dxDual[column];
+      output.imaginary[outputIndex] = (eastImaginary - westImaginary) / grid.dxDual[column];
+    }
+  }
+  applyComplexStretch(output, grid.inverseStretchXNodeReal, grid.inverseStretchXNodeImaginary, (index) => index % (grid.nx + 1));
+  return output;
+}
+
+function complexPeriodicDifferenceY(values: ComplexArray, columns: number, grid: Grid): ComplexArray {
+  const output = { real: new Float64Array((grid.ny + 1) * columns), imaginary: new Float64Array((grid.ny + 1) * columns) };
+  const cosine = Math.cos(grid.blochPhaseYRad);
+  const sine = Math.sin(grid.blochPhaseYRad);
+  for (let row = 0; row <= grid.ny; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const outputIndex = row * columns + column;
+      let southReal = 0; let southImaginary = 0; let northReal = 0; let northImaginary = 0;
+      if (row > 0) {
+        southReal = values.real[(row - 1) * columns + column];
+        southImaginary = values.imaginary[(row - 1) * columns + column];
+      } else {
+        const index = (grid.ny - 1) * columns + column;
+        southReal = cosine * values.real[index] + sine * values.imaginary[index];
+        southImaginary = cosine * values.imaginary[index] - sine * values.real[index];
+      }
+      if (row < grid.ny) {
+        northReal = values.real[row * columns + column];
+        northImaginary = values.imaginary[row * columns + column];
+      } else {
+        const index = column;
+        northReal = cosine * values.real[index] - sine * values.imaginary[index];
+        northImaginary = sine * values.real[index] + cosine * values.imaginary[index];
+      }
+      output.real[outputIndex] = (northReal - southReal) / grid.dyDual[row];
+      output.imaginary[outputIndex] = (northImaginary - southImaginary) / grid.dyDual[row];
+    }
+  }
+  applyComplexStretch(output, grid.inverseStretchYNodeReal, grid.inverseStretchYNodeImaginary, (index) => Math.floor(index / columns));
   return output;
 }
 
@@ -2659,18 +2819,22 @@ function complexBy(values: ComplexArray, grid: Grid): ComplexArray {
 }
 
 function complexCx(values: ComplexArray, grid: Grid): ComplexArray {
+  if (grid.periodicX) return complexPeriodicDifferenceX(values, grid.ny, grid);
   return complexDerivative(values, (part) => cx(part, grid.nx, grid.ny, grid.dxDual), grid.inverseStretchXNodeReal, grid.inverseStretchXNodeImaginary, (index) => index % (grid.nx + 1));
 }
 
 function complexCy(values: ComplexArray, grid: Grid): ComplexArray {
+  if (grid.periodicY) return complexPeriodicDifferenceY(values, grid.nx, grid);
   return complexDerivative(values, (part) => cy(part, grid.nx, grid.ny, grid.dyDual), grid.inverseStretchYNodeReal, grid.inverseStretchYNodeImaginary, (index) => Math.floor(index / grid.nx));
 }
 
 function complexDxOperator(values: ComplexArray, grid: Grid): ComplexArray {
+  if (grid.periodicX) return complexPeriodicDifferenceX(values, grid.ny + 1, grid);
   return complexDerivative(values, (part) => dxOperator(part, grid.nx, grid.ny, grid.dxDual), grid.inverseStretchXNodeReal, grid.inverseStretchXNodeImaginary, (index) => index % (grid.nx + 1));
 }
 
 function complexDyOperator(values: ComplexArray, grid: Grid): ComplexArray {
+  if (grid.periodicY) return complexPeriodicDifferenceY(values, grid.nx + 1, grid);
   return complexDerivative(values, (part) => dyOperator(part, grid.nx, grid.ny, grid.dyDual), grid.inverseStretchYNodeReal, grid.inverseStretchYNodeImaginary, (index) => Math.floor(index / (grid.nx + 1)));
 }
 
