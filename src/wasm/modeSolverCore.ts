@@ -2,6 +2,7 @@ export interface RustEigenpair {
   eigenvalue: number;
   eigenvalueImaginary: number;
   residual: number;
+  conditionEstimate: number;
   vector: Float64Array;
   vectorImaginary?: Float64Array;
 }
@@ -145,8 +146,9 @@ export function solveConfiguredEigenpairs(
         eigenvalue: output[0],
         eigenvalueImaginary: output[1],
         residual: output[2],
-        vector: output.slice(3, 3 + physicalSize),
-        ...(complex ? { vectorImaginary: output.slice(3 + physicalSize) } : {}),
+        conditionEstimate: output[3],
+        vector: output.slice(4, 4 + physicalSize),
+        ...(complex ? { vectorImaginary: output.slice(4 + physicalSize) } : {}),
       });
     }
     return pairs;

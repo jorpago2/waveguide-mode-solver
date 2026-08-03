@@ -6,6 +6,7 @@ pub struct EigenPair {
     pub eigenvalue: f64,
     pub eigenvalue_imaginary: f64,
     pub residual: f64,
+    pub condition_estimate: f64,
     pub vector: Vec<f64>,
     pub vector_imaginary: Vec<f64>,
 }
@@ -63,10 +64,20 @@ pub fn solve_shift_invert_arnoldi(
     let decomposition = Eigen::<f64>::new_from_real(reduced.as_ref()).map_err(|_| 41_u32)?;
     let eigenvalues = decomposition.S().column_vector();
     let eigenvectors = decomposition.U();
+    let eigenvector_matrix: Vec<Vec<c64>> = (0..dimension)
+        .map(|row| (0..dimension).map(|column| eigenvectors[(row, column)]).collect())
+        .collect();
+    let inverse_eigenvectors = invert_complex_matrix(&eigenvector_matrix);
     let mut candidates = Vec::new();
 
     for column in 0..dimension {
         let inverse = eigenvalues[column];
+        let condition_estimate = inverse_eigenvectors.as_ref().map_or(f64::INFINITY, |inverse_matrix| {
+            let right_norm = (0..dimension).map(|row| eigenvector_matrix[row][column].norm_sqr()).sum::<f64>().sqrt();
+            let left_norm = inverse_matrix[column].iter().map(|value| value.norm_sqr()).sum::<f64>().sqrt();
+            let overlap = (0..dimension).map(|index| inverse_matrix[column][index] * eigenvector_matrix[index][column]).sum::<c64>().norm();
+            right_norm * left_norm / overlap.max(1e-30)
+        });
         if !operator.is_complex() && inverse.im.abs() > 1e-7 {
             continue;
         }
@@ -82,7 +93,7 @@ pub fn solve_shift_invert_arnoldi(
         }
         if !operator.is_complex() {
             let real: Vec<f64> = ritz.into_iter().map(|value| value.re).collect();
-            if let Some(candidate) = candidate(operator, shift, inverse, real, Vec::new())? {
+            if let Some(candidate) = candidate(operator, shift, inverse, real, Vec::new(), condition_estimate)? {
                 candidates.push(candidate);
             }
             continue;
@@ -103,10 +114,10 @@ pub fn solve_shift_invert_arnoldi(
         }
         let mut alternatives = Vec::new();
         for inverse_value in [inverse, c64::new(inverse.re, -inverse.im)] {
-            if let Some(value) = candidate(operator, shift, inverse_value, first_real.clone(), first_imaginary.clone())? {
+            if let Some(value) = candidate(operator, shift, inverse_value, first_real.clone(), first_imaginary.clone(), condition_estimate)? {
                 alternatives.push(value);
             }
-            if let Some(value) = candidate(operator, shift, inverse_value, second_real.clone(), second_imaginary.clone())? {
+            if let Some(value) = candidate(operator, shift, inverse_value, second_real.clone(), second_imaginary.clone(), condition_estimate)? {
                 alternatives.push(value);
             }
         }
@@ -126,6 +137,7 @@ fn candidate(
     inverse: c64,
     mut vector: Vec<f64>,
     mut vector_imaginary: Vec<f64>,
+    condition_estimate: f64,
 ) -> Result<Option<EigenPair>, u32> {
     let inverse_magnitude_squared = inverse.re * inverse.re + inverse.im * inverse.im;
     if inverse_magnitude_squared < 1e-24 {
@@ -157,7 +169,28 @@ fn candidate(
         add_scaled(&mut residual, &vector, -eigenvalue);
     }
     let residual = norm(&residual) / eigenvalue.hypot(eigenvalue_imaginary).max(1.0);
-    Ok(Some(EigenPair { eigenvalue, eigenvalue_imaginary, residual, vector, vector_imaginary }))
+    Ok(Some(EigenPair { eigenvalue, eigenvalue_imaginary, residual, condition_estimate, vector, vector_imaginary }))
+}
+
+fn invert_complex_matrix(matrix: &[Vec<c64>]) -> Option<Vec<Vec<c64>>> {
+    let size = matrix.len();
+    let mut augmented: Vec<Vec<c64>> = matrix.iter().enumerate().map(|(row, values)| {
+        values.iter().copied().chain((0..size).map(|column| c64::new((row == column) as u8 as f64, 0.0))).collect()
+    }).collect();
+    for column in 0..size {
+        let pivot = (column..size).max_by(|first, second| augmented[*first][column].norm_sqr().total_cmp(&augmented[*second][column].norm_sqr()))?;
+        if augmented[pivot][column].norm_sqr() < 1e-28 { return None; }
+        augmented.swap(column, pivot);
+        let divisor = augmented[column][column];
+        for value in &mut augmented[column] { *value /= divisor; }
+        let pivot_row = augmented[column].clone();
+        for row in 0..size {
+            if row == column { continue; }
+            let factor = augmented[row][column];
+            for index in 0..2 * size { augmented[row][index] -= factor * pivot_row[index]; }
+        }
+    }
+    Some(augmented.into_iter().map(|row| row[size..].to_vec()).collect())
 }
 
 fn dot(first: &[f64], second: &[f64]) -> f64 {

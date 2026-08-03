@@ -1,11 +1,11 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { runSolverWorker } from "./workerClient";
-import { ConvergencePlot, ModeMapPlot, TolerancePlot } from "./AnalysisPlots";
+import { ConvergencePlot, ModeMapPlot, ModeTopologyPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
   ConvergenceResult, ConvergenceSettings, DirectionalCouplerResult, DirectionalCouplerSettings, GaussianCouplingResult, GaussianCouplingSettings,
   ModeMapParameter, ModeMapResult, ModeMapSettings, ToleranceResult, ToleranceSettings, WaveguideComparisonResult,
 } from "./analysis";
-import type { SolverResult, WaveguideConfig } from "./solver";
+import type { SolverResult, TopologySweepParameter, TopologySweepResult, TopologySweepSettings, WaveguideConfig } from "./solver";
 
 interface Props {
   config: WaveguideConfig;
@@ -36,6 +36,15 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const [targetPreset, setTargetPreset] = useState(Object.keys(presets)[1] ?? Object.keys(presets)[0]);
   const [comparisonModes, setComparisonModes] = useState(3);
   const [comparisonResult, setComparisonResult] = useState<WaveguideComparisonResult>();
+  const [topology, setTopology] = useState<TopologySweepSettings>(() => ({ parameter: "widthUm", startValue: 0.8 * config.widthUm, stopValue: 1.2 * config.widthUm, points: 7 }));
+  const [topologyResult, setTopologyResult] = useState<TopologySweepResult>();
+
+  useEffect(() => {
+    if ((config.geometry ?? "channel") !== "polygon") return;
+    setTopology((current) => current.parameter === "wavelengthUm" ? current : {
+      parameter: "wavelengthUm", startValue: 0.8 * config.wavelengthUm, stopValue: 1.2 * config.wavelengthUm, points: current.points,
+    });
+  }, [config.geometry, config.wavelengthUm]);
 
   async function runConvergence(event: FormEvent) {
     event.preventDefault(); setActive("convergence"); setError("");
@@ -73,9 +82,50 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
   }
 
+  async function runTopology(event: FormEvent) {
+    event.preventDefault(); setActive("topology"); setError("");
+    try { setTopologyResult(await runSolverWorker<TopologySweepResult>({ kind: "modeTopology", config, settings: topology })); }
+    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+  }
+
+  function selectTopologyParameter(parameter: TopologySweepParameter) {
+    const centre = parameter === "wavelengthUm" ? config.wavelengthUm : parameter === "coreExtinction" ? config.coreExtinction ?? 0.01
+      : parameter === "slotGapUm" ? config.slotGapUm ?? config.widthUm / 5 : parameter === "couplerGapUm" ? config.couplerGapUm ?? config.widthUm / 2 : config[parameter];
+    const span = parameter === "coreExtinction" ? Math.max(0.01, centre) : 0.2 * centre;
+    setTopology({ parameter, startValue: Math.max(parameter === "wavelengthUm" ? 0.2 : parameter === "coreExtinction" ? 0 : 0.001, centre - span), stopValue: centre + span, points: topology.points });
+  }
+
   const geometry = config.geometry ?? "channel";
   const gapAvailable = geometry === "slot" || geometry === "coupler";
+  const selected = result?.modes[selectedMode];
+  const maximumRightOverlap = result && result.modes.length > 1
+    ? Math.max(0, ...(result.ritzNonOrthogonality[selectedMode] ?? []).filter((_, index) => index !== selectedMode)) : 0;
   return <>
+    <section className="sweep-section" aria-labelledby="topology-title">
+      <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Non-Hermitian mode topology</h2></div>{topologyResult && <button type="button" className="export-button" onClick={() => exportTopology(topologyResult)}>Export CSV</button>}</div>
+      <p className="section-intro">Inspect projected eigenvalue conditioning, right-mode non-orthogonality and complex-index trajectories. Interaction labels identify candidates that require a converged two-parameter loop before they can be called exceptional points.</p>
+      {selected && <div className="analysis-metrics">
+        <AnalysisMetric label="Projected condition κ" value={formatCondition(selected.eigenvalueConditionEstimate)} />
+        <AnalysisMetric label="Projected Petermann K" value={formatCondition(selected.petermannFactorEstimate)} />
+        <AnalysisMetric label="Largest right-mode overlap" value={maximumRightOverlap.toFixed(4)} />
+        <AnalysisMetric label="Eigenpair residual" value={selected.residual.toExponential(2)} />
+      </div>}
+      {result && result.modes.length > 1 && <div className="comparison-scroll"><table className="comparison-table"><caption>Absolute overlaps between normalized right Ritz vectors</caption><thead><tr><th>Mode</th>{result.modes.map((mode) => <th key={mode.id}>{mode.label}</th>)}</tr></thead><tbody>{result.modes.map((mode, row) => <tr key={mode.id}><th>{mode.label}</th>{result.ritzNonOrthogonality[row].map((overlap, column) => <td key={result.modes[column].id}>{overlap.toFixed(4)}</td>)}</tr>)}</tbody></table></div>}
+      <form className="analysis-controls" onSubmit={runTopology}>
+        <label className="select-field">Sweep parameter<select value={topology.parameter} onChange={(event) => selectTopologyParameter(event.target.value as TopologySweepParameter)}>
+          {geometry !== "polygon" && <><option value="widthUm">Core width</option><option value="heightUm">Core height</option></>}
+          {geometry === "slot" && <option value="slotGapUm">Slot gap</option>}{geometry === "coupler" && <option value="couplerGapUm">Coupler gap</option>}
+          <option value="wavelengthUm">Wavelength</option>{geometry !== "polygon" && <option value="coreExtinction">Core extinction</option>}
+        </select></label>
+        <AnalysisNumber label="Start" unit={topology.parameter === "coreExtinction" ? "κ" : "µm"} value={topology.startValue} min={topology.parameter === "wavelengthUm" ? 0.2 : 0} max={1_000} step={topology.parameter === "coreExtinction" ? 0.001 : 0.01} onChange={(value) => setTopology((current) => ({ ...current, startValue: value }))} />
+        <AnalysisNumber label="Stop" unit={topology.parameter === "coreExtinction" ? "κ" : "µm"} value={topology.stopValue} min={topology.parameter === "wavelengthUm" ? 0.2 : 0} max={1_000} step={topology.parameter === "coreExtinction" ? 0.001 : 0.01} onChange={(value) => setTopology((current) => ({ ...current, stopValue: value }))} />
+        <AnalysisNumber label="Points" unit="solves" value={topology.points} min={5} max={31} step={1} onChange={(value) => setTopology((current) => ({ ...current, points: value }))} />
+        <button className="solve-button" type="submit" disabled={Boolean(active) || !result || config.modeCount < 2}>{active === "topology" ? "Tracking…" : "Analyze branches"}<span aria-hidden="true">→</span></button>
+      </form>
+      {config.modeCount < 2 && <p className="warning">Request at least two modes in the solver configuration before running topology analysis.</p>}
+      {topologyResult && <><ModeTopologyPlot result={topologyResult} />{topologyResult.interactions.length > 0 && <div className="comparison-scroll"><table className="comparison-table"><caption>Local minima of the complex modal separation</caption><thead><tr><th>Parameter</th><th>Branches</th><th>Classification</th><th>|Δneff|</th><th>Right overlap</th><th>κproj</th></tr></thead><tbody>{topologyResult.interactions.map((interaction) => <tr key={`${interaction.value}-${interaction.branches.join("-")}`}><td>{interaction.value.toPrecision(5)}</td><td>{interaction.branches.map((branch) => branch + 1).join(" / ")}</td><td>{interaction.classification}</td><td>{interaction.complexIndexGap.toExponential(3)}</td><td>{interaction.rightModeOverlap.toFixed(4)}</td><td>{formatCondition(interaction.maximumConditionEstimate)}</td></tr>)}</tbody></table></div>}{topologyResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+      <p className="limitation">K<sub>proj</sub> = κ<sub>proj</sub>² is obtained from left and right eigenvectors of the Arnoldi-projected operator. It is a convergence diagnostic, not yet the full Maxwell adjoint Petermann factor.</p>
+    </section>
     <section className="sweep-section" aria-labelledby="convergence-title">
       <div className="panel-heading"><div><span className="step">05</span><h2 id="convergence-title">Numerical convergence</h2></div></div>
       <p className="section-intro">Track the selected mode over three systematically refined meshes. Loss is checked against the selected tolerance and, with PML, against boundary and absorber variations.</p>
@@ -181,5 +231,14 @@ function AnalysisNumber({ label, unit, value, min, max, step, onChange }: { labe
 function AnalysisMetric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
 function formatOptional(value: number | undefined, digits: number): string { return value === undefined ? "—" : value.toFixed(digits); }
 function formatPercent(value: number | undefined): string { return value === undefined ? "—" : `${value.toPrecision(3)}%`; }
+function formatCondition(value: number): string { return Number.isFinite(value) ? value.toPrecision(5) : "unresolved"; }
 function lossValidationLabel(value: ConvergenceResult["lossValidation"]): string { return value === "pass" ? "Pass" : value === "mesh-only" ? "Mesh only" : value === "not-applicable" ? "No measurable loss" : "Review"; }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : "The analysis failed."; }
+
+function exportTopology(result: TopologySweepResult) {
+  const rows = ["parameter,value,branch,label,neff_real,neff_imag,condition_projected,petermann_projected,residual,tracking_overlap",
+    ...result.points.flatMap((point) => point.modes.map((mode) => [result.parameter, point.value, mode.branch + 1, mode.label, mode.effectiveIndex,
+      mode.effectiveIndexImaginary, mode.conditionEstimate, mode.petermannFactorEstimate, mode.residual, mode.trackingOverlap].join(",")))];
+  const url = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = `mode-topology-${result.parameter}.csv`; anchor.click(); URL.revokeObjectURL(url);
+}

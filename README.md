@@ -44,6 +44,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Two-dimensional mode-count and effective-index maps for visualizing cutoff regions.
 - Versioned JSON project export/import plus numeric CSV exports.
 - User-defined complex effective-index targets and an inspectable Ritz-candidate table with residuals and rejection reasons.
+- Projected left/right Ritz-eigenvector conditioning, right-vector overlap matrices and one-parameter complex-mode branch sweeps with explicitly provisional interaction labels.
 
 ## Run locally
 
@@ -83,6 +84,7 @@ The tests exercise automated three-grid convergence, subpixel and polygon-interf
 - The LiNbO₃ temperature correction applies the congruent-LN wavelength-dependent thermo-optic fit of Moretti et al. to the 5% MgO Sellmeier base as an approximation and is restricted to 20–240 °C. Its electro-optic control assumes a uniform DC field parallel to the optical axis and uses telecom values r₁₃ = 8.6 pm/V and r₃₃ = 30.8 pm/V; process-specific data are required and it does not solve electrodes or RF/optical overlap.
 - Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
+- The reported projected condition number and Kproj = kappa_proj^2 come from the small Arnoldi Ritz matrix. They diagnose non-normal sensitivity of the computed eigensystem but are not a full-Maxwell adjoint Petermann factor. Exceptional-point labels are candidates only; confirmation requires a converged closed loop in two real parameters.
 
 ## References
 

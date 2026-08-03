@@ -39,6 +39,14 @@ This file records the external scientific sources used to formulate, parameteriz
 24. K. J. Webb and Shivanand, “Electromagnetic field energy in dispersive materials,” *Journal of the Optical Society of America B* 27, 1215–1220 (2010). [doi:10.1364/JOSAB.27.001215](https://doi.org/10.1364/JOSAB.27.001215). Reference for interpreting narrow-band energy density in lossy dispersive media; strongly absorptive results are therefore labeled diagnostic.
 25. J. Notaros and M. A. Popović, “Finite-difference complex-wavevector band structure solver for analysis and design of periodic radiative microphotonic structures,” *Optics Letters* 40, 1053–1056 (2015). [doi:10.1364/OL.40.001053](https://doi.org/10.1364/OL.40.001053). Reference for applying Bloch phase relations in finite-difference photonic eigenproblems and combining periodic and open transverse directions.
 
+## Non-Hermitian conditioning and modal topology
+
+26. Z. Bai et al., *Templates for the Solution of Algebraic Eigenvalue Problems: A Practical Guide*, SIAM (2000). [doi:10.1137/1.9780898719581](https://doi.org/10.1137/1.9780898719581). Reference for left/right eigenvectors, non-Hermitian eigenvalue sensitivity and shift-invert Arnoldi projection.
+27. A. E. Siegman, "Excess spontaneous emission in non-Hermitian optical systems. I. Laser amplifiers," *Physical Review A* 39, 1253-1263 (1989). [doi:10.1103/PhysRevA.39.1253](https://doi.org/10.1103/PhysRevA.39.1253). Optical basis for relating mode non-orthogonality to the Petermann excess-noise factor. The solver reports only the analogous Ritz-projected conditioning estimate.
+28. C. Dembowski et al., "Encircling an exceptional point," *Physical Review E* 69, 056216 (2004). [doi:10.1103/PhysRevE.69.056216](https://doi.org/10.1103/PhysRevE.69.056216). Reference for identifying exceptional points through eigenvalue/eigenvector coalescence and closed parameter-space encircling.
+
+The implementation uses these references only at the reduced Arnoldi level: rows of the inverse Ritz-eigenvector matrix supply projected left vectors, kappa_proj = ||x|| ||y|| / |y^H x|, and Kproj = kappa_proj^2. This does not replace a left eigenmode of the full discretized Maxwell adjoint.
+
 ## Traceability notes
 
 - The phasor convention is exp(iβz − iωt); passive media therefore use Im(ε) ≥ 0 and Im(β) ≥ 0.

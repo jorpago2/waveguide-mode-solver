@@ -144,6 +144,7 @@ export interface ModeCandidateDiagnostic {
   effectiveIndex: number;
   effectiveIndexImaginary: number;
   residual: number;
+  conditionEstimate: number;
   status: "selected" | "available" | "outside-window" | "duplicate" | "poor-residual" | "pml-mode";
   reason: string;
   label?: string;
@@ -162,6 +163,8 @@ export interface WaveguideMode {
   effectiveIndexImaginary: number;
   propagationConstantPerUm: number;
   residual: number;
+  eigenvalueConditionEstimate: number;
+  petermannFactorEstimate: number;
   electricConfinement: number;
   corePowerFraction: number;
   effectiveAreaUm2: number;
@@ -198,6 +201,7 @@ export interface WaveguideMode {
 
 export interface SolverResult {
   modes: WaveguideMode[];
+  ritzNonOrthogonality: number[][];
   xUm: number[];
   yUm: number[];
   xEdgesUm: number[];
@@ -302,6 +306,50 @@ export interface BlochSweepResult {
   warnings: string[];
 }
 
+export type TopologySweepParameter = "widthUm" | "heightUm" | "slotGapUm" | "couplerGapUm" | "wavelengthUm" | "coreExtinction";
+
+export interface TopologySweepSettings {
+  parameter: TopologySweepParameter;
+  startValue: number;
+  stopValue: number;
+  points: number;
+}
+
+export interface TopologyModePoint {
+  branch: number;
+  label: string;
+  effectiveIndex: number;
+  effectiveIndexImaginary: number;
+  conditionEstimate: number;
+  petermannFactorEstimate: number;
+  residual: number;
+  trackingOverlap: number;
+}
+
+export interface TopologySweepPoint {
+  value: number;
+  modes: TopologyModePoint[];
+  rightModeOverlap: number[][];
+  minimumComplexGap: number;
+  maximumRightModeOverlap: number;
+}
+
+export interface TopologyInteraction {
+  value: number;
+  branches: [number, number];
+  classification: "near-degeneracy" | "avoided-crossing candidate" | "exceptional-point candidate";
+  complexIndexGap: number;
+  rightModeOverlap: number;
+  maximumConditionEstimate: number;
+}
+
+export interface TopologySweepResult {
+  parameter: TopologySweepParameter;
+  points: TopologySweepPoint[];
+  interactions: TopologyInteraction[];
+  warnings: string[];
+}
+
 interface Grid {
   nx: number;
   ny: number;
@@ -397,6 +445,7 @@ interface RitzPair {
   vector: Float64Array;
   vectorImaginary?: Float64Array;
   residual: number;
+  conditionEstimate: number;
 }
 
 interface ComplexArray {
@@ -670,33 +719,34 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   const selected = reconstructed.filter(({ mode }) => mode.physicalClass !== "pml").slice(0, config.modeCount);
   const selectedPairs = selected.map(({ pair }) => pair);
   const modes = selected.map(({ mode }, index) => ({ ...mode, order: index, id: `${mode.label}-${index}` }));
+  const ritzNonOrthogonality = selectedPairs.map((first) => selectedPairs.map((second) => ritzVectorOverlap(first, second)));
   const candidates: ModeCandidateDiagnostic[] = pairs.map((pair) => {
     const effectiveIndex = pairEffectiveIndexComplex(pair, operator);
     const selectedIndex = selectedPairs.indexOf(pair);
     if (!guidedPairs.includes(pair)) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "outside-window", reason: `Outside ${lowerIndex.toFixed(4)}–${upperIndex.toFixed(4)} search window.`,
+      residual: pair.residual, conditionEstimate: pair.conditionEstimate, status: "outside-window", reason: `Outside ${lowerIndex.toFixed(4)}–${upperIndex.toFixed(4)} search window.`,
     };
     if (!uniquePairs.includes(pair)) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "duplicate", reason: "Collinear Ritz vector with the same complex effective index within 10⁻⁷.",
+      residual: pair.residual, conditionEstimate: pair.conditionEstimate, status: "duplicate", reason: "Collinear Ritz vector with the same complex effective index within 10⁻⁷.",
     };
     if (!convergedPairs.includes(pair)) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "poor-residual", reason: "Relative eigenpair residual exceeds 2 × 10⁻².",
+      residual: pair.residual, conditionEstimate: pair.conditionEstimate, status: "poor-residual", reason: "Relative eigenpair residual exceeds 2 × 10⁻².",
     };
     const reconstructedMode = reconstructed.find((entry) => entry.pair === pair)?.mode;
     if (reconstructedMode?.physicalClass === "pml") return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "pml-mode", reason: `${(100 * reconstructedMode.pmlEnergyFraction).toFixed(1)}% of stored-energy magnitude lies inside the PML.`,
+      residual: pair.residual, conditionEstimate: pair.conditionEstimate, status: "pml-mode", reason: `${(100 * reconstructedMode.pmlEnergyFraction).toFixed(1)}% of stored-energy magnitude lies inside the PML.`,
     };
     if (selectedIndex >= 0) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "selected", reason: "Selected and reconstructed.", label: modes[selectedIndex].label,
+      residual: pair.residual, conditionEstimate: pair.conditionEstimate, status: "selected", reason: "Selected and reconstructed.", label: modes[selectedIndex].label,
     };
     return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "available", reason: "Converged candidate beyond the requested mode count.",
+      residual: pair.residual, conditionEstimate: pair.conditionEstimate, status: "available", reason: "Converged candidate beyond the requested mode count.",
     };
   });
 
@@ -723,6 +773,7 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
 
   return {
     modes,
+    ritzNonOrthogonality,
     xUm: grid.x,
     yUm: grid.y,
     xEdgesUm: grid.xNodes,
@@ -1018,6 +1069,106 @@ export function sweepBlochPhase(config: WaveguideConfig, settings: BlochSweepSet
   if (reciprocityError !== undefined && reciprocityError > 1e-4) warnings.push("The ±θ reciprocity mismatch exceeds 10⁻⁴ in effective index; refine the mesh or increase the requested mode count.");
   warnings.push("This is transverse-array dispersion β(θ), not a longitudinal photonic-crystal band structure.");
   return { axis: settings.axis, points, reciprocityError, warnings };
+}
+
+export function analyzeModeTopology(config: WaveguideConfig, settings: TopologySweepSettings): TopologySweepResult {
+  recycledArnoldiSubspace = undefined;
+  const geometry = config.geometry ?? "channel";
+  if (settings.parameter === "slotGapUm" && geometry !== "slot") throw new Error("Slot-gap topology sweeps require slot geometry.");
+  if (settings.parameter === "couplerGapUm" && geometry !== "coupler") throw new Error("Coupler-gap topology sweeps require coupler geometry.");
+  const minimum = settings.parameter === "wavelengthUm" ? 0.2 : settings.parameter === "coreExtinction" ? 0 : 0.001;
+  const maximum = settings.parameter === "wavelengthUm" ? PARAMETER_MAXIMUMS.wavelengthUm
+    : settings.parameter === "coreExtinction" ? PARAMETER_MAXIMUMS.extinction : PARAMETER_MAXIMUMS.dimensionUm;
+  if (!(settings.startValue >= minimum && settings.stopValue > settings.startValue && settings.stopValue <= maximum)) {
+    throw new Error(`Topology sweep limits must be ordered and stay between ${minimum} and ${maximum}.`);
+  }
+  if (!Number.isInteger(settings.points) || settings.points < 5 || settings.points > 31) throw new Error("Topology sweeps require between 5 and 31 points.");
+  if (config.modeCount < 2) throw new Error("Topology analysis requires at least two requested modes.");
+  const values = Array.from({ length: settings.points }, (_, index) => settings.startValue
+    + index * (settings.stopValue - settings.startValue) / (settings.points - 1));
+  let nextBranch = 0;
+  let previous: Array<{ branch: number; result: SolverResult; mode: WaveguideMode }> = [];
+  const points: TopologySweepPoint[] = [];
+  for (const value of values) {
+    const nextConfig = { ...config, [settings.parameter]: value };
+    const errors = validateWaveguide(nextConfig);
+    if (errors.length > 0) throw new Error(`Invalid topology point at ${value}: ${errors.join(" ")}`);
+    const result = solveWaveguide(nextConfig, true);
+    if (result.modes.length < 2) throw new Error(`Fewer than two modes were found at ${value}.`);
+    const assignments = new Map<number, { branch: number; overlap: number }>();
+    if (previous.length > 0) {
+      const ranked = previous.flatMap((entry) => result.modes.map((mode, modeIndex) => ({
+        branch: entry.branch,
+        modeIndex,
+        overlap: resampledModeOverlap(entry.result, entry.mode, result, mode),
+      }))).sort((first, second) => second.overlap - first.overlap);
+      const usedBranches = new Set<number>();
+      const usedModes = new Set<number>();
+      for (const candidate of ranked) {
+        if (usedBranches.has(candidate.branch) || usedModes.has(candidate.modeIndex)) continue;
+        assignments.set(candidate.modeIndex, { branch: candidate.branch, overlap: candidate.overlap });
+        usedBranches.add(candidate.branch); usedModes.add(candidate.modeIndex);
+      }
+    }
+    const modes = result.modes.map((mode, modeIndex): TopologyModePoint => {
+      const assigned = assignments.get(modeIndex) ?? { branch: nextBranch++, overlap: previous.length === 0 ? 1 : 0 };
+      return {
+        branch: assigned.branch,
+        label: mode.label,
+        effectiveIndex: mode.effectiveIndex,
+        effectiveIndexImaginary: mode.effectiveIndexImaginary,
+        conditionEstimate: mode.eigenvalueConditionEstimate,
+        petermannFactorEstimate: mode.petermannFactorEstimate,
+        residual: mode.residual,
+        trackingOverlap: assigned.overlap,
+      };
+    });
+    previous = result.modes.map((mode, index) => ({ branch: modes[index].branch, result, mode }));
+    let minimumComplexGap = Number.POSITIVE_INFINITY;
+    let maximumRightModeOverlap = 0;
+    for (let first = 0; first < modes.length; first += 1) {
+      for (let second = first + 1; second < modes.length; second += 1) {
+        minimumComplexGap = Math.min(minimumComplexGap, Math.hypot(
+          modes[first].effectiveIndex - modes[second].effectiveIndex,
+          modes[first].effectiveIndexImaginary - modes[second].effectiveIndexImaginary,
+        ));
+        maximumRightModeOverlap = Math.max(maximumRightModeOverlap, result.ritzNonOrthogonality[first]?.[second] ?? 0);
+      }
+    }
+    points.push({ value, modes, rightModeOverlap: result.ritzNonOrthogonality, minimumComplexGap, maximumRightModeOverlap });
+  }
+  const interactions: TopologyInteraction[] = [];
+  for (let pointIndex = 1; pointIndex < points.length - 1; pointIndex += 1) {
+    const point = points[pointIndex];
+    if (point.minimumComplexGap > points[pointIndex - 1].minimumComplexGap || point.minimumComplexGap > points[pointIndex + 1].minimumComplexGap) continue;
+    let nearest: [number, number] = [0, 1];
+    let gap = Number.POSITIVE_INFINITY;
+    for (let first = 0; first < point.modes.length; first += 1) for (let second = first + 1; second < point.modes.length; second += 1) {
+      const candidateGap = Math.hypot(point.modes[first].effectiveIndex - point.modes[second].effectiveIndex,
+        point.modes[first].effectiveIndexImaginary - point.modes[second].effectiveIndexImaginary);
+      if (candidateGap < gap) { gap = candidateGap; nearest = [first, second]; }
+    }
+    const [first, second] = nearest;
+    const rightModeOverlap = point.rightModeOverlap[first]?.[second] ?? 0;
+    const maximumConditionEstimate = Math.max(point.modes[first].conditionEstimate, point.modes[second].conditionEstimate);
+    const classification = maximumConditionEstimate >= 5 && rightModeOverlap >= 0.8
+      ? "exceptional-point candidate" as const
+      : gap <= DEGENERATE_INDEX_TOLERANCE ? "near-degeneracy" as const : "avoided-crossing candidate" as const;
+    interactions.push({
+      value: point.value,
+      branches: [point.modes[first].branch, point.modes[second].branch],
+      classification,
+      complexIndexGap: gap,
+      rightModeOverlap,
+      maximumConditionEstimate,
+    });
+  }
+  const warnings = [
+    "Petermann factors are estimates from the projected Arnoldi eigensystem; confirm peaks by increasing the Arnoldi dimension and mesh resolution.",
+    "Interaction labels are numerical candidates, not proofs. Exceptional points require a closed two-parameter loop and mesh/PML convergence.",
+  ];
+  if (points.some((point) => point.modes.some((mode) => mode.trackingOverlap < 0.75))) warnings.push("Low branch overlap indicates ambiguous individual-mode tracking near a degenerate subspace.");
+  return { parameter: settings.parameter, points, interactions, warnings };
 }
 
 function sameModeFamily(first: WaveguideMode, second: WaveguideMode): boolean {
@@ -2231,6 +2382,7 @@ function solveLargestEigenpairs(
       vector: ritzVector,
       vectorImaginary: ritzVectorImaginary,
       residual: norm(residualVector) / Math.max(Math.hypot(eigenvalue, eigenvalueImaginary), 1),
+      conditionEstimate: Number.NaN,
     };
   };
 
@@ -2437,6 +2589,7 @@ function buildReducedBendMode(pair: RitzPair, order: number, config: WaveguideCo
     vector: fullReal,
     vectorImaginary: fullImaginary,
     residual: pair.residual,
+    conditionEstimate: pair.conditionEstimate,
   }, order, config, operator);
 }
 
@@ -2705,6 +2858,8 @@ function finalizeMode(
     effectiveIndexImaginary: betaImaginaryPerUm / k0,
     propagationConstantPerUm: beta,
     residual: pair.residual,
+    eigenvalueConditionEstimate: pair.conditionEstimate,
+    petermannFactorEstimate: pair.conditionEstimate ** 2,
     electricConfinement,
     corePowerFraction: corePowerW / modalPowerW,
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,

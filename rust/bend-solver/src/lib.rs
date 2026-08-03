@@ -322,7 +322,7 @@ pub extern "C" fn eigenpair_count() -> usize {
 
 #[no_mangle]
 pub extern "C" fn eigenpair_stride() -> usize {
-    3 + 2 * operator_physical_size()
+    4 + 2 * operator_physical_size()
 }
 
 #[no_mangle]
@@ -336,7 +336,7 @@ pub unsafe extern "C" fn copy_eigenpair(index: usize, output: *mut f64, output_l
             Some(pair) => pair,
             None => return 53,
         };
-        let expected = 3 + 2 * pair.vector.len();
+        let expected = 4 + 2 * pair.vector.len();
         if output_length != expected {
             return 52;
         }
@@ -344,8 +344,9 @@ pub unsafe extern "C" fn copy_eigenpair(index: usize, output: *mut f64, output_l
         output[0] = pair.eigenvalue;
         output[1] = pair.eigenvalue_imaginary;
         output[2] = pair.residual;
-        output[3..3 + pair.vector.len()].copy_from_slice(&pair.vector);
-        let imaginary = &mut output[3 + pair.vector.len()..];
+        output[3] = pair.condition_estimate;
+        output[4..4 + pair.vector.len()].copy_from_slice(&pair.vector);
+        let imaginary = &mut output[4 + pair.vector.len()..];
         imaginary.fill(0.0);
         if !pair.vector_imaginary.is_empty() {
             imaginary.copy_from_slice(&pair.vector_imaginary);

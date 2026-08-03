@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpolateFieldMatrix, NORMALIZED_MODAL_POWER_W, PARAMETER_MAXIMUMS, solveWaveguide, sweepBlochPhase, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
+import { analyzeModeTopology, interpolateFieldMatrix, NORMALIZED_MODAL_POWER_W, PARAMETER_MAXIMUMS, solveWaveguide, sweepBlochPhase, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
   wavelengthUm: 1.55,
@@ -39,6 +39,26 @@ function horizontalCentroid(field: number[][], xUm: number[]): number {
 }
 
 describe("full-vector finite-difference mode solver", () => {
+  it("reports projected non-Hermitian eigenvalue conditioning", () => {
+    const lossless = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 2 });
+    const lossy = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 2, coreExtinction: 0.02 });
+    expect(lossless.ritzNonOrthogonality).toHaveLength(lossless.modes.length);
+    expect(lossless.ritzNonOrthogonality[0][0]).toBeCloseTo(1, 10);
+    expect(lossless.modes.every((mode) => Number.isFinite(mode.eigenvalueConditionEstimate) && mode.eigenvalueConditionEstimate >= 0.999)).toBe(true);
+    expect(lossy.modes.every((mode) => mode.eigenvalueConditionEstimate >= 0.999
+      && mode.petermannFactorEstimate === mode.eigenvalueConditionEstimate ** 2)).toBe(true);
+  });
+
+  it("tracks complex modal branches and reports interaction candidates", () => {
+    const topology = analyzeModeTopology({ ...benchmark, gridResolution: 24, modeCount: 2 }, {
+      parameter: "widthUm", startValue: 0.9, stopValue: 1.1, points: 5,
+    });
+    expect(topology.points).toHaveLength(5);
+    expect(topology.points.every((point) => point.modes.length >= 2 && Number.isFinite(point.minimumComplexGap))).toBe(true);
+    expect(topology.points.slice(1).every((point) => point.modes.every((mode) => mode.trackingOverlap > 0.5))).toBe(true);
+    expect(topology.warnings.join(" ")).toContain("projected Arnoldi");
+  });
+
   it("solves validated polygon regions with subpixel material fractions", () => {
     const polygon = {
       ...benchmark,
