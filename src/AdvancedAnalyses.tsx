@@ -38,6 +38,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const [comparisonResult, setComparisonResult] = useState<WaveguideComparisonResult>();
   const [topology, setTopology] = useState<TopologySweepSettings>(() => ({ parameter: "widthUm", startValue: 0.8 * config.widthUm, stopValue: 1.2 * config.widthUm, points: 7 }));
   const [topologyResult, setTopologyResult] = useState<TopologySweepResult>();
+  const [analysisPane, setAnalysisPane] = useState<"numerics" | "robustness" | "coupling">("numerics");
 
   useEffect(() => {
     if ((config.geometry ?? "channel") !== "polygon") return;
@@ -45,6 +46,11 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       parameter: "wavelengthUm", startValue: 0.8 * config.wavelengthUm, stopValue: 1.2 * config.wavelengthUm, points: current.points,
     });
   }, [config.geometry, config.wavelengthUm]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    return () => window.cancelAnimationFrame(frame);
+  }, [analysisPane]);
 
   async function runConvergence(event: FormEvent) {
     event.preventDefault(); setActive("convergence"); setError("");
@@ -101,7 +107,12 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const maximumRightOverlap = result && result.modes.length > 1
     ? Math.max(0, ...(result.ritzNonOrthogonality[selectedMode] ?? []).filter((_, index) => index !== selectedMode)) : 0;
   return <>
-    <section className="sweep-section" aria-labelledby="topology-title">
+    <nav className="section-tabs" aria-label="Analysis category">
+      <button type="button" className={analysisPane === "numerics" ? "active" : ""} aria-pressed={analysisPane === "numerics"} onClick={() => setAnalysisPane("numerics")}><span>Numerics</span><small>Convergence & sensitivity</small></button>
+      <button type="button" className={analysisPane === "robustness" ? "active" : ""} aria-pressed={analysisPane === "robustness"} onClick={() => setAnalysisPane("robustness")}><span>Robustness</span><small>Tolerances & mode maps</small></button>
+      <button type="button" className={analysisPane === "coupling" ? "active" : ""} aria-pressed={analysisPane === "coupling"} onClick={() => setAnalysisPane("coupling")}><span>Coupling</span><small>Interfaces & supermodes</small></button>
+    </nav>
+    <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="topology-title">
       <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={() => exportTopology(topologyResult)}>Export CSV</button>}</div>
       <p className="section-intro">Inspect mode mixing and numerical sensitivity in lossy, leaky or strongly coupled structures. Complex-index trajectories can flag interactions for closer study; exceptional-point labels remain provisional until verified with a converged two-parameter loop.</p>
       {selected && <div className="analysis-metrics">
@@ -126,7 +137,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       {topologyResult && <><ModeTopologyPlot result={topologyResult} />{topologyResult.interactions.length > 0 && <div className="comparison-scroll"><table className="comparison-table"><caption>Local minima of the complex modal separation</caption><thead><tr><th>Parameter</th><th>Branches</th><th>Classification</th><th>|Δneff|</th><th>Right overlap</th><th>κproj</th></tr></thead><tbody>{topologyResult.interactions.map((interaction) => <tr key={`${interaction.value}-${interaction.branches.join("-")}`}><td>{interaction.value.toPrecision(5)}</td><td>{interaction.branches.map((branch) => branch + 1).join(" / ")}</td><td>{interaction.classification}</td><td>{interaction.complexIndexGap.toExponential(3)}</td><td>{interaction.rightModeOverlap.toFixed(4)}</td><td>{formatCondition(interaction.maximumConditionEstimate)}</td></tr>)}</tbody></table></div>}{topologyResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       <p className="limitation">K<sub>proj</sub> = κ<sub>proj</sub>² is obtained from left and right eigenvectors of the Arnoldi-projected operator. It is a convergence diagnostic, not yet the full Maxwell adjoint Petermann factor.</p>
     </section>
-    <section className="sweep-section" aria-labelledby="convergence-title">
+    <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="convergence-title">
       <div className="panel-heading"><div><span className="step">05</span><h2 id="convergence-title">Numerical convergence</h2></div></div>
       <p className="section-intro">Track the selected mode over three systematically refined meshes. Loss is checked against the selected tolerance and, with PML, against boundary and absorber variations.</p>
       <form className="analysis-controls" onSubmit={runConvergence}>
@@ -163,7 +174,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       <p className="limitation">GCI quantifies mesh discretization uncertainty in effective index. PML checks are sensitivity tests, not proof that the computed attenuation is a physical leakage rate.</p>
     </section>
 
-    <section className="sweep-section" aria-labelledby="tolerance-title">
+    <section className="sweep-section tabbed-section" hidden={analysisPane !== "robustness"} aria-labelledby="tolerance-title">
       <div className="panel-heading"><div><span className="step">06</span><h2 id="tolerance-title">Fabrication tolerances</h2></div></div>
       <p className="section-intro">Run a seeded Latin-hypercube Monte Carlo study. Inputs are independent Gaussian standard deviations.</p>
       <form className="analysis-controls" onSubmit={runTolerance}>
@@ -179,7 +190,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       {toleranceResult && <><div className="analysis-metrics"><AnalysisMetric label="Mean neff" value={toleranceResult.effectiveIndex.mean.toFixed(6)} /><AnalysisMetric label="neff σ" value={toleranceResult.effectiveIndex.standardDeviation.toExponential(3)} /><AnalysisMetric label="90% interval" value={`${toleranceResult.effectiveIndex.p05.toFixed(5)}–${toleranceResult.effectiveIndex.p95.toFixed(5)}`} /><AnalysisMetric label="Strongest correlation" value={toleranceResult.effectiveIndexSensitivity[0] ? `${toleranceResult.effectiveIndexSensitivity[0].parameter} (${toleranceResult.effectiveIndexSensitivity[0].correlation.toFixed(2)})` : "—"} /><AnalysisMetric label="Valid samples" value={`${toleranceResult.samples.length}/${toleranceResult.samples.length + toleranceResult.failedSamples}`} /></div><TolerancePlot result={toleranceResult} /></>}
     </section>
 
-    <section className="sweep-section" aria-labelledby="coupling-title">
+    <section className="sweep-section tabbed-section" hidden={analysisPane !== "coupling"} aria-labelledby="coupling-title">
       <div className="panel-heading"><div><span className="step">07</span><h2 id="coupling-title">Coupling analysis</h2></div></div>
       <div className="analysis-columns">
         <form className="analysis-card" onSubmit={runGaussian}>
@@ -198,7 +209,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       <p className="limitation">Gaussian overlap neglects facet reflection. Coupler length assumes identical, lossless guides and no longitudinal discontinuities.</p>
     </section>
 
-    <section className="sweep-section" aria-labelledby="comparison-title">
+    <section className="sweep-section tabbed-section" hidden={analysisPane !== "coupling"} aria-labelledby="comparison-title">
       <div className="panel-heading"><div><span className="step">08</span><h2 id="comparison-title">Cross-section comparison</h2></div></div>
       <p className="section-intro">Compare modal power overlap between the current guide and a target platform at the current wavelength. This estimates an abrupt interface, not an optimized taper.</p>
       <form className="analysis-controls" onSubmit={runComparison}>
@@ -209,7 +220,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       {comparisonResult && <div className="comparison-scroll"><table className="comparison-table"><caption>Power overlap at {comparisonResult.wavelengthUm.toFixed(3)} µm</caption><thead><tr><th>Source \ Target</th>{comparisonResult.targetLabels.map((label, index) => <th key={`${label}-${index}`}>{label}</th>)}</tr></thead><tbody>{comparisonResult.sourceLabels.map((sourceLabel, row) => <tr key={`${sourceLabel}-${row}`}><th>{sourceLabel}</th>{comparisonResult.targetLabels.map((targetLabel, column) => <td key={`${targetLabel}-${column}`}><strong>{(100 * comparisonResult.powerOverlap[row][column]).toFixed(2)}%</strong><small>Δn = {comparisonResult.effectiveIndexMismatch[row][column].toExponential(2)}</small></td>)}</tr>)}</tbody></table></div>}
     </section>
 
-    <section className="sweep-section" aria-labelledby="map-title">
+    <section className="sweep-section tabbed-section" hidden={analysisPane !== "robustness"} aria-labelledby="map-title">
       <div className="panel-heading"><div><span className="step">09</span><h2 id="map-title">Mode map</h2></div></div>
       <p className="section-intro">Map guided-mode count and the selected effective index versus wavelength and one geometry parameter.</p>
       <form className="analysis-controls" onSubmit={runModeMap}>

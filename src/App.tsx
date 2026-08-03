@@ -134,11 +134,11 @@ const fieldLabels: Record<FieldComponent, ReactNode> = {
 };
 type AppView = "solver" | "sweeps" | "analysis" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
-const appViews: Array<{ id: AppView; label: string }> = [
-  { id: "solver", label: "Mode Solver" },
-  { id: "sweeps", label: "Sweeps" },
-  { id: "analysis", label: "Analysis" },
-  { id: "validation", label: "Validation" },
+const appViews: Array<{ id: AppView; label: string; hint: string }> = [
+  { id: "solver", label: "Mode Solver", hint: "Build & inspect" },
+  { id: "sweeps", label: "Sweeps", hint: "Track parameters" },
+  { id: "analysis", label: "Analysis", hint: "Design studies" },
+  { id: "validation", label: "Validation", hint: "Numerical confidence" },
 ];
 
 function viewFromHash(): AppView {
@@ -149,6 +149,7 @@ function viewFromHash(): AppView {
 export function App() {
   const [activeView, setActiveView] = useState<AppView>(() => typeof window === "undefined" ? "solver" : viewFromHash());
   const [solverPane, setSolverPane] = useState<"configure" | "results">("configure");
+  const [sweepPane, setSweepPane] = useState<"wavelength" | "geometry" | "bloch">("wavelength");
   const [configurationTab, setConfigurationTab] = useState<ConfigurationTab>("geometry");
   const [draft, setDraft] = useState<WaveguideConfig>(initialConfig);
   const [config, setConfig] = useState<WaveguideConfig>(initialConfig);
@@ -214,7 +215,7 @@ export function App() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     return () => window.cancelAnimationFrame(frame);
-  }, [activeView, solverPane]);
+  }, [activeView, solverPane, sweepPane]);
 
   function navigateToView(view: AppView) {
     window.history.pushState(null, "", `#${view}`);
@@ -477,17 +478,15 @@ export function App() {
       <div className="header-meta"><span>v{packageJson.version} · Full-vector FDM</span><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">GitHub</a></div>
     </header>
     <nav className="app-nav" aria-label="Solver sections">
-      <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}>{view.label}</a>)}</div>
+      <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
     </nav>
 
     <main>
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
-      <section className="intro" aria-labelledby="page-title">
-        <p className="eyebrow">Full-vector eigenmode workspace</p>
-        <h1 id="page-title">Configure. Solve. Inspect.</h1>
-        <p>Build the cross-section, assign materials, define the numerical model and inspect every field component in a focused workflow.</p>
-        <div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project JSON</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div>
-      </section>
+      <header className="workspace-header">
+        <div><p className="eyebrow">Full-vector eigenmode workspace</p><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
+        <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><span>{config.geometry ?? "channel"}</span><span>{config.wavelengthUm.toFixed(3)} Âµm</span>{result && <span>{result.nx} Ã— {result.ny} grid</span>}</div><div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div></div>
+      </header>
 
       <div className="mobile-pane-tabs" role="tablist" aria-label="Mode solver workspace">
         <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" className={solverPane === "configure" ? "active" : ""} onClick={() => setSolverPane("configure")}>Configure</button>
@@ -671,17 +670,22 @@ export function App() {
               <Metric label="Dispersive-energy confinement" value={`${(mode.energyConfinement * 100).toFixed(1)}%`} />
               <Metric label="Core power fraction" value={`${(mode.corePowerFraction * 100).toFixed(1)}%`} />
               <Metric label={<>Energy effective area <i>A</i><sub>eff</sub></>} value={`${mode.energyEffectiveAreaUm2.toFixed(3)} µm²`} />
+              <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
+            </div>
+            <details className="result-details">
+              <summary>Additional modal quantities</summary>
+              <div className="metrics secondary-metrics">
               <Metric label="Energy group index" value={`${mode.energyGroupIndex.toFixed(4)} · ${mode.energyMetricValidity}`} />
               <Metric label="Longitudinal E fraction" value={`${(mode.longitudinalElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="x-polarized E fraction" value={`${(mode.xPolarizedElectricFraction * 100).toFixed(1)}%`} />
-              <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
               <Metric label="Propagation length" value={Number.isFinite(mode.propagationLengthUm) ? `${mode.propagationLengthUm.toPrecision(4)} µm` : "∞"} />
               <Metric label={<>Imaginary index Im(<i>n</i><sub>eff</sub>)</>} value={mode.effectiveIndexImaginary.toExponential(3)} />
               <Metric label="Normalized modal power" value={`${(mode.modalPowerW * 1e3).toFixed(3)} mW`} />
               <Metric label="Guidance margin" value={`${mode.guidanceMargin.toExponential(3)}${mode.nearCutoff ? " · review" : ""}`} />
               {mode.bendRadiusUm && <Metric label="Bend radius" value={`${mode.bendRadiusUm.toFixed(3)} µm`} />}
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
-            </div>
+              </div>
+            </details>
             <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
             <div className="field-toolbar field-part-toolbar" aria-label="Field display settings">{component !== "intensity" && component !== "poynting" && <><span>View</span>{(["real", "imaginary", "magnitude", "phase"] as FieldPart[]).map((part) => <button type="button" className={fieldPart === part ? "active" : ""} aria-pressed={fieldPart === part} key={part} onClick={() => setFieldPart(part)}>{part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "|·|" : "Phase"}</button>)}</>}<label className="display-mesh">Display mesh<select value={displayInterpolation} onChange={(event) => setDisplayInterpolation(Number(event.target.value) as DisplayInterpolation)}><option value={1}>Solver grid</option><option value={2}>2× interpolated</option><option value={4}>4× interpolated</option></select></label></div>
             <ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} />
@@ -693,7 +697,12 @@ export function App() {
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
       <ViewHeading eyebrow="Parametric exploration" title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
-      <section className="sweep-section">
+      <nav className="section-tabs" aria-label="Sweep type">
+        <button type="button" className={sweepPane === "wavelength" ? "active" : ""} aria-pressed={sweepPane === "wavelength"} onClick={() => setSweepPane("wavelength")}><span>Wavelength</span><small>Dispersion & loss</small></button>
+        <button type="button" className={sweepPane === "geometry" ? "active" : ""} aria-pressed={sweepPane === "geometry"} onClick={() => setSweepPane("geometry")}><span>Geometry</span><small>Dimensions & bends</small></button>
+        <button type="button" className={sweepPane === "bloch" ? "active" : ""} aria-pressed={sweepPane === "bloch"} onClick={() => setSweepPane("bloch")}><span>Bloch phase</span><small>Periodic arrays</small></button>
+      </nav>
+      <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runSweep}>
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
@@ -705,7 +714,7 @@ export function App() {
         {sweepResult && <><SweepPlot result={sweepResult} />{sweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
 
-      <section className="sweep-section">
+      <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
         <div className="panel-heading"><div><span className="step">04</span><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runGeometrySweep}>
           <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => event.target.value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: event.target.value as GeometrySweepParameter })}>
@@ -722,7 +731,7 @@ export function App() {
         {geometrySweepResult && <><GeometrySweepPlot result={geometrySweepResult} />{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
 
-      <section className="sweep-section">
+      <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
         <div className="panel-heading"><div><span className="step">05</span><h2>Transverse Bloch dispersion</h2></div><button className="export-button" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</button></div>
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
         <form className="sweep-controls" onSubmit={runBlochSweep}>
