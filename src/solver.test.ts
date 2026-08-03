@@ -75,6 +75,13 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.complexFields.Hz.real[0]).toHaveLength(result.nx);
     expect(mode.propagationLengthUm).toBe(Number.POSITIVE_INFINITY);
     expect(mode.peakPoyntingWPerM2).toBeGreaterThan(0);
+    expect(mode.storedEnergyPerM).toBeGreaterThan(0);
+    expect(mode.energyConfinement).toBeGreaterThan(0);
+    expect(mode.energyConfinement).toBeLessThan(1);
+    expect(mode.energyEffectiveAreaUm2).toBeGreaterThan(0);
+    expect(mode.energyGroupIndex).toBeGreaterThan(1);
+    expect(mode.energyMetricValidity).toBe("lossless");
+    expect(mode.physicalClass).toBe("guided");
     expect(result.xEdgesUm).toHaveLength(result.nx + 1);
     expect(result.yEdgesUm).toHaveLength(result.ny + 1);
     expect(result.permittivity.real.x).toHaveLength(result.ny);
@@ -194,7 +201,26 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.lossDbPerCm).toBeGreaterThan(0);
     expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(mode.residual).toBeLessThan(5e-3);
+    expect(mode.pmlEnergyFraction).toBeGreaterThanOrEqual(0);
+    expect(mode.pmlEnergyFraction).toBeLessThanOrEqual(1);
+    expect(mode.boundaryEnergyFraction).toBeGreaterThanOrEqual(0);
   });
+
+  it("projects straight modes onto PEC and PMC symmetry subspaces", () => {
+    const full = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 4 });
+    for (const symmetryX of ["pec", "pmc"] as const) {
+      const symmetric = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, symmetryX });
+      expect(symmetric.symmetryReductionFactor).toBeCloseTo(2, 1);
+      expect(symmetric.modes).toHaveLength(1);
+      expect(Math.min(...full.modes.map((mode) => Math.abs(mode.effectiveIndex - symmetric.modes[0].effectiveIndex)))).toBeLessThan(0.02);
+      expect(Math.abs(symmetric.modes[0].symmetryX)).toBeGreaterThan(0.9);
+    }
+    const quarter = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, symmetryX: "pec", symmetryY: "pmc" });
+    expect(quarter.symmetryReductionFactor).toBeCloseTo(4, 1);
+    expect(quarter.modes).toHaveLength(1);
+    expect(validateWaveguide({ ...benchmark, geometry: "rib", slabHeightUm: 0.1, symmetryY: "pec" }).join(" ")).toMatch(/vertically symmetric/);
+    expect(validateWaveguide({ ...benchmark, bendRadiusUm: 10, symmetryX: "pmc" }).join(" ")).toMatch(/straight guides/);
+  }, 20_000);
 
   it("recovers the straight-guide limit with the radial-transformed bend operator", () => {
     const straight = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1 }).modes[0];

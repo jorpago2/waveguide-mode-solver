@@ -20,6 +20,7 @@ export type PhysicalFieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz";
 export type FieldComponent = PhysicalFieldComponent | "intensity" | "poynting";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
 export type BoundaryType = "hard" | "pml";
+export type SymmetryBoundary = "none" | "pec" | "pmc";
 export type BendDirection = "positive-x" | "negative-x";
 
 export interface VerticalLayer {
@@ -78,6 +79,8 @@ export interface WaveguideConfig {
   materialReferenceWavelengthUm?: number;
   meshBias?: number;
   boundary?: BoundaryType;
+  symmetryX?: SymmetryBoundary;
+  symmetryY?: SymmetryBoundary;
   pmlThicknessUm?: number;
   pmlStrength?: number;
   coreMaterial?: MaterialId;
@@ -122,7 +125,7 @@ export interface ModeCandidateDiagnostic {
   effectiveIndex: number;
   effectiveIndexImaginary: number;
   residual: number;
-  status: "selected" | "available" | "outside-window" | "duplicate" | "poor-residual";
+  status: "selected" | "available" | "outside-window" | "duplicate" | "poor-residual" | "pml-mode";
   reason: string;
   label?: string;
 }
@@ -143,6 +146,18 @@ export interface WaveguideMode {
   electricConfinement: number;
   corePowerFraction: number;
   effectiveAreaUm2: number;
+  energyConfinement: number;
+  energyEffectiveAreaUm2: number;
+  electricEnergyPerM: number;
+  magneticEnergyPerM: number;
+  storedEnergyPerM: number;
+  energyVelocityMPerS: number;
+  energyGroupIndex: number;
+  energyMetricValidity: "lossless" | "weak-loss" | "diagnostic";
+  maximumLossTangent: number;
+  physicalClass: "guided" | "leaky" | "plasmonic" | "pml";
+  pmlEnergyFraction: number;
+  boundaryEnergyFraction: number;
   longitudinalElectricFraction: number;
   xPolarizedElectricFraction: number;
   lossDbPerCm: number;
@@ -182,6 +197,7 @@ export interface SolverResult {
   arnoldiDimension: number;
   formulation: "transverse-h" | "transverse-e" | "first-order";
   backend: "TypeScript" | "Rust/WASM";
+  symmetryReductionFactor: number;
 }
 
 export interface SweepSettings {
@@ -266,7 +282,9 @@ interface Grid {
   lossRegions: Array<{
     region: string;
     fraction: Float64Array;
+    epsilonReal: { x: number; y: number; z: number };
     epsilonImaginary: { x: number; y: number; z: number };
+    energyDerivative: SymmetricTensor;
   }>;
   epsilonX: Float64Array;
   epsilonY: Float64Array;
@@ -313,6 +331,7 @@ interface OperatorContext {
     betaReal: number,
     betaImaginary: number,
   ) => { real: Float64Array; imaginary: Float64Array };
+  liftEigenpair?: (pair: RitzPair) => RitzPair;
 }
 
 interface RitzPair {
@@ -388,6 +407,14 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if (bendRadiusUm < 0 || bendRadiusUm > PARAMETER_MAXIMUMS.bendRadiusUm) errors.push(`Bend radius must be zero for a straight guide or no larger than ${PARAMETER_MAXIMUMS.bendRadiusUm} µm.`);
   if (bendRadiusUm > 0 && bendRadiusUm <= radialHalfDomain(config)) errors.push("Bend radius must exceed the radial half-domain so the cylindrical metric remains positive.");
   if (config.bendDirection !== undefined && !["positive-x", "negative-x"].includes(config.bendDirection)) errors.push("Bend direction must be positive-x or negative-x.");
+  const symmetryX = config.symmetryX ?? "none";
+  const symmetryY = config.symmetryY ?? "none";
+  if (!["none", "pec", "pmc"].includes(symmetryX) || !["none", "pec", "pmc"].includes(symmetryY)) errors.push("Symmetry boundaries must be none, PEC or PMC.");
+  if (bendRadiusUm > 0 && (symmetryX !== "none" || symmetryY !== "none")) errors.push("PEC/PMC symmetry planes are currently limited to straight guides.");
+  if (symmetryY !== "none" && ((config.geometry ?? "channel") === "rib" || (config.geometry ?? "channel") === "multilayer"
+    || (config.stackLayers?.length ?? 0) > 0 || Math.abs((config.sidewallAngleDeg ?? 90) - 90) > 1e-9)) {
+    errors.push("y symmetry requires a vertically symmetric cross-section without rib, stack or angled sidewalls.");
+  }
   if ((config.boundary ?? "hard") === "pml") {
     const thickness = config.pmlThicknessUm ?? config.paddingUm * 0.6;
     if (!(thickness > 0 && thickness < config.paddingUm)) errors.push("PML thickness must be positive and smaller than the cladding padding.");
@@ -484,6 +511,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     if (bendRadiusUm > 0 && materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary))) {
       errors.push("Rotated off-diagonal anisotropy is currently limited to straight guides; a constant local tensor is not rigorous along a curved crystal path.");
     }
+    if (hasOffDiagonalRotation && (symmetryX !== "none" || symmetryY !== "none")) errors.push("PEC/PMC symmetry planes currently require diagonal material tensors.");
     if (bendRadiusUm > 0 && hasMetal) errors.push("Metallic modes are currently limited to straight guides; curved-plasmonic validation is not yet available.");
   }
   return errors;
@@ -494,10 +522,11 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   if (errors.length > 0) throw new Error(errors.join(" "));
 
   const grid = createGrid(config);
-  const operator = (config.bendRadiusUm ?? 0) > 0
+  const baseOperator = (config.bendRadiusUm ?? 0) > 0
     ? createBendOperator(grid, config)
     : gridHasOffDiagonalTensor(grid) ? createTensorOperator(grid, config.wavelengthUm)
       : createVectorOperator(grid, config.wavelengthUm);
+  const operator = applySymmetryBoundaries(baseOperator, config);
   const requestedRitzPairs = Math.max(config.modeCount * (operator.eigenvaluePower === 1 ? 4 : 3), operator.eigenvaluePower === 1 ? 10 : 8);
   const arnoldiDimension = Math.min(
     operator.physicalVectorSize * (operator.complex ? 2 : 1) - 1,
@@ -520,13 +549,19 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     )) === index;
   });
   const convergedPairs = uniquePairs.filter((pair) => pair.residual <= 2e-2);
-  const selectedPairs = convergedPairs.slice(0, config.modeCount);
-  const modes = selectedPairs
-    .map((pair, index) => operator.formulation === "transverse-e"
-      ? buildReducedBendMode(pair, index, config, operator)
+  const rebuild = (pair: RitzPair, index: number) => {
+    const physicalPair = operator.liftEigenpair?.(pair) ?? pair;
+    return operator.formulation === "transverse-e"
+      ? buildReducedBendMode(physicalPair, index, config, operator)
       : operator.eigenvaluePower === 1
-        ? buildFirstOrderMode(pair, index, config, operator)
-        : buildMode(pair, index, config, operator));
+        ? buildFirstOrderMode(physicalPair, index, config, operator)
+        : buildMode(physicalPair, index, config, operator);
+  };
+  const reconstructed = ((config.boundary ?? "hard") === "pml" ? convergedPairs : convergedPairs.slice(0, config.modeCount))
+    .map((pair, index) => ({ pair, mode: rebuild(pair, index) }));
+  const selected = reconstructed.filter(({ mode }) => mode.physicalClass !== "pml").slice(0, config.modeCount);
+  const selectedPairs = selected.map(({ pair }) => pair);
+  const modes = selected.map(({ mode }, index) => ({ ...mode, order: index, id: `${mode.label}-${index}` }));
   const candidates: ModeCandidateDiagnostic[] = pairs.map((pair) => {
     const effectiveIndex = pairEffectiveIndexComplex(pair, operator);
     const selectedIndex = selectedPairs.indexOf(pair);
@@ -541,6 +576,11 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     if (!convergedPairs.includes(pair)) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
       residual: pair.residual, status: "poor-residual", reason: "Relative eigenpair residual exceeds 2 × 10⁻².",
+    };
+    const reconstructedMode = reconstructed.find((entry) => entry.pair === pair)?.mode;
+    if (reconstructedMode?.physicalClass === "pml") return {
+      effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
+      residual: pair.residual, status: "pml-mode", reason: `${(100 * reconstructedMode.pmlEnergyFraction).toFixed(1)}% of stored-energy magnitude lies inside the PML.`,
     };
     if (selectedIndex >= 0) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
@@ -559,6 +599,8 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   );
   if (cellsAcrossCore < 8) warnings.push("Fewer than 8 cells span the smallest core dimension; refine the grid before using quantitative values.");
   if (convergedPairs.length < uniquePairs.length) warnings.push(`${uniquePairs.length - convergedPairs.length} poorly converged mode${uniquePairs.length - convergedPairs.length === 1 ? " was" : "s were"} discarded because the field residual exceeded 2 × 10⁻².`);
+  const pmlModes = reconstructed.filter(({ mode }) => mode.physicalClass === "pml").length;
+  if (pmlModes > 0) warnings.push(`${pmlModes} PML-localized numerical mode${pmlModes === 1 ? " was" : "s were"} automatically excluded; confirm remaining leaky modes with the PML sensitivity analysis.`);
   if (modes.length < config.modeCount) warnings.push(`Only ${modes.length} guided mode${modes.length === 1 ? " was" : "s were"} found inside the modal search interval.`);
   if (modes.some((mode) => mode.residual > 2e-3)) warnings.push("One or more eigenpairs need review; reduce the requested mode count or mesh bias before interpreting the field profile.");
   if (config.targetEffectiveIndex !== undefined && (config.targetEffectiveIndex <= lowerIndex || config.targetEffectiveIndex >= upperIndex)) {
@@ -601,6 +643,7 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     arnoldiDimension,
     formulation: operator.formulation,
     backend: operator.backend,
+    symmetryReductionFactor: baseOperator.physicalVectorSize / operator.physicalVectorSize,
   };
 }
 
@@ -839,6 +882,33 @@ function materialValues(config: WaveguideConfig) {
     cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm, config.claddingOpticAxis, 0, 0, config.claddingOpticAxisTiltDeg, config.claddingOpticAxisAzimuthDeg, config.claddingMaterialTable),
     substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm, config.substrateOpticAxis, 0, 0, config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg, config.substrateMaterialTable),
     layers: (config.stackLayers ?? []).map((layer) => values(layer.material, layer.index, layer.indexY, layer.indexZ, layer.extinction, 0, layer.opticAxis, 0, 0, layer.opticAxisTiltDeg, layer.opticAxisAzimuthDeg)),
+  };
+}
+
+function materialEnergyDerivatives(config: WaveguideConfig): ReturnType<typeof materialValues> {
+  const wavelength = config.wavelengthUm;
+  const step = Math.max(1e-7, wavelength * 1e-4);
+  const current = materialValues(config);
+  const sample = (nextWavelength: number) => {
+    try { return materialValues({ ...config, wavelengthUm: nextWavelength }); } catch { return undefined; }
+  };
+  const lower = sample(wavelength - step);
+  const upper = sample(wavelength + step);
+  const derivative = (value: MaterialValue, low: MaterialValue | undefined, high: MaterialValue | undefined): MaterialValue => {
+    const tensor = (name: keyof SymmetricTensor) => {
+      const slope = low && high
+        ? (high.epsilonReal[name] - low.epsilonReal[name]) / (2 * step)
+        : high ? (high.epsilonReal[name] - value.epsilonReal[name]) / step
+          : low ? (value.epsilonReal[name] - low.epsilonReal[name]) / step : 0;
+      return value.epsilonReal[name] - wavelength * slope;
+    };
+    return { ...value, epsilonReal: { xx: tensor("xx"), yy: tensor("yy"), zz: tensor("zz"), xy: tensor("xy"), xz: tensor("xz"), yz: tensor("yz") } };
+  };
+  return {
+    core: derivative(current.core, lower?.core, upper?.core),
+    cladding: derivative(current.cladding, lower?.cladding, upper?.cladding),
+    substrate: derivative(current.substrate, lower?.substrate, upper?.substrate),
+    layers: current.layers.map((value, index) => derivative(value, lower?.layers[index], upper?.layers[index])),
   };
 }
 
@@ -1280,15 +1350,18 @@ function createGrid(config: WaveguideConfig): Grid {
   const cellArea = new Float64Array(nx * ny);
   const coreFraction = new Float64Array(nx * ny);
   const material = materialValues(config);
+  const energyDerivative = materialEnergyDerivatives(config);
   const lossRegions = [
-    { region: "Core", value: material.core },
-    { region: "Base substrate", value: material.substrate },
-    { region: "Cladding", value: material.cladding },
-    ...material.layers.map((value, index) => ({ region: config.stackLayers?.[index]?.name || `Layer ${index + 1}`, value })),
-  ].map(({ region, value }) => ({
+    { region: "Core", value: material.core, derivative: energyDerivative.core },
+    { region: "Base substrate", value: material.substrate, derivative: energyDerivative.substrate },
+    { region: "Cladding", value: material.cladding, derivative: energyDerivative.cladding },
+    ...material.layers.map((value, index) => ({ region: config.stackLayers?.[index]?.name || `Layer ${index + 1}`, value, derivative: energyDerivative.layers[index] })),
+  ].map(({ region, value, derivative }) => ({
     region,
     fraction: new Float64Array(nx * ny),
+    epsilonReal: { x: value.epsilonReal.xx, y: value.epsilonReal.yy, z: value.epsilonReal.zz },
     epsilonImaginary: { x: value.epsilonImaginary.xx, y: value.epsilonImaginary.yy, z: value.epsilonImaginary.zz },
+    energyDerivative: derivative.epsilonReal,
   }));
 
   for (let row = 0; row < ny; row += 1) {
@@ -1608,6 +1681,103 @@ function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContex
     solveShifted: bendOperator.solveShifted,
     solveEigenpairs: bendOperator.complex ? undefined : bendOperator.solveEigenpairs,
     reconstructTransverse: bendOperator.reconstructMagnetic,
+  };
+}
+
+function applySymmetryBoundaries(operator: OperatorContext, config: WaveguideConfig): OperatorContext {
+  const symmetryX = config.symmetryX ?? "none";
+  const symmetryY = config.symmetryY ?? "none";
+  if (symmetryX === "none" && symmetryY === "none") return operator;
+  if (operator.formulation !== "transverse-h") throw new Error("Symmetry projection requires the transverse-H formulation.");
+
+  const { nx, ny } = operator.grid;
+  const fullSize = operator.physicalVectorSize;
+  const mirrorX = new Int32Array(fullSize);
+  const mirrorY = new Int32Array(fullSize);
+  const signX = new Int8Array(fullSize).fill(1);
+  const signY = new Int8Array(fullSize).fill(1);
+  const components = [
+    { offset: 0, rows: ny, columns: nx + 1, xParity: symmetryX === "pec" ? -1 : 1, yParity: symmetryY === "pec" ? 1 : -1 },
+    { offset: operator.hxSize, rows: ny + 1, columns: nx, xParity: symmetryX === "pec" ? 1 : -1, yParity: symmetryY === "pec" ? -1 : 1 },
+  ];
+  for (const component of components) {
+    for (let row = 0; row < component.rows; row += 1) {
+      for (let column = 0; column < component.columns; column += 1) {
+        const index = component.offset + row * component.columns + column;
+        mirrorX[index] = component.offset + row * component.columns + component.columns - 1 - column;
+        mirrorY[index] = component.offset + (component.rows - 1 - row) * component.columns + column;
+        signX[index] = component.xParity;
+        signY[index] = component.yParity;
+      }
+    }
+  }
+
+  const reducedIndex = new Int32Array(fullSize).fill(-1);
+  const coefficient = new Float64Array(fullSize);
+  const visited = new Uint8Array(fullSize);
+  let reducedSize = 0;
+  for (let start = 0; start < fullSize; start += 1) {
+    if (visited[start]) continue;
+    const orbit = new Map<number, number>([[start, 1]]);
+    const queue = [start];
+    let compatible = true;
+    while (queue.length > 0) {
+      const index = queue.pop() as number;
+      const transformations: Array<[number, number]> = [];
+      if (symmetryX !== "none") transformations.push([mirrorX[index], orbit.get(index) as number * signX[index]]);
+      if (symmetryY !== "none") transformations.push([mirrorY[index], orbit.get(index) as number * signY[index]]);
+      for (const [image, sign] of transformations) {
+        const previous = orbit.get(image);
+        if (previous !== undefined) { if (previous !== sign) compatible = false; continue; }
+        orbit.set(image, sign);
+        queue.push(image);
+      }
+    }
+    orbit.forEach((_, index) => { visited[index] = 1; });
+    if (!compatible) continue;
+    const normalization = Math.sqrt(orbit.size);
+    orbit.forEach((sign, index) => {
+      reducedIndex[index] = reducedSize;
+      coefficient[index] = sign / normalization;
+    });
+    reducedSize += 1;
+  }
+
+  const expandPhysical = (reduced: Float64Array) => {
+    const full = new Float64Array(fullSize);
+    for (let index = 0; index < fullSize; index += 1) {
+      const column = reducedIndex[index];
+      if (column >= 0) full[index] = coefficient[index] * reduced[column];
+    }
+    return full;
+  };
+  const restrictPhysical = (full: Float64Array) => {
+    const reduced = new Float64Array(reducedSize);
+    for (let index = 0; index < fullSize; index += 1) {
+      const column = reducedIndex[index];
+      if (column >= 0) reduced[column] += coefficient[index] * full[index];
+    }
+    return reduced;
+  };
+  const apply = (vector: Float64Array) => {
+    if (!operator.complex) return restrictPhysical(operator.apply(expandPhysical(vector)));
+    const full = complexBlock(expandPhysical(vector.subarray(0, reducedSize)), expandPhysical(vector.subarray(reducedSize)));
+    const output = operator.apply(full);
+    return complexBlock(restrictPhysical(output.subarray(0, fullSize)), restrictPhysical(output.subarray(fullSize)));
+  };
+  const liftEigenpair = (pair: RitzPair): RitzPair => ({
+    ...pair,
+    vector: expandPhysical(pair.vector),
+    ...(pair.vectorImaginary ? { vectorImaginary: expandPhysical(pair.vectorImaginary) } : {}),
+  });
+  return {
+    ...operator,
+    apply,
+    physicalVectorSize: reducedSize,
+    solveEigenpairs: undefined,
+    solveShifted: undefined,
+    linearSolver: "bicgstab",
+    liftEigenpair,
   };
 }
 
@@ -2063,6 +2233,18 @@ function finalizeMode(
   let modalPowerW = 0;
   let corePowerW = 0;
   let electricLossIntegralVm2 = 0;
+  let electricEnergyPerM = 0;
+  let magneticEnergyPerM = 0;
+  let coreStoredEnergyPerM = 0;
+  let storedEnergySquaredIntegral = 0;
+  let storedEnergyMagnitudePerM = 0;
+  let pmlEnergyMagnitudePerM = 0;
+  let boundaryEnergyMagnitudePerM = 0;
+  const vacuumPermittivity = 8.854_187_8128e-12;
+  const vacuumPermeability = 1.256_637_06212e-6;
+  const pmlThickness = (config.boundary ?? "hard") === "pml" ? (config.pmlThicknessUm ?? config.paddingUm * 0.6) : 0;
+  const pmlXStart = Math.max(Math.abs(grid.xNodes[0]), Math.abs(grid.xNodes[grid.xNodes.length - 1])) - pmlThickness;
+  const pmlYStart = Math.max(Math.abs(grid.yNodes[0]), Math.abs(grid.yNodes[grid.yNodes.length - 1])) - pmlThickness;
   const regionLossIntegrals = new Map<string, number>();
   for (let index = 0; index < physicalIntensity.length; index += 1) {
     const ex2 = complexMagnitudeSquaredAt(physicalEx, index);
@@ -2076,6 +2258,8 @@ function finalizeMode(
     const cellPowerW = physicalPoynting[index] * grid.cellArea[index] * 1e-12;
     modalPowerW += cellPowerW;
     corePowerW += grid.coreFraction[index] * cellPowerW;
+    const h2 = complexMagnitudeSquaredAt(physicalHx, index) + complexMagnitudeSquaredAt(physicalHy, index) + complexMagnitudeSquaredAt(physicalHz, index);
+    let cellElectricEnergyDensity = 0;
     for (const region of grid.lossRegions) {
       if (region.fraction[index] <= 0) continue;
       const integral = region.fraction[index] * (
@@ -2085,10 +2269,27 @@ function finalizeMode(
       ) * grid.cellArea[index] * 1e-12;
       electricLossIntegralVm2 += integral;
       regionLossIntegrals.set(region.region, (regionLossIntegrals.get(region.region) ?? 0) + integral);
+      const regionElectricEnergyDensity = 0.25 * vacuumPermittivity * region.fraction[index]
+        * complexTensorQuadratic(physicalEx, physicalEy, physicalEz, index, region.energyDerivative);
+      cellElectricEnergyDensity += regionElectricEnergyDensity;
+      if (region.region === "Core") coreStoredEnergyPerM += regionElectricEnergyDensity * grid.cellArea[index] * 1e-12;
     }
+    const cellMagneticEnergyDensity = 0.25 * vacuumPermeability * h2;
+    const cellStoredEnergyDensity = cellElectricEnergyDensity + cellMagneticEnergyDensity;
+    const areaM2 = grid.cellArea[index] * 1e-12;
+    electricEnergyPerM += cellElectricEnergyDensity * areaM2;
+    magneticEnergyPerM += cellMagneticEnergyDensity * areaM2;
+    coreStoredEnergyPerM += grid.coreFraction[index] * cellMagneticEnergyDensity * areaM2;
+    storedEnergySquaredIntegral += cellStoredEnergyDensity ** 2 * areaM2;
+    const magnitude = Math.abs(cellStoredEnergyDensity) * areaM2;
+    storedEnergyMagnitudePerM += magnitude;
+    const row = Math.floor(index / nx);
+    const column = index % nx;
+    if (pmlThickness > 0 && (Math.abs(grid.x[column]) >= pmlXStart || Math.abs(grid.y[row]) >= pmlYStart)) pmlEnergyMagnitudePerM += magnitude;
+    if (row < 2 || row >= ny - 2 || column < 2 || column >= nx - 2) boundaryEnergyMagnitudePerM += magnitude;
   }
   const angularFrequency = 2 * Math.PI * 299_792_458 / (config.wavelengthUm * 1e-6);
-  const absorbedPowerPerM = 0.5 * angularFrequency * 8.854_187_8128e-12 * Math.max(0, electricLossIntegralVm2);
+  const absorbedPowerPerM = 0.5 * angularFrequency * vacuumPermittivity * Math.max(0, electricLossIntegralVm2);
   const absorptionBetaImaginaryPerUm = absorbedPowerPerM / (2 * Math.max(Math.abs(modalPowerW), 1e-30)) * 1e-6;
   const eigenBetaImaginaryPerUm = Math.abs(betaComplex.imaginary);
   const betaImaginaryPerUm = Math.max(eigenBetaImaginaryPerUm, absorptionBetaImaginaryPerUm);
@@ -2097,7 +2298,7 @@ function finalizeMode(
   const materialAbsorption = [...regionLossIntegrals.entries()]
     .map(([region, integral]) => ({
       region,
-      powerPerM: 0.5 * angularFrequency * 8.854_187_8128e-12 * Math.max(0, integral),
+      powerPerM: 0.5 * angularFrequency * vacuumPermittivity * Math.max(0, integral),
       fraction: 0,
     }))
     .filter((entry) => entry.powerPerM > 1e-18);
@@ -2125,6 +2326,21 @@ function finalizeMode(
   const effectiveIndex = beta / k0;
   const guidanceMargin = effectiveIndex - exteriorIndex;
   const electricConfinement = electricCore / weightedElectricTotal;
+  const storedEnergyPerM = electricEnergyPerM + magneticEnergyPerM;
+  const energyConfinement = coreStoredEnergyPerM / Math.max(storedEnergyPerM, 1e-30);
+  const energyEffectiveAreaUm2 = storedEnergyPerM ** 2 / Math.max(storedEnergySquaredIntegral, 1e-30) * 1e12;
+  const energyVelocityMPerS = Math.abs(modalPowerW) / Math.max(storedEnergyPerM, 1e-30);
+  const energyGroupIndex = 299_792_458 / Math.max(energyVelocityMPerS, 1e-30);
+  const maximumLossTangent = grid.lossRegions.filter((region) => region.fraction.some((fraction) => fraction > 0)).reduce((maximum, region) => Math.max(maximum,
+    Math.abs(region.epsilonImaginary.x) / Math.max(Math.abs(region.epsilonReal.x), 1e-12),
+    Math.abs(region.epsilonImaginary.y) / Math.max(Math.abs(region.epsilonReal.y), 1e-12),
+    Math.abs(region.epsilonImaginary.z) / Math.max(Math.abs(region.epsilonReal.z), 1e-12)), 0);
+  const energyMetricValidity = maximumLossTangent < 1e-8 ? "lossless" : maximumLossTangent < 0.1 ? "weak-loss" : "diagnostic";
+  const pmlEnergyFraction = pmlEnergyMagnitudePerM / Math.max(storedEnergyMagnitudePerM, 1e-30);
+  const boundaryEnergyFraction = boundaryEnergyMagnitudePerM / Math.max(storedEnergyMagnitudePerM, 1e-30);
+  const physicalClass = pmlEnergyFraction >= 0.8 && (config.bendRadiusUm ?? 0) === 0 ? "pml"
+    : plasmonic ? "plasmonic"
+      : pmlEnergyFraction >= 0.05 && radiationBetaImaginaryPerUm > Math.max(1e-10, 0.1 * absorptionBetaImaginaryPerUm) ? "leaky" : "guided";
 
   const bendRadiusUm = config.bendRadiusUm ?? 0;
   return {
@@ -2140,6 +2356,18 @@ function finalizeMode(
     electricConfinement,
     corePowerFraction: corePowerW / modalPowerW,
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,
+    energyConfinement,
+    energyEffectiveAreaUm2,
+    electricEnergyPerM,
+    magneticEnergyPerM,
+    storedEnergyPerM,
+    energyVelocityMPerS,
+    energyGroupIndex,
+    energyMetricValidity,
+    maximumLossTangent,
+    physicalClass,
+    pmlEnergyFraction,
+    boundaryEnergyFraction,
     longitudinalElectricFraction: ezEnergy / electricTotal,
     xPolarizedElectricFraction: exEnergy / transverseElectricEnergy,
     lossDbPerCm: lossDbPerCm(betaImaginaryPerUm),
@@ -2350,6 +2578,18 @@ function complexAverage(values: ComplexArray, average: (part: Float64Array) => F
 
 function complexMagnitudeSquaredAt(values: ComplexArray, index: number): number {
   return values.real[index] ** 2 + values.imaginary[index] ** 2;
+}
+
+function complexTensorQuadratic(
+  ex: ComplexArray, ey: ComplexArray, ez: ComplexArray, index: number, tensor: SymmetricTensor,
+): number {
+  const inner = (first: ComplexArray, second: ComplexArray) => first.real[index] * second.real[index] + first.imaginary[index] * second.imaginary[index];
+  return tensor.xx * complexMagnitudeSquaredAt(ex, index)
+    + tensor.yy * complexMagnitudeSquaredAt(ey, index)
+    + tensor.zz * complexMagnitudeSquaredAt(ez, index)
+    + 2 * tensor.xy * inner(ex, ey)
+    + 2 * tensor.xz * inner(ex, ez)
+    + 2 * tensor.yz * inner(ey, ez);
 }
 
 function rotateComplexFields(fields: ComplexArray[]): void {

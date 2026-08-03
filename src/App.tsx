@@ -21,6 +21,7 @@ import {
   type GeometrySweepResult,
   type GeometrySweepSettings,
   type SolverResult,
+  type SymmetryBoundary,
   type SweepResult,
   type SweepSettings,
   type VerticalLayer,
@@ -40,6 +41,8 @@ const common = {
   materialReferenceWavelengthUm: 1.55,
   meshBias: 0,
   boundary: "hard" as const,
+  symmetryX: "none" as const,
+  symmetryY: "none" as const,
   pmlThicknessUm: 0.6,
   pmlStrength: 4,
   coreMaterial: "custom" as MaterialId,
@@ -157,6 +160,8 @@ export function App() {
   const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.guidanceMargin > 0 && !mode.nearCutoff },
     { label: "Eigenpair residual", pass: mode.residual < 2e-3 },
+    { label: "Positive dispersive stored energy", pass: mode.storedEnergyPerM > 0 },
+    ...((config.boundary ?? "hard") === "pml" ? [{ label: "Not PML-localized", pass: mode.physicalClass !== "pml" }] : []),
     { label: "Core sampled", pass: Math.min(
       result.xUm.filter((x) => Math.abs(x) <= config.widthUm / 2).length,
       result.yUm.filter((y) => Math.abs(y) <= config.heightUm / 2).length,
@@ -492,11 +497,14 @@ export function App() {
                 <NumberField label="Mesh bias" unit={`0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} onChange={(v) => updateNumber("meshBias", v)} />
                 <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
                 <label className="select-field">Outer boundary<select value={draft.boundary ?? "hard"} onChange={(event) => setDraft((current) => ({ ...current, boundary: event.target.value as "hard" | "pml" }))}><option value="hard">Hard wall</option><option value="pml">PML (open)</option></select></label>
+                <label className="select-field">x symmetry plane<select value={draft.symmetryX ?? "none"} onChange={(event) => setDraft((current) => ({ ...current, symmetryX: event.target.value as SymmetryBoundary }))}><option value="none">None</option><option value="pec">PEC · tangential E = 0</option><option value="pmc">PMC · tangential H = 0</option></select></label>
+                <label className="select-field">y symmetry plane<select value={draft.symmetryY ?? "none"} onChange={(event) => setDraft((current) => ({ ...current, symmetryY: event.target.value as SymmetryBoundary }))}><option value="none">None</option><option value="pec">PEC · tangential E = 0</option><option value="pmc">PMC · tangential H = 0</option></select></label>
                 {(draft.boundary ?? "hard") === "pml" && <>
                   <NumberField label="PML thickness" unit="µm" value={draft.pmlThicknessUm ?? draft.paddingUm * 0.6} min={0.01} max={Math.max(0.02, draft.paddingUm - 0.01)} step={0.05} onChange={(v) => updateNumber("pmlThicknessUm", v)} />
                   <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
                 </>}
               </div>
+              {((draft.symmetryX ?? "none") !== "none" || (draft.symmetryY ?? "none") !== "none") && <p className="configuration-note">Symmetry projects the full Yee operator onto the selected parity subspace. Use it only when the geometry and material tensor are mirror-symmetric.</p>}
               <details className="advanced-controls">
                 <summary>Mode targeting</summary>
                 <div className="form-grid">
@@ -521,9 +529,11 @@ export function App() {
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
-              <Metric label="Electric confinement" value={`${(mode.electricConfinement * 100).toFixed(1)}%`} />
+              <Metric label="Mode class" value={mode.physicalClass} />
+              <Metric label="Dispersive-energy confinement" value={`${(mode.energyConfinement * 100).toFixed(1)}%`} />
               <Metric label="Core power fraction" value={`${(mode.corePowerFraction * 100).toFixed(1)}%`} />
-              <Metric label={<>Effective area <i>A</i><sub>eff</sub></>} value={`${mode.effectiveAreaUm2.toFixed(3)} µm²`} />
+              <Metric label={<>Energy effective area <i>A</i><sub>eff</sub></>} value={`${mode.energyEffectiveAreaUm2.toFixed(3)} µm²`} />
+              <Metric label="Energy group index" value={`${mode.energyGroupIndex.toFixed(4)} · ${mode.energyMetricValidity}`} />
               <Metric label="Longitudinal E fraction" value={`${(mode.longitudinalElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="x-polarized E fraction" value={`${(mode.xPolarizedElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
@@ -584,7 +594,7 @@ export function App() {
       <ViewHeading eyebrow="Scientific confidence" title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
       <section className="validation-section">
         <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals; arbitrary real symmetric tensors require hard boundaries. Metallic bends and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
-        <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label}</dd></div><div><dt>x/y symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
+        <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
       </section>
       {mode && result && <section className="sweep-section validation-diagnostics">
         <div className="panel-heading"><div><span className="step">V1</span><h2>Complex-mode diagnostics</h2></div><a className="export-button" href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</a></div>
@@ -595,9 +605,13 @@ export function App() {
           <Metric label="Loss-balance mismatch" value={`${(100 * mode.lossBalanceRelativeDifference).toPrecision(3)}%`} />
           <Metric label="Absorbed power per length" value={`${mode.absorbedPowerPerM.toExponential(3)} W/m`} />
           <Metric label="Propagation length" value={Number.isFinite(mode.propagationLengthUm) ? `${mode.propagationLengthUm.toPrecision(5)} µm` : "∞"} />
+          <Metric label="PML energy participation" value={`${(100 * mode.pmlEnergyFraction).toPrecision(3)}%`} />
+          <Metric label="Outer-cell energy" value={`${(100 * mode.boundaryEnergyFraction).toPrecision(3)}%`} />
+          <Metric label="Stored energy per length" value={`${mode.storedEnergyPerM.toExponential(3)} J/m`} />
+          <Metric label="Energy metric validity" value={mode.energyMetricValidity} />
         </div>
         {mode.materialAbsorption.length > 0 && <div className="comparison-scroll"><table className="comparison-table"><caption>Material absorption decomposition</caption><thead><tr><th>Region</th><th>Absorbed power per length</th><th>Fraction</th></tr></thead><tbody>{mode.materialAbsorption.map((entry) => <tr key={entry.region}><th>{entry.region}</th><td>{entry.powerPerM.toExponential(4)} W/m</td><td>{(100 * entry.fraction).toFixed(2)}%</td></tr>)}</tbody></table></div>}
-        <p className="limitation">Material absorption is obtained from the local Im(ε) field integral. The PML/radiative term is the positive excess of eigenvalue attenuation over material absorption; establish it with boundary and mesh convergence before treating it as physical radiation loss.</p>
+        <p className="limitation">Material absorption is obtained from the local Im(ε) field integral. Stored energy uses d(ω Re ε)/dω and is exact for lossless dispersion, a narrow-band approximation for weak loss, and diagnostic only for strongly absorptive media. PML classification is participation-based; establish leaky-mode loss with boundary and mesh convergence.</p>
         <div className="comparison-scroll"><table className="comparison-table candidate-table"><caption>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</caption><thead><tr><th>Candidate</th><th>Re(neff)</th><th>Im(neff)</th><th>Residual</th><th>Status</th><th>Reason</th></tr></thead><tbody>{result.candidates.map((candidate, index) => <tr key={`${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`}><th>{candidate.label ?? `Ritz ${index + 1}`}</th><td>{candidate.effectiveIndex.toFixed(7)}</td><td>{candidate.effectiveIndexImaginary.toExponential(3)}</td><td>{candidate.residual.toExponential(2)}</td><td><span className={candidate.status === "selected" || candidate.status === "available" ? "pass" : "warn"}>{candidate.status}</span></td><td>{candidate.reason}</td></tr>)}</tbody></table></div>
       </section>}
       </section>
