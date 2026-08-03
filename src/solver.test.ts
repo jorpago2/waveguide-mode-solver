@@ -41,6 +41,7 @@ function horizontalCentroid(field: number[][], xUm: number[]): number {
 describe("full-vector finite-difference mode solver", () => {
   it("converges toward the subpixel-interface reference", () => {
     const result = solveWaveguide(benchmark);
+    expect(result.backend).toBe("Rust/WASM");
     expect(result.modes.length).toBeGreaterThan(0);
     expect(result.modes[0].effectiveIndex).toBeCloseTo(1.64, 1);
     expect(result.modes[1].effectiveIndex).toBeCloseTo(1.57, 1);
@@ -124,20 +125,20 @@ describe("full-vector finite-difference mode solver", () => {
     }
   }, 10_000);
 
-  it("solves transverse and longitudinally coupled uniaxial tensors in WebAssembly", () => {
+  it("solves transverse and longitudinally coupled uniaxial tensors in Rust/WebAssembly", () => {
     const rotated = solveWaveguide({
       ...benchmark, gridResolution: 24, modeCount: 1, coreIndex: 2.2,
       coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 45, coreOpticAxisAzimuthDeg: 90,
     });
     expect(rotated.formulation).toBe("first-order");
-    expect(rotated.backend).toBe("WebAssembly");
+    expect(rotated.backend).toBe("Rust/WASM");
     expect(rotated.modes[0].effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
     expect(rotated.modes[0].residual).toBeLessThan(2e-2);
     const longitudinal = solveWaveguide({
       ...benchmark, gridResolution: 24, modeCount: 1, coreIndex: 2.2,
       coreMaterial: "lithium-niobate", coreOpticAxisTiltDeg: 90, coreOpticAxisAzimuthDeg: 45,
     });
-    expect(longitudinal.backend).toBe("WebAssembly");
+    expect(longitudinal.backend).toBe("Rust/WASM");
     expect(longitudinal.modes[0].effectiveIndex).toBeGreaterThan(benchmark.claddingIndex);
     expect(longitudinal.modes[0].residual).toBeLessThan(2e-2);
     expect(validateWaveguide({
@@ -170,10 +171,12 @@ describe("full-vector finite-difference mode solver", () => {
   });
 
   it("returns a complex effective index with stretched-coordinate PML", () => {
-    const mode = solveWaveguide({
+    const result = solveWaveguide({
       ...benchmark, gridResolution: 24, modeCount: 1,
       boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
-    }).modes[0];
+    });
+    expect(result.backend).toBe("Rust/WASM");
+    const mode = result.modes[0];
     expect(mode.effectiveIndexImaginary).toBeGreaterThan(0);
     expect(mode.lossDbPerCm).toBeGreaterThan(0);
     expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
@@ -189,7 +192,7 @@ describe("full-vector finite-difference mode solver", () => {
     const bent = bentResult.modes[0];
     expect(bent).toBeDefined();
     expect(bentResult.formulation).toBe("transverse-e");
-    expect(bentResult.backend).toBe("Rust WASM LU");
+    expect(bentResult.backend).toBe("Rust/WASM");
     expect(bent.effectiveIndex).toBeCloseTo(straight.effectiveIndex, 2);
     expect(bent.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
     expect(bent.residual).toBeLessThan(5e-3);
@@ -245,7 +248,7 @@ describe("full-vector finite-difference mode solver", () => {
       bendRadiusUm: 10, bendDirection: "positive-x",
       boundary: "pml", pmlThicknessUm: 0.6, pmlStrength: 4,
     });
-    expect(result.backend).toBe("Rust WASM LU");
+    expect(result.backend).toBe("Rust/WASM");
     expect(result.modes).toHaveLength(3);
     expect(Math.max(...result.modes.map((mode) => mode.residual))).toBeLessThan(1e-2);
   }, 20_000);

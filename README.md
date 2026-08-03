@@ -13,7 +13,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Dispersive material models for LiNbO₃, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
 - MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
 - Editable finite layers below the core with a semi-infinite base substrate.
-- Arbitrarily oriented uniaxial anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, including xz/yz coupling, solved by a WebAssembly four-field first-order Maxwell operator.
+- Arbitrarily oriented uniaxial anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, including xz/yz coupling, solved by a Rust/WebAssembly four-field first-order Maxwell operator.
 - Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
@@ -26,7 +26,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
 - Solved cross-section inspector with principal-index maps, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
-- Shift-invert Arnoldi with reusable Rust/WebAssembly sparse LU for transformed bend operators, adaptively preconditioned BiCGSTAB for straight guides, SIMD WebAssembly kernels for diagonal and tensor operators, and residual rejection.
+- A unified Rust/WebAssembly core evaluates diagonal, tensor and transformed-bend operators, runs shifted linear solves and computes the shift-invert Arnoldi eigensystem. Complex bent modes retain the validated TypeScript reduced-matrix eigendecomposition for stable conjugate-pair selection while their operator and sparse LU remain in Rust.
 - Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
 - Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
 - Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.

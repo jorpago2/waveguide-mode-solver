@@ -7,4 +7,4 @@ dist/
 .rustup-local/
 rustup-init.exe
 rust/**/target/
-src/wasm/bend_solver.wasm
+src/wasm/mode_solver_core.wasm

@@ -6,7 +6,13 @@ import {
   type Complex,
   type Matrix,
 } from "mathjs";
-import { factorizeSparseLu, solveSparseLu } from "./wasm/bendSolver";
+import {
+  applyConfiguredOperator,
+  configureSparseOperator,
+  solveConfiguredEigenpairs,
+  solveConfiguredShifted,
+  type RustEigenpair,
+} from "./wasm/modeSolverCore";
 
 type Numeric = number | Complex;
 
@@ -40,6 +46,7 @@ export interface RadialBendOperator {
   complex: boolean;
   apply(vector: Float64Array): Float64Array;
   solveShifted(shift: number, rightHandSide: Float64Array): Float64Array;
+  solveEigenpairs(shift: number, arnoldiDimension: number, requestedPairs: number, initialVector: Float64Array): RustEigenpair[];
   reconstructMagnetic(
     electricReal: Float64Array,
     electricImaginary: Float64Array,
@@ -376,53 +383,14 @@ export function createRadialBendOperator(
   const isComplex = operatorSparse.values.some((value) => Math.abs(imaginaryPart(value)) > 1e-15);
   const operatorReal = Float64Array.from(operatorSparse.values, realPart);
   const operatorImaginary = Float64Array.from(operatorSparse.values, imaginaryPart);
-  const zeroRightHandSide = new Float64Array(size);
-  let factorizationShift = Number.NaN;
-
-  const applyParts = (real: Float64Array, imaginary: Float64Array) => multiplySparse(operatorSparse, real, imaginary);
-  const apply = (vector: Float64Array): Float64Array => {
-    const real = isComplex ? vector.subarray(0, size) : vector;
-    const imaginary = isComplex ? vector.subarray(size) : new Float64Array(size);
-    const output = applyParts(real, imaginary);
-    if (!isComplex) return output.real;
-    const joined = new Float64Array(2 * size);
-    joined.set(output.real);
-    joined.set(output.imaginary, size);
-    return joined;
-  };
-
-  const solveShifted = (shift: number, rightHandSide: Float64Array): Float64Array => {
-    if (shift !== factorizationShift) {
-      factorizeSparseLu(size, operatorSparse.ptr, operatorSparse.index, operatorReal, operatorImaginary, shift);
-      factorizationShift = shift;
-    }
-    const solved = solveSparseLu(
-      rightHandSide.subarray(0, size),
-      isComplex ? rightHandSide.subarray(size) : zeroRightHandSide,
-    );
-    const output = new Float64Array(isComplex ? 2 * size : size);
-    output.set(solved.real);
-    if (isComplex) output.set(solved.imaginary, size);
-    const shiftedProduct = apply(output);
-    for (let index = 0; index < shiftedProduct.length; index += 1) shiftedProduct[index] -= shift * output[index];
-    let residualSquared = 0;
-    let rightHandSideSquared = 0;
-    for (let index = 0; index < shiftedProduct.length; index += 1) {
-      residualSquared += (shiftedProduct[index] - rightHandSide[index]) ** 2;
-      rightHandSideSquared += rightHandSide[index] ** 2;
-    }
-    const relativeResidual = Math.sqrt(residualSquared / Math.max(rightHandSideSquared, 1e-30));
-    if (!Number.isFinite(relativeResidual) || relativeResidual > 1e-7) {
-      throw new Error(`Sparse bend solve did not converge (relative residual ${relativeResidual.toExponential(2)}).`);
-    }
-    return output;
-  };
+  configureSparseOperator(size, operatorSparse.ptr, operatorSparse.index, operatorReal, operatorImaginary);
 
   return {
     size,
     complex: isComplex,
-    apply,
-    solveShifted,
+    apply: applyConfiguredOperator,
+    solveShifted: solveConfiguredShifted,
+    solveEigenpairs: solveConfiguredEigenpairs,
     reconstructMagnetic(electricReal, electricImaginary, betaReal, betaImaginary) {
       return divideComplexVector(multiplySparse(qSparse, electricReal, electricImaginary), betaReal, betaImaginary);
     },

@@ -6,11 +6,11 @@ import {
 } from "./materials";
 import { createRadialBendOperator } from "./radialBend";
 
-type TensorWasmModule = typeof import("./wasm/tensor.js");
-let tensorWasm: TensorWasmModule | undefined;
+type ModeSolverCoreModule = typeof import("./wasm/modeSolverCore");
+let modeSolverCore: ModeSolverCoreModule | undefined;
 let recycledArnoldiSubspace: { key: string; vectors: Float64Array[] } | undefined;
 try {
-  tensorWasm = await import("./wasm/tensor.js");
+  modeSolverCore = await import("./wasm/modeSolverCore");
 } catch {
   // The diagonal and transverse-rotation TypeScript solvers remain available.
 }
@@ -147,7 +147,7 @@ export interface SolverResult {
   warnings: string[];
   arnoldiDimension: number;
   formulation: "transverse-h" | "transverse-e" | "first-order";
-  backend: "TypeScript" | "WebAssembly" | "Rust WASM LU";
+  backend: "TypeScript" | "Rust/WASM";
 }
 
 export interface SweepSettings {
@@ -261,8 +261,14 @@ interface OperatorContext {
   eigenvaluePower: 1 | 2;
   formulation: "transverse-h" | "transverse-e" | "first-order";
   linearSolver: "bicgstab" | "gmres" | "direct";
-  backend: "TypeScript" | "WebAssembly" | "Rust WASM LU";
+  backend: "TypeScript" | "Rust/WASM";
   solveShifted?: (shift: number, rightHandSide: Float64Array) => Float64Array;
+  solveEigenpairs?: (
+    shift: number,
+    arnoldiDimension: number,
+    requestedPairs: number,
+    initialVector: Float64Array,
+  ) => RitzPair[];
   reconstructTransverse?: (
     electricReal: Float64Array,
     electricImaginary: Float64Array,
@@ -425,7 +431,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     const hasLongitudinalCoupling = materialList.some((material) => [material.epsilonReal.xz, material.epsilonReal.yz, material.epsilonImaginary.xz, material.epsilonImaginary.yz].some((value) => Math.abs(value) > 1e-12));
     const hasOffDiagonalRotation = materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary));
     const hasMaterialLoss = materialList.some((material) => Object.values(material.epsilonImaginary).some((value) => Math.abs(value) > 1e-12));
-    if (hasLongitudinalCoupling && !tensorWasm) errors.push("Longitudinal tensor coupling requires WebAssembly support in this browser.");
+  if (hasLongitudinalCoupling && !modeSolverCore) errors.push("Longitudinal tensor coupling requires WebAssembly support in this browser.");
     if (hasOffDiagonalRotation && (hasMaterialLoss || (config.boundary ?? "hard") === "pml")) errors.push("Rotated anisotropy currently requires lossless materials and a hard outer boundary.");
     if (bendRadiusUm > 0 && materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary))) {
       errors.push("Rotated off-diagonal anisotropy is currently limited to straight guides; a constant local tensor is not rigorous along a curved crystal path.");
@@ -447,7 +453,7 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   const arnoldiDimension = Math.min(
     operator.physicalVectorSize * (operator.complex ? 2 : 1) - 1,
     operator.formulation === "transverse-e" && operator.complex
-      ? Math.max(28, config.modeCount * 8 + 8)
+      ? Math.max(48, config.modeCount * 10 + 12)
       : operator.formulation === "first-order" && (config.bendRadiusUm ?? 0) === 0
       ? Math.max(32, config.modeCount * 10 + 12)
       : Math.max(operator.complex ? (operator.eigenvaluePower === 1 ? 48 : 28) : 16, config.modeCount * (operator.complex ? 12 : 7) + (operator.eigenvaluePower === 1 ? 8 : 0)),
@@ -1291,19 +1297,24 @@ function createVectorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     complexAddProductInPlace(outputHy, hy, epsilonX, grid.epsilonXImaginary, k0 ** 2);
     return complexJoin(outputHx, outputHy);
   } : applyReal;
-  let solveShifted: OperatorContext["solveShifted"];
-  if (!complex && tensorWasm && grid.nx <= 128 && grid.ny <= 128) {
-    tensorWasm.configureVectorOperator(
-      nx, ny, k0,
+  let solveEigenpairs: OperatorContext["solveEigenpairs"];
+  if (modeSolverCore) {
+    modeSolverCore.configureVectorOperator(nx, ny, k0, [
       Float64Array.from(dxCell), Float64Array.from(dyCell),
       Float64Array.from(dxDual), Float64Array.from(dyDual),
-      epsilonX, epsilonY, inverseEpsilonZ,
-    );
-    apply = (vector: Float64Array) => tensorWasm?.applyVectorOperator(vector) ?? applyReal(vector);
-    solveShifted = (shift, rightHandSide) => tensorWasm?.solveShiftedVectorSystem(rightHandSide, shift, 180, 1e-5) ?? rightHandSide.slice();
+      epsilonX, grid.epsilonXImaginary,
+      epsilonY, grid.epsilonYImaginary,
+      inverseEpsilonZ, grid.inverseEpsilonZImaginary,
+      grid.inverseStretchXCellReal, grid.inverseStretchXCellImaginary,
+      grid.inverseStretchXNodeReal, grid.inverseStretchXNodeImaginary,
+      grid.inverseStretchYCellReal, grid.inverseStretchYCellImaginary,
+      grid.inverseStretchYNodeReal, grid.inverseStretchYNodeImaginary,
+    ]);
+    apply = modeSolverCore.applyConfiguredOperator;
+    solveEigenpairs = modeSolverCore.solveConfiguredEigenpairs;
   }
 
-  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab", backend: solveShifted ? "WebAssembly" : "TypeScript", solveShifted };
+  return { grid, k0, hxSize, hySize, apply, complex, physicalVectorSize: hxSize + hySize, eigenvaluePower: 2, formulation: "transverse-h", linearSolver: "bicgstab", backend: solveEigenpairs ? "Rust/WASM" : "TypeScript", solveEigenpairs };
 }
 
 function gridHasOffDiagonalTensor(grid: Grid): boolean {
@@ -1351,22 +1362,18 @@ function createTensorOperator(grid: Grid, wavelengthUm: number): OperatorContext
     return output;
   };
   let apply = applyTypeScript;
-  if (tensorWasm) {
-    tensorWasm.configureTensorOperator(
-      nx, ny, k0,
+  let solveEigenpairs: OperatorContext["solveEigenpairs"];
+  if (modeSolverCore) {
+    modeSolverCore.configureTensorOperator(nx, ny, k0, [
       Float64Array.from(grid.dxCell), Float64Array.from(grid.dyCell),
       Float64Array.from(grid.dxDual), Float64Array.from(grid.dyDual),
       grid.epsilonCellX, grid.epsilonCellY, grid.epsilonCellZ,
       grid.epsilonCellXY, grid.epsilonCellXZ, grid.epsilonCellYZ,
-    );
-    apply = (vector: Float64Array): Float64Array => {
-      return tensorWasm?.applyTensorOperator(vector) ?? applyTypeScript(vector);
-    };
+    ]);
+    apply = modeSolverCore.applyConfiguredOperator;
+    solveEigenpairs = modeSolverCore.solveConfiguredEigenpairs;
   }
-  const solveShifted = tensorWasm
-    ? (shift: number, rightHandSide: Float64Array) => tensorWasm?.solveShiftedTensorSystem(rightHandSide, shift, 180, 1e-5) ?? rightHandSide.slice()
-    : undefined;
-  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab", backend: tensorWasm ? "WebAssembly" : "TypeScript", solveShifted };
+  return { grid, k0, hxSize, hySize, apply, complex: false, physicalVectorSize, eigenvaluePower: 1, formulation: "first-order", linearSolver: "bicgstab", backend: solveEigenpairs ? "Rust/WASM" : "TypeScript", solveEigenpairs };
 }
 
 function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContext {
@@ -1389,8 +1396,9 @@ function createBendOperator(grid: Grid, config: WaveguideConfig): OperatorContex
     eigenvaluePower: 2,
     formulation: "transverse-e",
     linearSolver: "direct",
-    backend: "Rust WASM LU",
+    backend: "Rust/WASM",
     solveShifted: bendOperator.solveShifted,
+    solveEigenpairs: bendOperator.complex ? undefined : bendOperator.solveEigenpairs,
     reconstructTransverse: bendOperator.reconstructMagnetic,
   };
 }
@@ -1415,6 +1423,20 @@ function solveLargestEigenpairs(
     multiplyScalarInPlace(vector, 0.2);
     recycledArnoldiSubspace.vectors.forEach((recycled, index) => addScaledInPlace(vector, recycled, 1 / (index + 1)));
     multiplyScalarInPlace(vector, 1 / Math.max(norm(vector), 1e-30));
+  }
+  const finish = (candidates: RitzPair[]): RitzPair[] => {
+    const sorted = candidates.sort((first, second) => second.eigenvalue - first.eigenvalue);
+    const reusable = sorted.filter((pair) => {
+      const index = pairEffectiveIndex(pair, operator);
+      return index > exteriorIndex && index < maximumIndex * 1.01;
+    }).slice(0, 3).map((pair) => operator.complex
+      ? complexBlock(pair.vector, pair.vectorImaginary as Float64Array)
+      : pair.vector.slice());
+    if (recycleSubspace && reusable.length > 0) recycledArnoldiSubspace = { key: recycleKey, vectors: reusable };
+    return sorted.slice(0, requestedPairs);
+  };
+  if (operator.solveEigenpairs) {
+    return finish(operator.solveEigenpairs(shift, arnoldiDimension, requestedPairs, vector));
   }
 
   for (let column = 0; column < arnoldiDimension; column += 1) {
@@ -1525,15 +1547,7 @@ function solveLargestEigenpairs(
     if (alternatives[0]) candidates.push(alternatives[0]);
   }
 
-  const sorted = candidates.sort((first, second) => second.eigenvalue - first.eigenvalue);
-  const reusable = sorted.filter((pair) => {
-    const index = pairEffectiveIndex(pair, operator);
-    return index > exteriorIndex && index < maximumIndex * 1.01;
-  }).slice(0, 3).map((pair) => operator.complex
-    ? complexBlock(pair.vector, pair.vectorImaginary as Float64Array)
-    : pair.vector.slice());
-  if (recycleSubspace && reusable.length > 0) recycledArnoldiSubspace = { key: recycleKey, vectors: reusable };
-  return sorted.slice(0, requestedPairs);
+  return finish(candidates);
 }
 
 function complexBlock(real: Float64Array, imaginary: Float64Array): Float64Array {

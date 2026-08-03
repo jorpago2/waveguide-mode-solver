@@ -5,13 +5,11 @@
   "type": "module",
   "packageManager": "pnpm@11.9.0",
   "scripts": {
-    "build:assembly-wasm": "asc assembly/tensor.ts --target release",
     "build:rust-wasm": "node scripts/build-rust-wasm.mjs",
-    "build:wasm": "pnpm build:assembly-wasm && pnpm build:rust-wasm",
     "dev": "vite",
-    "build": "pnpm build:wasm && tsc --noEmit && vite build",
+    "build": "pnpm build:rust-wasm && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "pnpm build:wasm && vitest run"
+    "test": "pnpm build:rust-wasm && vitest run"
   },
   "dependencies": {
     "mathjs": "^15.2.0",
@@ -25,7 +23,6 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
-    "assemblyscript": "^0.28.20",
     "typescript": "7.0.2",
     "vite": "8.2.0",
     "vitest": "4.1.10"
