@@ -1,5 +1,6 @@
-export type MaterialId = "custom" | "tabulated" | "air" | "silica" | "silicon" | "silicon-nitride"
-  | "lithium-niobate" | "aluminum-nitride" | "gallium-arsenide" | "indium-phosphide" | "silicon-carbide"
+export type MaterialId = "custom" | "tabulated" | "air" | "silica" | "silicon" | "germanium" | "silicon-nitride"
+  | "arsenic-trisulfide" | "lithium-niobate" | "sapphire" | "magnesium-fluoride" | "aluminum-nitride"
+  | "gallium-arsenide" | "indium-phosphide" | "silicon-carbide"
   | "silver" | "gold" | "aluminum";
 
 export type BuiltInMaterialId = Exclude<MaterialId, "custom" | "tabulated">;
@@ -56,8 +57,12 @@ export const MATERIALS: MaterialDefinition[] = [
   { id: "air", name: "Air", formula: "n = 1", minimumWavelengthUm: 0.2, maximumWavelengthUm: 1_000 },
   { id: "silica", name: "Fused silica", formula: "Malitson Sellmeier", minimumWavelengthUm: 0.21, maximumWavelengthUm: 3.71, sourceUrl: "https://doi.org/10.1364/JOSA.55.001205", sourceLabel: "Malitson (1965)" },
   { id: "silicon", name: "Crystalline silicon", formula: "Li dispersion at 293 K", minimumWavelengthUm: 1.2, maximumWavelengthUm: 14, sourceUrl: "https://doi.org/10.1063/1.555624", sourceLabel: "Li (1980)" },
+  { id: "germanium", name: "Crystalline germanium", formula: "Li dispersion at 293 K", minimumWavelengthUm: 1.9, maximumWavelengthUm: 16, sourceUrl: "https://doi.org/10.1063/1.555624", sourceLabel: "Li (1980)" },
   { id: "silicon-nitride", name: "Stoichiometric Si₃N₄", formula: "Luke Sellmeier", minimumWavelengthUm: 0.31, maximumWavelengthUm: 5.5, sourceUrl: "https://doi.org/10.1364/OL.40.004823", sourceLabel: "Luke et al. (2015)" },
+  { id: "arsenic-trisulfide", name: "Arsenic trisulfide (As₂S₃)", formula: "Rodney–Malitson–King Sellmeier at 25 °C", minimumWavelengthUm: 0.57, maximumWavelengthUm: 11.8, sourceUrl: "https://doi.org/10.1364/JOSA.48.000633", sourceLabel: "Rodney et al. (1958)" },
   { id: "lithium-niobate", name: "5% MgO:LiNbO₃", formula: "Zelmon ordinary/extraordinary Sellmeier", minimumWavelengthUm: 0.4, maximumWavelengthUm: 5, anisotropic: true, sourceUrl: "https://doi.org/10.1364/JOSAB.14.003319", sourceLabel: "Zelmon et al. (1997)" },
+  { id: "sapphire", name: "Sapphire (Al₂O₃)", formula: "Malitson–Dodge ordinary/extraordinary Sellmeier", minimumWavelengthUm: 0.2, maximumWavelengthUm: 5, anisotropic: true, sourceUrl: "https://opg.optica.org/josa/abstract.cfm?uri=josa-62-11-1405", sourceLabel: "Malitson & Dodge (1972)" },
+  { id: "magnesium-fluoride", name: "Magnesium fluoride (MgF₂)", formula: "Dodge ordinary/extraordinary Sellmeier at 19 °C", minimumWavelengthUm: 0.2026, maximumWavelengthUm: 7.04, anisotropic: true, sourceUrl: "https://doi.org/10.1364/AO.23.001980", sourceLabel: "Dodge (1984)" },
   { id: "aluminum-nitride", name: "Aluminum nitride", formula: "Pastrňák ordinary/extraordinary Sellmeier", minimumWavelengthUm: 0.22, maximumWavelengthUm: 5, anisotropic: true, sourceUrl: "https://doi.org/10.1002/pssb.19660140140", sourceLabel: "Pastrňák & Roskovcová (1966)" },
   { id: "gallium-arsenide", name: "Gallium arsenide", formula: "Skauli Sellmeier at 22 °C", minimumWavelengthUm: 0.97, maximumWavelengthUm: 17, sourceUrl: "https://doi.org/10.1063/1.1621740", sourceLabel: "Skauli et al. (2003)" },
   { id: "indium-phosphide", name: "Indium phosphide", formula: "Pettit–Turner Sellmeier", minimumWavelengthUm: 0.95, maximumWavelengthUm: 10, sourceUrl: "https://doi.org/10.1063/1.1714393", sourceLabel: "Pettit & Turner (1965)" },
@@ -112,17 +117,29 @@ export function evaluateMaterialPrincipalIndices(
     + 0.4079426 * wavelengthSquared / (wavelengthSquared - 0.1162414 ** 2)
     + 0.8974794 * wavelengthSquared / (wavelengthSquared - 9.896161 ** 2));
   else if (id === "silicon") ordinary = extraordinary = Math.sqrt(11.6858 + 0.939816 / (wavelengthSquared - 0.00810461) + 0.00304347 / (wavelengthSquared - 1.541334));
+  else if (id === "germanium") ordinary = extraordinary = Math.sqrt(9.28156
+    + 6.72880 * wavelengthSquared / (wavelengthSquared - 0.44105)
+    + 0.21307 * wavelengthSquared / (wavelengthSquared - 3870.1));
   else if (id === "silicon-nitride") ordinary = extraordinary = Math.sqrt(1
     + 3.0249 * wavelengthSquared / (wavelengthSquared - 0.1353406 ** 2)
     + 40_314 * wavelengthSquared / (wavelengthSquared - 1_239.842 ** 2));
+  else if (id === "arsenic-trisulfide") ordinary = extraordinary = sellmeier(wavelengthSquared,
+    [1.8983678, 1.9222979, 0.8765134, 0.1188704, 0.9569903],
+    [0.0225, 0.0625, 0.1225, 0.2025, 750]);
   else if (id === "lithium-niobate") {
-    ordinary = threePoleSellmeier(wavelengthSquared, [2.4272, 1.4617, 9.6536], [0.01478, 0.05612, 371.216]);
-    extraordinary = threePoleSellmeier(wavelengthSquared, [2.2454, 1.3005, 6.8972], [0.01242, 0.05313, 331.33]);
+    ordinary = sellmeier(wavelengthSquared, [2.4272, 1.4617, 9.6536], [0.01478, 0.05612, 371.216]);
+    extraordinary = sellmeier(wavelengthSquared, [2.2454, 1.3005, 6.8972], [0.01242, 0.05313, 331.33]);
     ordinary += lithiumNiobateTemperatureShift(wavelengthUm, temperatureC, false);
     extraordinary += lithiumNiobateTemperatureShift(wavelengthUm, temperatureC, true);
     const fieldVPerM = electricFieldVPerUm * 1e6;
     ordinary += -0.5 * ordinary ** 3 * 8.6e-12 * fieldVPerM;
     extraordinary += -0.5 * extraordinary ** 3 * 30.8e-12 * fieldVPerM;
+  } else if (id === "sapphire") {
+    ordinary = sellmeier(wavelengthSquared, [1.4313493, 0.65054713, 5.3414021], [0.0726631 ** 2, 0.1193242 ** 2, 18.028251 ** 2]);
+    extraordinary = sellmeier(wavelengthSquared, [1.5039759, 0.55069141, 6.5927379], [0.0740288 ** 2, 0.1216529 ** 2, 20.072248 ** 2]);
+  } else if (id === "magnesium-fluoride") {
+    ordinary = sellmeier(wavelengthSquared, [0.48755108, 0.39875031, 2.3120353], [0.04338408 ** 2, 0.09461442 ** 2, 23.793604 ** 2]);
+    extraordinary = sellmeier(wavelengthSquared, [0.41344023, 0.50497499, 2.4904862], [0.03684262 ** 2, 0.09076162 ** 2, 23.771995 ** 2]);
   } else if (id === "aluminum-nitride") {
     ordinary = Math.sqrt(1 + 2.1399 + 1.3786 * wavelengthSquared / (wavelengthSquared - 0.1715 ** 2) + 3.861 * wavelengthSquared / (wavelengthSquared - 15.03 ** 2));
     extraordinary = Math.sqrt(1 + 2.0729 + 1.6173 * wavelengthSquared / (wavelengthSquared - 0.1746 ** 2) + 4.139 * wavelengthSquared / (wavelengthSquared - 15.03 ** 2));
@@ -297,7 +314,7 @@ export function validateTabulatedMaterial(data: TabulatedMaterialData | undefine
   }
 }
 
-function threePoleSellmeier(wavelengthSquared: number, strengths: number[], resonancesSquared: number[]): number {
+function sellmeier(wavelengthSquared: number, strengths: number[], resonancesSquared: number[]): number {
   return Math.sqrt(1 + strengths.reduce((sum, strength, index) => (
     sum + strength * wavelengthSquared / (wavelengthSquared - resonancesSquared[index])
   ), 0));

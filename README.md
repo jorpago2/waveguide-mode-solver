@@ -11,7 +11,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
 - Editable or JSON-imported non-overlapping convex polygon regions with independent isotropic material models and exact cell-area subpixel fractions.
 - Dominant-field TE/TM mode labels with transverse node counts, symmetry metrics, cutoff warnings and family-aware sweep tracking.
-- Dispersive material models for LiNbO₃, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
+- Dispersive material models for Si, Ge, Si₃N₄, As₂S₃, LiNbO₃, sapphire, MgF₂, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
 - MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
 - Editable finite layers below the core with a semi-infinite base substrate.
 - Arbitrarily oriented uniaxial anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, including xz/yz coupling, solved by a Rust/WebAssembly four-field first-order Maxwell operator.
@@ -96,7 +96,7 @@ A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modes
 
 The cylindrical finite-difference basis for the curved formulation is described by J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848).
 
-Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068), and [Rakic et al. bulk-metal models](https://doi.org/10.1364/AO.37.005271).
+Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon and germanium](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Rodney et al. arsenic trisulfide](https://doi.org/10.1364/JOSA.48.000633), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), Malitson and Dodge sapphire, [Dodge magnesium fluoride](https://doi.org/10.1364/AO.23.001980), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068), and [Rakic et al. bulk-metal models](https://doi.org/10.1364/AO.37.005271).
 
 ## License
 

@@ -45,6 +45,13 @@ This file records the external scientific sources used to formulate, parameteriz
 27. A. E. Siegman, "Excess spontaneous emission in non-Hermitian optical systems. I. Laser amplifiers," *Physical Review A* 39, 1253-1263 (1989). [doi:10.1103/PhysRevA.39.1253](https://doi.org/10.1103/PhysRevA.39.1253). Optical basis for relating mode non-orthogonality to the Petermann excess-noise factor. The solver reports only the analogous Ritz-projected conditioning estimate.
 28. C. Dembowski et al., "Encircling an exceptional point," *Physical Review E* 69, 056216 (2004). [doi:10.1103/PhysRevE.69.056216](https://doi.org/10.1103/PhysRevE.69.056216). Reference for identifying exceptional points through eigenvalue/eigenvector coalescence and closed parameter-space encircling.
 
+## Additional dielectric material models
+
+29. Reference 12 also supplies the crystalline-germanium dispersion model at 293 K over 1.9–16 µm.
+30. I. H. Malitson and M. J. Dodge, “Refractive Index and Birefringence of Synthetic Sapphire,” *Journal of the Optical Society of America* 62, 1405 (1972). Ordinary and extraordinary sapphire Sellmeier models over 0.2–5 µm.
+31. M. J. Dodge, “Refractive properties of magnesium fluoride,” *Applied Optics* 23, 1980–1985 (1984). [doi:10.1364/AO.23.001980](https://doi.org/10.1364/AO.23.001980). Ordinary and extraordinary MgF₂ Sellmeier models measured near 19 °C over 0.2026–7.04 µm.
+32. W. S. Rodney, I. H. Malitson, and T. A. King, “Refractive Index of Arsenic Trisulfide,” *Journal of the Optical Society of America* 48, 633–636 (1958). [doi:10.1364/JOSA.48.000633](https://doi.org/10.1364/JOSA.48.000633). Five-term As₂S₃ Sellmeier model reduced to 25 °C over 0.57–11.8 µm.
+
 The implementation uses these references only at the reduced Arnoldi level: rows of the inverse Ritz-eigenvector matrix supply projected left vectors, kappa_proj = ||x|| ||y|| / |y^H x|, and Kproj = kappa_proj^2. This does not replace a left eigenmode of the full discretized Maxwell adjoint.
 
 ## Traceability notes

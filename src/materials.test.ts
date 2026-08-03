@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { complexRefractiveIndex, evaluateMetalPermittivity, parseMaterialCsv } from "./materials";
+import { complexRefractiveIndex, evaluateMaterial, evaluateMaterialAxes, evaluateMetalPermittivity, parseMaterialCsv } from "./materials";
+
+describe("dispersive dielectric materials", () => {
+  it("reproduces published refractive-index checkpoints", () => {
+    expect(evaluateMaterial("germanium", 4)).toBeCloseTo(4.02495, 5);
+    expect(evaluateMaterial("arsenic-trisulfide", 0.8)).toBeCloseTo(2.52090, 5);
+
+    const sapphire = evaluateMaterialAxes("sapphire", 1.064);
+    expect(sapphire.nx).toBeCloseTo(1.75449, 5);
+    expect(sapphire.ny).toBeCloseTo(1.74663, 5);
+
+    const magnesiumFluoride = evaluateMaterialAxes("magnesium-fluoride", 1);
+    expect(magnesiumFluoride.nx).toBeCloseTo(1.37358, 5);
+    expect(magnesiumFluoride.ny).toBeCloseTo(1.38519, 5);
+  });
+
+  it("rejects extrapolation beyond the source data", () => {
+    expect(() => evaluateMaterial("germanium", 1.55)).toThrow(/1.9 to 16/);
+    expect(() => evaluateMaterial("arsenic-trisulfide", 12)).toThrow(/0.57 to 11.8/);
+  });
+});
 
 describe("metal materials", () => {
   it("reproduces the Lorentz-Drude gold optical constants", () => {
