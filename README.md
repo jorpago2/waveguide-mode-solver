@@ -44,7 +44,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Two-dimensional mode-count and effective-index maps for visualizing cutoff regions.
 - Versioned JSON project export/import plus numeric CSV exports.
 - User-defined complex effective-index targets and an inspectable Ritz-candidate table with residuals and rejection reasons.
-- Projected left/right Ritz-eigenvector conditioning, right-vector overlap matrices and one-parameter complex-mode branch sweeps with explicitly provisional interaction labels.
+- Advanced mode-interaction diagnostics with projected Ritz-eigenvector conditioning, right-vector overlap matrices and one-parameter complex-mode branch sweeps.
 
 ## Run locally
 

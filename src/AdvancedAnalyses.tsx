@@ -102,8 +102,8 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     ? Math.max(0, ...(result.ritzNonOrthogonality[selectedMode] ?? []).filter((_, index) => index !== selectedMode)) : 0;
   return <>
     <section className="sweep-section" aria-labelledby="topology-title">
-      <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Non-Hermitian mode topology</h2></div>{topologyResult && <button type="button" className="export-button" onClick={() => exportTopology(topologyResult)}>Export CSV</button>}</div>
-      <p className="section-intro">Inspect projected eigenvalue conditioning, right-mode non-orthogonality and complex-index trajectories. Interaction labels identify candidates that require a converged two-parameter loop before they can be called exceptional points.</p>
+      <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={() => exportTopology(topologyResult)}>Export CSV</button>}</div>
+      <p className="section-intro">Inspect mode mixing and numerical sensitivity in lossy, leaky or strongly coupled structures. Complex-index trajectories can flag interactions for closer study; exceptional-point labels remain provisional until verified with a converged two-parameter loop.</p>
       {selected && <div className="analysis-metrics">
         <AnalysisMetric label="Projected condition κ" value={formatCondition(selected.eigenvalueConditionEstimate)} />
         <AnalysisMetric label="Projected Petermann K" value={formatCondition(selected.petermannFactorEstimate)} />
