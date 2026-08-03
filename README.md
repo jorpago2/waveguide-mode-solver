@@ -15,6 +15,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Editable finite layers below the core with a semi-infinite base substrate.
 - Arbitrarily oriented uniaxial anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, including xz/yz coupling, solved by a Rust/WebAssembly four-field first-order Maxwell operator.
 - Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
+- Dispersive bulk-metal models for Ag, Au and Al, plus a plasmonic shift target derived from the planar-interface SPP dispersion relation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
 - Rigorous constant-radius bends using a radial coordinate transformation: the metric factor 1 + x/R enters the material operators, a reduced transverse-electric eigenproblem is solved, and all six fields are reconstructed.
@@ -51,11 +52,12 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, PML, power normalization, material models, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
+The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, PML, power normalization, dielectric and metallic material models, a planar gold/air SPP benchmark, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
 
 ## Numerical scope
 
-- Linear, non-magnetic dielectrics. Arbitrary real symmetric permittivity tensors are available for straight, lossless guides with hard boundaries; bends, PML and material loss currently require diagonal tensors.
+- Linear, local, non-magnetic media. Straight guides support diagonal complex permittivity, including negative real permittivity; arbitrary real symmetric tensors require hard boundaries. The phasor convention is exp(iβz − iωt), so passive media have Im(ε) ≥ 0 and Im(β) ≥ 0.
+- Built-in metal data use a bulk Lorentz–Drude fit over 0.1–6 eV (0.207–12.4 µm). Thin-film morphology, surface scattering, temperature dependence and nonlocal response are not included; import measured n,k data when available. Metallic bends are outside the validated scope.
 - Curved guides must have a constant radius larger than the entire radial half-domain. Varying-radius transitions, Euler bends and longitudinal discontinuities are outside the 2D eigenmode model.
 - Hard-wall and PML outer boundaries are available. Radiation loss requires mesh, padding, PML-thickness and PML-strength convergence checks.
 - The reported GCI applies to effective-index mesh discretization only and is valid only when the three grids converge monotonically in the asymptotic range.
@@ -63,7 +65,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.
 - Mode labels are inferred from the dominant real transverse electric-field component. Treat labels near degeneracies, strong hybridization or asymmetric geometries as diagnostic rather than exact quantum numbers.
-- Finite stack layers are horizontal and lie below the core. Exterior indices must remain below the core index; high-index-substrate leakage requires a dedicated leaky-mode formulation and PML convergence study.
+- Finite stack layers are horizontal and lie below the core. Dielectric guidance requires a core index above the exterior; metallic stacks instead use a surface-plasmon search interval. High-index-substrate leakage still requires a dedicated leaky-mode formulation and PML convergence study.
 - The LiNbO₃ temperature correction applies the congruent-LN wavelength-dependent thermo-optic fit of Moretti et al. to the 5% MgO Sellmeier base as an approximation and is restricted to 20–240 °C. Its electro-optic control assumes a uniform DC field parallel to the optical axis and uses telecom values r₁₃ = 8.6 pm/V and r₃₃ = 30.8 pm/V; process-specific data are required and it does not solve electrodes or RF/optical overlap.
 - Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
@@ -74,7 +76,7 @@ A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modes
 
 The cylindrical finite-difference basis for the curved formulation is described by J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848).
 
-Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), and [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068).
+Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068), and [Rakic et al. bulk-metal models](https://doi.org/10.1364/AO.37.005271).
 
 ## License
 

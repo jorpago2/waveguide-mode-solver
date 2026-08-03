@@ -1,5 +1,6 @@
 export type MaterialId = "custom" | "tabulated" | "air" | "silica" | "silicon" | "silicon-nitride"
-  | "lithium-niobate" | "aluminum-nitride" | "gallium-arsenide" | "indium-phosphide" | "silicon-carbide";
+  | "lithium-niobate" | "aluminum-nitride" | "gallium-arsenide" | "indium-phosphide" | "silicon-carbide"
+  | "silver" | "gold" | "aluminum";
 
 export type BuiltInMaterialId = Exclude<MaterialId, "custom" | "tabulated">;
 
@@ -12,6 +13,7 @@ export interface MaterialDefinition {
   minimumWavelengthUm: number;
   maximumWavelengthUm: number;
   anisotropic?: boolean;
+  metallic?: boolean;
   sourceUrl?: string;
   sourceLabel?: string;
 }
@@ -25,6 +27,11 @@ export interface MaterialAxes {
 export interface PrincipalMaterialIndices {
   ordinary: number;
   extraordinary: number;
+}
+
+export interface ComplexPermittivity {
+  real: number;
+  imaginary: number;
 }
 
 export interface TabulatedMaterialData {
@@ -55,6 +62,9 @@ export const MATERIALS: MaterialDefinition[] = [
   { id: "gallium-arsenide", name: "Gallium arsenide", formula: "Skauli Sellmeier at 22 °C", minimumWavelengthUm: 0.97, maximumWavelengthUm: 17, sourceUrl: "https://doi.org/10.1063/1.1621740", sourceLabel: "Skauli et al. (2003)" },
   { id: "indium-phosphide", name: "Indium phosphide", formula: "Pettit–Turner Sellmeier", minimumWavelengthUm: 0.95, maximumWavelengthUm: 10, sourceUrl: "https://doi.org/10.1063/1.1714393", sourceLabel: "Pettit & Turner (1965)" },
   { id: "silicon-carbide", name: "4H silicon carbide", formula: "Wang ordinary/extraordinary Sellmeier", minimumWavelengthUm: 0.405, maximumWavelengthUm: 2.325, anisotropic: true, sourceUrl: "https://doi.org/10.1002/lpor.201300068", sourceLabel: "Wang et al. (2013)" },
+  { id: "silver", name: "Silver (Ag)", formula: "Lorentz-Drude bulk-metal model", minimumWavelengthUm: 0.207, maximumWavelengthUm: 12.4, metallic: true, sourceUrl: "https://doi.org/10.1364/AO.37.005271", sourceLabel: "Rakic et al. (1998)" },
+  { id: "gold", name: "Gold (Au)", formula: "Lorentz-Drude bulk-metal model", minimumWavelengthUm: 0.207, maximumWavelengthUm: 12.4, metallic: true, sourceUrl: "https://doi.org/10.1364/AO.37.005271", sourceLabel: "Rakic et al. (1998)" },
+  { id: "aluminum", name: "Aluminum (Al)", formula: "Lorentz-Drude bulk-metal model", minimumWavelengthUm: 0.207, maximumWavelengthUm: 12.4, metallic: true, sourceUrl: "https://doi.org/10.1364/AO.37.005271", sourceLabel: "Rakic et al. (1998)" },
 ];
 
 export function materialDefinition(id: MaterialId): MaterialDefinition {
@@ -89,6 +99,11 @@ export function evaluateMaterialPrincipalIndices(
     throw new Error(`${material.name} is valid from ${material.minimumWavelengthUm} to ${material.maximumWavelengthUm} µm.`);
   }
   const wavelengthSquared = wavelengthUm ** 2;
+  if (material.metallic) {
+    const permittivity = evaluateMetalPermittivity(id as MetalMaterialId, wavelengthUm);
+    const n = complexRefractiveIndex(permittivity).n;
+    return { ordinary: n, extraordinary: n };
+  }
   let ordinary: number;
   let extraordinary: number;
   if (id === "air") ordinary = extraordinary = 1;
@@ -126,6 +141,66 @@ export function evaluateMaterialPrincipalIndices(
     extraordinary = Math.sqrt(6.79485 + 0.15558 / (wavelengthSquared - 0.03535) - 0.02296 * wavelengthSquared);
   }
   return { ordinary, extraordinary };
+}
+
+export type MetalMaterialId = "silver" | "gold" | "aluminum";
+
+interface LorentzDrudeModel {
+  plasmaEnergyEv: number;
+  drude: [strength: number, dampingEv: number];
+  oscillators: Array<[strength: number, dampingEv: number, resonanceEv: number]>;
+}
+
+const LORENTZ_DRUDE_MODELS: Record<MetalMaterialId, LorentzDrudeModel> = {
+  silver: { plasmaEnergyEv: 9.01, drude: [0.845, 0.048], oscillators: [
+    [0.065, 3.886, 0.816], [0.124, 0.452, 4.481], [0.011, 0.065, 8.185],
+    [0.840, 0.916, 9.083], [5.646, 2.419, 20.29],
+  ] },
+  gold: { plasmaEnergyEv: 9.03, drude: [0.760, 0.053], oscillators: [
+    [0.024, 0.241, 0.415], [0.010, 0.345, 0.830], [0.071, 0.870, 2.969],
+    [0.601, 2.494, 4.304], [4.384, 2.214, 13.32],
+  ] },
+  aluminum: { plasmaEnergyEv: 14.98, drude: [0.523, 0.047], oscillators: [
+    [0.227, 0.333, 0.162], [0.050, 0.312, 1.544], [0.166, 1.351, 1.808],
+    [0.030, 3.382, 3.473],
+  ] },
+};
+
+/** Relative permittivity for exp(i beta z - i omega t); passive media have Im(epsilon) > 0. */
+export function evaluateMetalPermittivity(id: MetalMaterialId, wavelengthUm: number): ComplexPermittivity {
+  const material = materialDefinition(id);
+  if (wavelengthUm < material.minimumWavelengthUm || wavelengthUm > material.maximumWavelengthUm) {
+    throw new Error(`${material.name} is valid from ${material.minimumWavelengthUm} to ${material.maximumWavelengthUm} µm.`);
+  }
+  const model = LORENTZ_DRUDE_MODELS[id];
+  const photonEnergyEv = 1.239841984 / wavelengthUm;
+  const plasmaSquared = model.plasmaEnergyEv ** 2;
+  const [drudeStrength, drudeDamping] = model.drude;
+  const drude = complexDivide(-drudeStrength * plasmaSquared, 0, photonEnergyEv ** 2, drudeDamping * photonEnergyEv);
+  return model.oscillators.reduce((epsilon, [strength, damping, resonance]) => {
+    const oscillator = complexDivide(strength * plasmaSquared, 0, resonance ** 2 - photonEnergyEv ** 2, -damping * photonEnergyEv);
+    return { real: epsilon.real + oscillator.real, imaginary: epsilon.imaginary + oscillator.imaginary };
+  }, { real: 1 + drude.real, imaginary: drude.imaginary });
+}
+
+export function complexRefractiveIndex(permittivity: ComplexPermittivity): { n: number; k: number } {
+  const magnitude = Math.hypot(permittivity.real, permittivity.imaginary);
+  return {
+    n: Math.sqrt(Math.max(0, (magnitude + permittivity.real) / 2)),
+    k: Math.sqrt(Math.max(0, (magnitude - permittivity.real) / 2)),
+  };
+}
+
+export function isMetalMaterial(id: MaterialId | undefined): id is MetalMaterialId {
+  return Boolean(id && materialDefinition(id).metallic);
+}
+
+function complexDivide(aReal: number, aImaginary: number, bReal: number, bImaginary: number): ComplexPermittivity {
+  const denominator = bReal ** 2 + bImaginary ** 2;
+  return {
+    real: (aReal * bReal + aImaginary * bImaginary) / denominator,
+    imaginary: (aImaginary * bReal - aReal * bImaginary) / denominator,
+  };
 }
 
 export function opticAxisDirection(opticAxis: OpticAxis = "y", tiltDeg?: number, azimuthDeg?: number): [number, number, number] {
@@ -169,8 +244,8 @@ export function parseMaterialCsv(text: string, name = "Imported material"): Tabu
     if (!Number.isFinite(wavelengthUm) || !Number.isFinite(refractiveIndex) || !Number.isFinite(extinctionCoefficient)) {
       throw new Error(`Material CSV row ${rowIndex + 2} contains a non-numeric value.`);
     }
-    if (wavelengthUm < 0.2 || wavelengthUm > 1_000 || refractiveIndex < 1 || refractiveIndex > 50
-      || extinctionCoefficient < 0 || extinctionCoefficient > 10) {
+    if (wavelengthUm < 0.2 || wavelengthUm > 1_000 || refractiveIndex < 0 || refractiveIndex > 50
+      || extinctionCoefficient < 0 || extinctionCoefficient > 50) {
       throw new Error(`Material CSV row ${rowIndex + 2} is outside the supported wavelength, n or k range.`);
     }
     return { wavelengthUm, refractiveIndex, extinctionCoefficient };
@@ -215,7 +290,7 @@ export function validateTabulatedMaterial(data: TabulatedMaterialData | undefine
     const refractiveIndex = data.refractiveIndex[index];
     const extinction = data.extinctionCoefficient[index];
     if (!Number.isFinite(wavelength) || !Number.isFinite(refractiveIndex) || !Number.isFinite(extinction)
-      || wavelength < 0.2 || wavelength > 1_000 || refractiveIndex < 1 || refractiveIndex > 50 || extinction < 0 || extinction > 10
+      || wavelength < 0.2 || wavelength > 1_000 || refractiveIndex < 0 || refractiveIndex > 50 || extinction < 0 || extinction > 50
       || (index > 0 && wavelength <= data.wavelengthUm[index - 1])) {
       throw new Error("The imported material table must contain strictly increasing, finite wavelength, n and k values within the supported ranges.");
     }

@@ -1,6 +1,7 @@
 import { EigenvalueDecomposition, Matrix } from "ml-matrix";
 import {
-  evaluateMaterialPrincipalIndices, evaluateTabulatedMaterial, materialDefinition,
+  complexRefractiveIndex, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity, evaluateTabulatedMaterial,
+  isMetalMaterial, materialDefinition,
   opticAxisDirection, uniaxialPermittivityTensor, validateTabulatedMaterial,
   type MaterialId, type OpticAxis, type SymmetricTensor, type TabulatedMaterialData,
 } from "./materials";
@@ -37,7 +38,7 @@ export const PARAMETER_MAXIMUMS = {
   wavelengthUm: 1_000,
   dimensionUm: 1_000,
   refractiveIndex: 50,
-  extinction: 10,
+  extinction: 50,
   dispersionPerUm: 1_000,
   gridResolution: 256,
   modeCount: 8,
@@ -229,7 +230,6 @@ interface Grid {
   epsilonCellYZImaginary: Float64Array;
   cellArea: Float64Array;
   coreFraction: Float64Array;
-  extinctionCell: Float64Array;
   epsilonX: Float64Array;
   epsilonY: Float64Array;
   inverseEpsilonX: Float64Array;
@@ -304,11 +304,11 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if (!Number.isFinite(config.paddingUm) || config.paddingUm < 0.2 || config.paddingUm > PARAMETER_MAXIMUMS.dimensionUm) {
     errors.push(`Cladding padding must be between 0.2 and ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
   }
-  if (!Number.isFinite(config.claddingIndex) || config.claddingIndex < 1 || config.claddingIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
-    errors.push(`Cladding index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
+  if (!Number.isFinite(config.claddingIndex) || config.claddingIndex < 0 || config.claddingIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
+    errors.push(`Cladding index must be between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
-  if (!Number.isFinite(config.coreIndex) || config.coreIndex <= config.claddingIndex || config.coreIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
-    errors.push(`Core index must be greater than the cladding index and no larger than ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
+  if (!Number.isFinite(config.coreIndex) || config.coreIndex < 0 || config.coreIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
+    errors.push(`Core index must be between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
   if (!Number.isInteger(config.gridResolution) || config.gridResolution < 24 || config.gridResolution > PARAMETER_MAXIMUMS.gridResolution) {
     errors.push(`Grid resolution must be an integer between 24 and ${PARAMETER_MAXIMUMS.gridResolution}.`);
@@ -362,8 +362,8 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if ((config.geometry ?? "channel") === "coupler" && (config.couplerGapUm ?? 0) <= 2 * sidewallExpansion(config)) {
     errors.push("The coupler sidewalls overlap at the guide base; increase the gap or sidewall angle.");
   }
-  if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 1 || (config.substrateIndex ?? 0) > PARAMETER_MAXIMUMS.refractiveIndex)) {
-    errors.push(`Substrate index must be between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
+  if ((config.geometry ?? "channel") === "multilayer" && ((config.substrateIndex ?? 0) < 0 || (config.substrateIndex ?? 0) > PARAMETER_MAXIMUMS.refractiveIndex)) {
+    errors.push(`Substrate index must be between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
   if ((config.materialTemperatureC ?? 21) < -200 || (config.materialTemperatureC ?? 21) > 500) errors.push("Material temperature must be between -200 and 500 °C.");
   if ((config.coreMaterial ?? "custom") === "lithium-niobate" && ((config.materialTemperatureC ?? 21) < 20 || (config.materialTemperatureC ?? 21) > 240)) errors.push("The LiNbO₃ thermo-optic fit is limited to 20–240 °C.");
@@ -381,7 +381,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   const stackLayers = config.stackLayers ?? [];
   if (stackLayers.length > 6) errors.push("The vertical stack is limited to six finite layers.");
   if (stackLayers.some((layer) => !layer.name.trim() || !Number.isFinite(layer.thicknessUm) || layer.thicknessUm <= 0
-    || layer.thicknessUm > PARAMETER_MAXIMUMS.dimensionUm || !Number.isFinite(layer.index) || layer.index < 1
+    || layer.thicknessUm > PARAMETER_MAXIMUMS.dimensionUm || !Number.isFinite(layer.index) || layer.index < 0
     || layer.index > PARAMETER_MAXIMUMS.refractiveIndex || !Number.isFinite(layer.extinction ?? 0)
     || !Number.isFinite(layer.opticAxisTiltDeg ?? 0) || !Number.isFinite(layer.opticAxisAzimuthDeg ?? 0)
     || (layer.extinction ?? 0) < 0 || (layer.extinction ?? 0) > PARAMETER_MAXIMUMS.extinction)) {
@@ -420,14 +420,17 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   }
   if (finiteOptional && materialModelsValid && materialTablesValid) {
     const materials = materialValues(config);
-    const materialList = [materials.core, materials.cladding, materials.substrate, ...materials.layers];
+    const substrateActive = (config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0;
+    const materialList = [materials.core, materials.cladding, ...(substrateActive ? [materials.substrate, ...materials.layers] : [])];
     const indices = materialList.flatMap((material) => [material.nx, material.ny, material.nz]);
-    if (indices.some((value) => value < 1 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 1 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
+    if (indices.some((value) => value < 0 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
+    const hasMetal = materialList.some((material) => material.metallic);
+    if (hasMetal && materialList.every((material) => material.metallic)) errors.push("A plasmonic mode requires an interface between a negative-permittivity material and a dielectric.");
     const coreMaximum = Math.max(materials.core.nx, materials.core.ny, materials.core.nz);
     const exteriorMaximum = Math.max(materials.cladding.nx, materials.cladding.ny, materials.cladding.nz,
       (config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? Math.max(materials.substrate.nx, materials.substrate.ny, materials.substrate.nz) : 0,
       ...materials.layers.flatMap((material) => [material.nx, material.ny, material.nz]));
-    if (coreMaximum <= exteriorMaximum) errors.push("The core must retain a larger principal index than the exterior materials.");
+    if (!hasMetal && coreMaximum <= exteriorMaximum) errors.push("The core must retain a larger principal index than the exterior materials.");
     const hasLongitudinalCoupling = materialList.some((material) => [material.epsilonReal.xz, material.epsilonReal.yz, material.epsilonImaginary.xz, material.epsilonImaginary.yz].some((value) => Math.abs(value) > 1e-12));
     const hasOffDiagonalRotation = materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary));
     const hasMaterialLoss = materialList.some((material) => Object.values(material.epsilonImaginary).some((value) => Math.abs(value) > 1e-12));
@@ -436,6 +439,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     if (bendRadiusUm > 0 && materialList.some((material) => tensorHasOffDiagonal(material.epsilonReal, material.epsilonImaginary))) {
       errors.push("Rotated off-diagonal anisotropy is currently limited to straight guides; a constant local tensor is not rigorous along a curved crystal path.");
     }
+    if (bendRadiusUm > 0 && hasMetal) errors.push("Metallic modes are currently limited to straight guides; curved-plasmonic validation is not yet available.");
   }
   return errors;
 }
@@ -459,10 +463,10 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
       : Math.max(operator.complex ? (operator.eigenvaluePower === 1 ? 48 : 28) : 16, config.modeCount * (operator.complex ? 12 : 7) + (operator.eigenvaluePower === 1 ? 8 : 0)),
   );
   const pairs = solveLargestEigenpairs(operator, arnoldiDimension, requestedRitzPairs, config, recycleSubspace);
-  const { exteriorIndex, maximumIndex } = guidanceBounds(config);
+  const { lowerIndex, upperIndex } = guidanceBounds(config);
   const guidedPairs = pairs.filter((pair) => {
     const effectiveIndex = pairEffectiveIndex(pair, operator);
-    return effectiveIndex > exteriorIndex + 1e-5 && effectiveIndex < maximumIndex * 1.01;
+    return effectiveIndex > lowerIndex && effectiveIndex < upperIndex;
   });
   const uniquePairs = guidedPairs.filter((pair, index, all) => {
     const effectiveIndex = pairEffectiveIndex(pair, operator);
@@ -486,9 +490,13 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   );
   if (cellsAcrossCore < 8) warnings.push("Fewer than 8 cells span the smallest core dimension; refine the grid before using quantitative values.");
   if (convergedPairs.length < uniquePairs.length) warnings.push(`${uniquePairs.length - convergedPairs.length} poorly converged mode${uniquePairs.length - convergedPairs.length === 1 ? " was" : "s were"} discarded because the field residual exceeded 2 × 10⁻².`);
-  if (modes.length < config.modeCount) warnings.push(`Only ${modes.length} guided mode${modes.length === 1 ? " was" : "s were"} found inside the requested index interval.`);
+  if (modes.length < config.modeCount) warnings.push(`Only ${modes.length} guided mode${modes.length === 1 ? " was" : "s were"} found inside the modal search interval.`);
   if (modes.some((mode) => mode.residual > 2e-3)) warnings.push("One or more eigenpairs need review; reduce the requested mode count or mesh bias before interpreting the field profile.");
   if ((config.bendRadiusUm ?? 0) > 0 && (config.boundary ?? "hard") !== "pml") warnings.push("A bent guide with hard walls cannot yield physical radiation loss; use PML and verify mesh, padding and absorber convergence.");
+  if (guidanceBounds(config).plasmonic) {
+    warnings.push("Metal results use a local bulk permittivity model. Thin-film morphology, surface scattering and nonlocal response are not included.");
+    warnings.push("Plasmonic fields vary sharply at interfaces; verify both mesh and domain-size convergence before using effective index or loss quantitatively.");
+  }
 
   return {
     modes,
@@ -670,9 +678,9 @@ interface MaterialValue {
   nx: number;
   ny: number;
   nz: number;
-  k: number;
   epsilonReal: SymmetricTensor;
   epsilonImaginary: SymmetricTensor;
+  metallic: boolean;
 }
 
 function materialValues(config: WaveguideConfig) {
@@ -686,6 +694,16 @@ function materialValues(config: WaveguideConfig) {
     if (materialId === "tabulated") {
       const sample = evaluateTabulatedMaterial(table as TabulatedMaterialData, config.wavelengthUm);
       return diagonalMaterial(sample.n + indexOffset, sample.n + indexOffset, sample.n + indexOffset, sample.k);
+    }
+    if (isMetalMaterial(materialId)) {
+      const epsilon = evaluateMetalPermittivity(materialId, config.wavelengthUm);
+      const index = complexRefractiveIndex(epsilon);
+      const zero = { xy: 0, xz: 0, yz: 0 };
+      return {
+        nx: index.n, ny: index.n, nz: index.n, metallic: epsilon.real < 0,
+        epsilonReal: { xx: epsilon.real, yy: epsilon.real, zz: epsilon.real, ...zero },
+        epsilonImaginary: { xx: epsilon.imaginary, yy: epsilon.imaginary, zz: epsilon.imaginary, ...zero },
+      };
     }
     if (materialId && materialId !== "custom") {
       const principal = evaluateMaterialPrincipalIndices(materialId, config.wavelengthUm, config.materialTemperatureC ?? 21, electricFieldVPerUm);
@@ -712,9 +730,9 @@ function materialValues(config: WaveguideConfig) {
         nx: complexIndexValue(epsilonReal.xx, epsilonImaginary.xx),
         ny: complexIndexValue(epsilonReal.yy, epsilonImaginary.yy),
         nz: complexIndexValue(epsilonReal.zz, epsilonImaginary.zz),
-        k: extinction,
         epsilonReal,
         epsilonImaginary,
+        metallic: false,
       };
     }
     return diagonalMaterial(
@@ -735,9 +753,10 @@ function materialValues(config: WaveguideConfig) {
 function diagonalMaterial(nx: number, ny: number, nz: number, k: number): MaterialValue {
   const zero = { xy: 0, xz: 0, yz: 0 };
   return {
-    nx, ny, nz, k,
+    nx, ny, nz,
     epsilonReal: { xx: nx ** 2 - k ** 2, yy: ny ** 2 - k ** 2, zz: nz ** 2 - k ** 2, ...zero },
     epsilonImaginary: { xx: 2 * nx * k, yy: 2 * ny * k, zz: 2 * nz * k, ...zero },
+    metallic: [nx ** 2 - k ** 2, ny ** 2 - k ** 2, nz ** 2 - k ** 2].some((value) => value < 0),
   };
 }
 
@@ -749,15 +768,64 @@ function tensorHasOffDiagonal(real: SymmetricTensor, imaginary: SymmetricTensor)
   return [real.xy, real.xz, real.yz, imaginary.xy, imaginary.xz, imaginary.yz].some((value) => Math.abs(value) > 1e-12);
 }
 
-function guidanceBounds(config: WaveguideConfig): { exteriorIndex: number; maximumIndex: number } {
+interface GuidanceBounds {
+  exteriorIndex: number;
+  maximumIndex: number;
+  targetIndex: number;
+  lowerIndex: number;
+  upperIndex: number;
+  plasmonic: boolean;
+}
+
+function guidanceBounds(config: WaveguideConfig): GuidanceBounds {
   const values = materialValues(config);
   const maximum = (material: { nx: number; ny: number; nz: number }) => Math.max(material.nx, material.ny, material.nz);
-  const stackMaximum = values.layers.reduce((value, layer) => Math.max(value, maximum(layer)), 0);
   const hasSubstrate = (config.geometry ?? "channel") === "multilayer" || (config.stackLayers?.length ?? 0) > 0;
+  const active = [values.core, values.cladding, ...(hasSubstrate ? [values.substrate, ...values.layers] : [])];
+  const dielectric = active.filter((material) => !material.metallic);
+  const metals = active.filter((material) => material.metallic);
+  const exteriorIndex = dielectric.reduce((value, material) => Math.max(value, maximum(material)), 0);
+  const maximumIndex = active.reduce((value, material) => Math.max(value, maximum(material)), 0);
+  if (metals.length > 0 && dielectric.length > 0) {
+    const targets = metals.flatMap((metal) => dielectric.map((medium) => surfacePlasmonIndex(metal, medium)))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const targetIndex = targets.length > 0 ? Math.max(...targets) : Math.max(exteriorIndex, 1);
+    return {
+      exteriorIndex,
+      maximumIndex: Math.max(maximumIndex, targetIndex),
+      targetIndex,
+      lowerIndex: Math.max(1e-6, 0.5 * targetIndex),
+      upperIndex: 2 * targetIndex,
+      plasmonic: true,
+    };
+  }
   return {
-    exteriorIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, stackMaximum),
-    maximumIndex: Math.max(maximum(values.core), maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, stackMaximum),
+    exteriorIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)),
+    maximumIndex,
+    targetIndex: 0.55 * maximumIndex + 0.45 * Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)),
+    lowerIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)) + 1e-5,
+    upperIndex: maximumIndex * 1.01,
+    plasmonic: false,
   };
+}
+
+function surfacePlasmonIndex(metal: MaterialValue, dielectric: MaterialValue): number {
+  const metalEpsilon = { real: metal.epsilonReal.xx, imaginary: metal.epsilonImaginary.xx };
+  const dielectricEpsilon = { real: dielectric.epsilonReal.xx, imaginary: dielectric.epsilonImaginary.xx };
+  const numerator = {
+    real: metalEpsilon.real * dielectricEpsilon.real - metalEpsilon.imaginary * dielectricEpsilon.imaginary,
+    imaginary: metalEpsilon.real * dielectricEpsilon.imaginary + metalEpsilon.imaginary * dielectricEpsilon.real,
+  };
+  const denominator = {
+    real: metalEpsilon.real + dielectricEpsilon.real,
+    imaginary: metalEpsilon.imaginary + dielectricEpsilon.imaginary,
+  };
+  const magnitudeSquared = denominator.real ** 2 + denominator.imaginary ** 2;
+  const ratio = {
+    real: (numerator.real * denominator.real + numerator.imaginary * denominator.imaginary) / magnitudeSquared,
+    imaginary: (numerator.imaginary * denominator.real - numerator.real * denominator.imaginary) / magnitudeSquared,
+  };
+  return complexSquareRoot(ratio.real, ratio.imaginary).real;
 }
 
 function coreFractionAtCell(x0: number, x1: number, y0: number, y1: number, config: WaveguideConfig): number {
@@ -1065,7 +1133,6 @@ function createGrid(config: WaveguideConfig): Grid {
   const epsilonCellYZ = new Float64Array(nx * ny);
   const epsilonCellYZImaginary = new Float64Array(nx * ny);
   const epsilonCell = new Float64Array(nx * ny);
-  const extinctionCell = new Float64Array(nx * ny);
   const cellArea = new Float64Array(nx * ny);
   const coreFraction = new Float64Array(nx * ny);
   const material = materialValues(config);
@@ -1097,7 +1164,6 @@ function createGrid(config: WaveguideConfig): Grid {
       epsilonCellXZImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.xz, 0);
       epsilonCellYZImaginary[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonImaginary.yz, 0);
       epsilonCell[index] = (epsilonCellX[index] + epsilonCellY[index] + epsilonCellZ[index]) / 3;
-      extinctionCell[index] = components.reduce((sum, component) => sum + component.fraction * component.value.k, 0);
       cellArea[index] = dxCell[column] * dyCell[row];
     }
   }
@@ -1187,7 +1253,6 @@ function createGrid(config: WaveguideConfig): Grid {
     epsilonCellYZImaginary,
     cellArea,
     coreFraction,
-    extinctionCell,
     epsilonX,
     epsilonY,
     inverseEpsilonX: inverseEpsilonX.real,
@@ -1412,8 +1477,7 @@ function solveLargestEigenpairs(
 ): RitzPair[] {
   const physicalVectorSize = operator.physicalVectorSize;
   const vectorSize = physicalVectorSize * (operator.complex ? 2 : 1);
-  const { exteriorIndex, maximumIndex } = guidanceBounds(config);
-  const targetIndex = 0.55 * maximumIndex + 0.45 * exteriorIndex;
+  const { targetIndex, lowerIndex, upperIndex, plasmonic } = guidanceBounds(config);
   const shift = (operator.k0 * targetIndex) ** operator.eigenvaluePower;
   const basis: Float64Array[] = [];
   const hessenberg = Array.from({ length: arnoldiDimension + 1 }, () => new Float64Array(arnoldiDimension));
@@ -1425,10 +1489,12 @@ function solveLargestEigenpairs(
     multiplyScalarInPlace(vector, 1 / Math.max(norm(vector), 1e-30));
   }
   const finish = (candidates: RitzPair[]): RitzPair[] => {
-    const sorted = candidates.sort((first, second) => second.eigenvalue - first.eigenvalue);
+    const sorted = candidates.sort((first, second) => plasmonic
+      ? Math.abs(pairEffectiveIndex(first, operator) - targetIndex) - Math.abs(pairEffectiveIndex(second, operator) - targetIndex)
+      : second.eigenvalue - first.eigenvalue);
     const reusable = sorted.filter((pair) => {
       const index = pairEffectiveIndex(pair, operator);
-      return index > exteriorIndex && index < maximumIndex * 1.01;
+      return index > lowerIndex && index < upperIndex;
     }).slice(0, 3).map((pair) => operator.complex
       ? complexBlock(pair.vector, pair.vectorImaginary as Float64Array)
       : pair.vector.slice());
@@ -1808,7 +1874,6 @@ function finalizeMode(
   let exEnergy = 0;
   let eyEnergy = 0;
   let ezEnergy = 0;
-  let lossWeightedEnergy = 0;
 
   for (let index = 0; index < electricIntensity.length; index += 1) {
     const e2 = complexMagnitudeSquaredAt(collocatedEx, index) + complexMagnitudeSquaredAt(collocatedEy, index) + complexMagnitudeSquaredAt(collocatedEz, index);
@@ -1825,12 +1890,11 @@ function finalizeMode(
     exEnergy += complexMagnitudeSquaredAt(collocatedEx, index) * area;
     eyEnergy += complexMagnitudeSquaredAt(collocatedEy, index) * area;
     ezEnergy += complexMagnitudeSquaredAt(collocatedEz, index) * area;
-    lossWeightedEnergy += grid.extinctionCell[index] * grid.epsilonCell[index] * e2 * area;
-    electricCore += grid.coreFraction[index] * grid.epsilonCell[index] * e2 * area;
+    electricCore += grid.coreFraction[index] * Math.abs(grid.epsilonCell[index]) * e2 * area;
   }
   let weightedElectricTotal = 0;
   for (let index = 0; index < electricIntensity.length; index += 1) {
-    weightedElectricTotal += grid.epsilonCell[index] * electricIntensity[index] * grid.cellArea[index];
+    weightedElectricTotal += Math.abs(grid.epsilonCell[index]) * electricIntensity[index] * grid.cellArea[index];
   }
 
   const vacuumImpedanceOhm = 376.730313668;
@@ -1850,8 +1914,12 @@ function finalizeMode(
   const physicalPoynting = new Float64Array(nx * ny);
   let modalPowerW = 0;
   let corePowerW = 0;
+  let electricLossIntegralVm2 = 0;
   for (let index = 0; index < physicalIntensity.length; index += 1) {
-    physicalIntensity[index] = complexMagnitudeSquaredAt(physicalEx, index) + complexMagnitudeSquaredAt(physicalEy, index) + complexMagnitudeSquaredAt(physicalEz, index);
+    const ex2 = complexMagnitudeSquaredAt(physicalEx, index);
+    const ey2 = complexMagnitudeSquaredAt(physicalEy, index);
+    const ez2 = complexMagnitudeSquaredAt(physicalEz, index);
+    physicalIntensity[index] = ex2 + ey2 + ez2;
     physicalPoynting[index] = 0.5 * (
       physicalEx.real[index] * physicalHy.real[index] + physicalEx.imaginary[index] * physicalHy.imaginary[index]
       - physicalEy.real[index] * physicalHx.real[index] - physicalEy.imaginary[index] * physicalHx.imaginary[index]
@@ -1859,7 +1927,13 @@ function finalizeMode(
     const cellPowerW = physicalPoynting[index] * grid.cellArea[index] * 1e-12;
     modalPowerW += cellPowerW;
     corePowerW += grid.coreFraction[index] * cellPowerW;
+    electricLossIntegralVm2 += (grid.epsilonCellXImaginary[index] * ex2
+      + grid.epsilonCellYImaginary[index] * ey2 + grid.epsilonCellZImaginary[index] * ez2) * grid.cellArea[index] * 1e-12;
   }
+  const angularFrequency = 2 * Math.PI * 299_792_458 / (config.wavelengthUm * 1e-6);
+  const absorbedPowerPerM = 0.5 * angularFrequency * 8.854_187_8128e-12 * Math.max(0, electricLossIntegralVm2);
+  const absorptionBetaImaginaryPerUm = absorbedPowerPerM / (2 * Math.max(Math.abs(modalPowerW), 1e-30)) * 1e-6;
+  const betaImaginaryPerUm = Math.max(Math.abs(betaComplex.imaginary), absorptionBetaImaginaryPerUm);
   const fields: Record<FieldComponent, number[][]> = {
     Ex: toMatrix(physicalEx.real, nx, ny),
     Ey: toMatrix(physicalEy.real, nx, ny),
@@ -1874,7 +1948,7 @@ function finalizeMode(
   const polarization = exEnergy >= eyEnergy ? "quasi-TE" : "quasi-TM";
   const classification = classifyField(polarization === "quasi-TE" ? fields.Ex : fields.Ey);
   const label = `${polarization === "quasi-TE" ? "TE" : "TM"}${classification.horizontalOrder}${classification.verticalOrder}`;
-  const { exteriorIndex, maximumIndex } = guidanceBounds(config);
+  const { exteriorIndex, maximumIndex, plasmonic } = guidanceBounds(config);
   const effectiveIndex = beta / k0;
   const guidanceMargin = effectiveIndex - exteriorIndex;
   const electricConfinement = electricCore / weightedElectricTotal;
@@ -1887,7 +1961,7 @@ function finalizeMode(
     ...classification,
     polarization,
     effectiveIndex,
-    effectiveIndexImaginary: Math.abs(betaComplex.imaginary / k0),
+    effectiveIndexImaginary: betaImaginaryPerUm / k0,
     propagationConstantPerUm: beta,
     residual: pair.residual,
     electricConfinement,
@@ -1895,14 +1969,13 @@ function finalizeMode(
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,
     longitudinalElectricFraction: ezEnergy / electricTotal,
     xPolarizedElectricFraction: exEnergy / transverseElectricEnergy,
-    lossDbPerCm: operator.complex
-      ? (20 / Math.log(10)) * Math.abs(betaComplex.imaginary) * 10_000
-      : (4 * Math.PI * 10_000 * 10 / Math.log(10) / config.wavelengthUm)
-        * (lossWeightedEnergy / Math.max(weightedElectricTotal, 1e-30)),
+    lossDbPerCm: (20 / Math.log(10)) * betaImaginaryPerUm * 10_000,
     modalPowerW,
     peakPoyntingWPerM2: Math.max(...physicalPoynting),
     guidanceMargin,
-    nearCutoff: guidanceMargin < Math.max(1e-3, 0.01 * (maximumIndex - exteriorIndex)) || electricConfinement < 0.02,
+    nearCutoff: plasmonic
+      ? guidanceMargin < 1e-4
+      : guidanceMargin < Math.max(1e-3, 0.01 * (maximumIndex - exteriorIndex)) || electricConfinement < 0.02,
     ...(bendRadiusUm > 0 ? {
       bendRadiusUm,
       azimuthalModeNumber: beta * bendRadiusUm,
