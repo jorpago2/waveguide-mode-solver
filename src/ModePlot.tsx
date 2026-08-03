@@ -221,6 +221,11 @@ function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
     line,
   });
   const geometry = config.geometry ?? "channel";
+  if (geometry === "polygon") return (config.polygonRegions ?? []).map((region) => ({
+    type: "path" as const,
+    path: `${region.vertices.map((vertex, index) => `${index === 0 ? "M" : "L"} ${vertex.xUm},${vertex.yUm}`).join(" ")} Z`,
+    line,
+  }));
   const etchedHeight = geometry === "rib" ? config.heightUm - (config.slabHeightUm ?? config.heightUm / 2) : config.heightUm;
   const expansion = geometry === "slot" ? 0 : etchedHeight / Math.tan((config.sidewallAngleDeg ?? 90) * Math.PI / 180);
   if (geometry === "slot") {

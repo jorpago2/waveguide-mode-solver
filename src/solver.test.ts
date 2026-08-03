@@ -39,6 +39,42 @@ function horizontalCentroid(field: number[][], xUm: number[]): number {
 }
 
 describe("full-vector finite-difference mode solver", () => {
+  it("solves validated polygon regions with subpixel material fractions", () => {
+    const polygon = {
+      ...benchmark,
+      geometry: "polygon" as const,
+      widthUm: 1.2,
+      heightUm: 0.6,
+      modeCount: 1,
+      polygonRegions: [{
+        name: "SiN core", material: "custom" as const, index: 2,
+        vertices: [{ xUm: -0.5, yUm: -0.2 }, { xUm: 0.5, yUm: -0.15 }, { xUm: 0.45, yUm: 0.2 }, { xUm: -0.45, yUm: 0.18 }],
+      }],
+    };
+    expect(validateWaveguide(polygon)).toEqual([]);
+    const result = solveWaveguide(polygon);
+    expect(result.modes).toHaveLength(1);
+    const epsilon = result.permittivity.real.x.flat();
+    expect(epsilon.some((value) => value > benchmark.claddingIndex ** 2 && value < benchmark.coreIndex ** 2)).toBe(true);
+  });
+
+  it("rejects concave and overlapping polygon regions", () => {
+    const invalid = {
+      ...benchmark,
+      geometry: "polygon" as const,
+      widthUm: 2,
+      heightUm: 2,
+      polygonRegions: [
+        { name: "Concave", material: "custom" as const, index: 2, vertices: [{ xUm: -0.8, yUm: -0.8 }, { xUm: 0, yUm: 0 }, { xUm: -0.8, yUm: 0.8 }, { xUm: 0.3, yUm: 0 }] },
+        { name: "Base", material: "custom" as const, index: 2, vertices: [{ xUm: -0.4, yUm: -0.4 }, { xUm: 0.4, yUm: -0.4 }, { xUm: 0.4, yUm: 0.4 }, { xUm: -0.4, yUm: 0.4 }] },
+        { name: "Overlap", material: "custom" as const, index: 2.1, vertices: [{ xUm: -0.2, yUm: -0.2 }, { xUm: 0.5, yUm: -0.2 }, { xUm: 0.5, yUm: 0.2 }, { xUm: -0.2, yUm: 0.2 }] },
+      ],
+    };
+    const errors = validateWaveguide(invalid).join(" ");
+    expect(errors).toContain("convex polygon");
+    expect(errors).toContain("overlap");
+  });
+
   it("interpolates a display mesh without changing the solver samples", () => {
     const field = [[0, 1], [4, 5]];
     const interpolated = interpolateFieldMatrix(field, [0, 1], [0, 2], 2);

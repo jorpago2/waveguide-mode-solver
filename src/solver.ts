@@ -18,7 +18,7 @@ try {
 
 export type PhysicalFieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz";
 export type FieldComponent = PhysicalFieldComponent | "intensity" | "poynting";
-export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
+export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler" | "polygon";
 export type BoundaryType = "hard" | "pml";
 export type SymmetryBoundary = "none" | "pec" | "pmc";
 export type BendDirection = "positive-x" | "negative-x";
@@ -34,6 +34,19 @@ export interface VerticalLayer {
   opticAxis?: OpticAxis;
   opticAxisTiltDeg?: number;
   opticAxisAzimuthDeg?: number;
+}
+
+export interface PolygonVertex {
+  xUm: number;
+  yUm: number;
+}
+
+export interface PolygonRegion {
+  name: string;
+  vertices: PolygonVertex[];
+  material: MaterialId;
+  index: number;
+  extinction?: number;
 }
 
 export const PARAMETER_MAXIMUMS = {
@@ -109,6 +122,7 @@ export interface WaveguideConfig {
   substrateMaterialTable?: TabulatedMaterialData;
   coreElectricFieldVPerUm?: number;
   stackLayers?: VerticalLayer[];
+  polygonRegions?: PolygonRegion[];
   bendRadiusUm?: number;
   bendDirection?: BendDirection;
   targetEffectiveIndex?: number;
@@ -483,6 +497,37 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if ((config.geometry ?? "channel") === "coupler" && (!Number.isFinite(config.couplerGapUm) || (config.couplerGapUm ?? 0) <= 0 || (config.couplerGapUm ?? 0) > PARAMETER_MAXIMUMS.dimensionUm)) {
     errors.push(`Coupler gap must be positive and no larger than ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
   }
+  const polygonRegions = config.polygonRegions ?? [];
+  if ((config.geometry ?? "channel") === "polygon") {
+    if (polygonRegions.length < 1 || polygonRegions.length > 12) errors.push("Polygon geometry requires between one and twelve material regions.");
+    if ((config.stackLayers?.length ?? 0) > 0) errors.push("Polygon geometry cannot be combined with the separate vertical-stack model.");
+    if (new Set(polygonRegions.map((region) => region.name.trim().toLowerCase())).size !== polygonRegions.length
+      || polygonRegions.some((region) => !region.name.trim())) errors.push("Polygon region names must be non-empty and unique.");
+    for (const region of polygonRegions) {
+      if (region.vertices.length < 3 || region.vertices.length > 32) {
+        errors.push(`${region.name || "Polygon region"} must contain between 3 and 32 vertices.`);
+        continue;
+      }
+      if (region.vertices.some((vertex) => !Number.isFinite(vertex.xUm) || !Number.isFinite(vertex.yUm)
+        || Math.abs(vertex.xUm) > config.widthUm / 2 || Math.abs(vertex.yUm) > config.heightUm / 2)) {
+        errors.push(`${region.name || "Polygon region"} vertices must be finite and lie inside the geometry span.`);
+      }
+      if (!isConvexPolygon(region.vertices)) errors.push(`${region.name || "Polygon region"} must be a non-degenerate convex polygon.`);
+      if (!Number.isFinite(region.index) || region.index < 0 || region.index > PARAMETER_MAXIMUMS.refractiveIndex
+        || !Number.isFinite(region.extinction ?? 0) || (region.extinction ?? 0) < 0 || (region.extinction ?? 0) > PARAMETER_MAXIMUMS.extinction) {
+        errors.push(`${region.name || "Polygon region"} needs a valid refractive index and non-negative extinction.`);
+      }
+      if (region.material === "tabulated") errors.push("Imported material tables are not supported inside polygon regions.");
+    }
+    for (let first = 0; first < polygonRegions.length; first += 1) {
+      for (let second = first + 1; second < polygonRegions.length; second += 1) {
+        if (convexIntersectionArea(polygonRegions[first].vertices, polygonRegions[second].vertices) > 1e-12) {
+          errors.push(`Polygon regions ${polygonRegions[first].name} and ${polygonRegions[second].name} overlap.`);
+        }
+      }
+    }
+    if (symmetryX !== "none" || symmetryY !== "none") errors.push("PEC/PMC symmetry planes are not available for user-defined polygon geometry.");
+  }
   const sidewallAngle = config.sidewallAngleDeg ?? 90;
   if (sidewallAngle < 20 || sidewallAngle > 90) errors.push("Sidewall angle must be between 20° and 90°, measured from the substrate plane.");
   if ((config.geometry ?? "channel") === "coupler" && (config.couplerGapUm ?? 0) <= 2 * sidewallExpansion(config)) {
@@ -532,9 +577,9 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     }
   }
   let materialModelsValid = true;
-  const selectedMaterialIds = new Set([config.coreMaterial, config.claddingMaterial,
+  const selectedMaterialIds = new Set([...(config.geometry === "polygon" ? [] : [config.coreMaterial]), config.claddingMaterial,
     ...((config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? [config.substrateMaterial] : []),
-    ...stackLayers.map((layer) => layer.material)]);
+    ...stackLayers.map((layer) => layer.material), ...((config.geometry ?? "channel") === "polygon" ? polygonRegions.map((region) => region.material) : [])]);
   for (const materialId of selectedMaterialIds) {
     if (materialId && materialId !== "custom") {
       const material = materialDefinition(materialId);
@@ -547,12 +592,17 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if (finiteOptional && materialModelsValid && materialTablesValid) {
     const materials = materialValues(config);
     const substrateActive = (config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0;
-    const materialList = [materials.core, materials.cladding, ...(substrateActive ? [materials.substrate, ...materials.layers] : [])];
+    const polygonActive = (config.geometry ?? "channel") === "polygon";
+    const materialList = polygonActive
+      ? [materials.cladding, ...materials.polygons]
+      : [materials.core, materials.cladding, ...(substrateActive ? [materials.substrate, ...materials.layers] : [])];
     const indices = materialList.flatMap((material) => [material.nx, material.ny, material.nz]);
     if (indices.some((value) => value < 0 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
     const hasMetal = materialList.some((material) => material.metallic);
     if (hasMetal && materialList.every((material) => material.metallic)) errors.push("A plasmonic mode requires an interface between a negative-permittivity material and a dielectric.");
-    const coreMaximum = Math.max(materials.core.nx, materials.core.ny, materials.core.nz);
+    const coreMaximum = polygonActive
+      ? Math.max(0, ...materials.polygons.flatMap((material) => [material.nx, material.ny, material.nz]))
+      : Math.max(materials.core.nx, materials.core.ny, materials.core.nz);
     const exteriorMaximum = Math.max(materials.cladding.nx, materials.cladding.ny, materials.cladding.nz,
       (config.geometry ?? "channel") === "multilayer" || stackLayers.length > 0 ? Math.max(materials.substrate.nx, materials.substrate.ny, materials.substrate.nz) : 0,
       ...materials.layers.flatMap((material) => [material.nx, material.ny, material.nz]));
@@ -1049,6 +1099,7 @@ function materialValues(config: WaveguideConfig) {
     cladding: values(config.claddingMaterial, config.claddingIndex, config.claddingIndexY, config.claddingIndexZ, config.claddingExtinction, config.claddingDispersionPerUm, config.claddingOpticAxis, 0, 0, config.claddingOpticAxisTiltDeg, config.claddingOpticAxisAzimuthDeg, config.claddingMaterialTable),
     substrate: values(config.substrateMaterial, config.substrateIndex ?? config.claddingIndex, config.substrateIndexY, config.substrateIndexZ, config.substrateExtinction, config.substrateDispersionPerUm, config.substrateOpticAxis, 0, 0, config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg, config.substrateMaterialTable),
     layers: (config.stackLayers ?? []).map((layer) => values(layer.material, layer.index, layer.indexY, layer.indexZ, layer.extinction, 0, layer.opticAxis, 0, 0, layer.opticAxisTiltDeg, layer.opticAxisAzimuthDeg)),
+    polygons: (config.polygonRegions ?? []).map((region) => values(region.material, region.index, undefined, undefined, region.extinction, 0, undefined)),
   };
 }
 
@@ -1076,6 +1127,7 @@ function materialEnergyDerivatives(config: WaveguideConfig): ReturnType<typeof m
     cladding: derivative(current.cladding, lower?.cladding, upper?.cladding),
     substrate: derivative(current.substrate, lower?.substrate, upper?.substrate),
     layers: current.layers.map((value, index) => derivative(value, lower?.layers[index], upper?.layers[index])),
+    polygons: current.polygons.map((value, index) => derivative(value, lower?.polygons[index], upper?.polygons[index])),
   };
 }
 
@@ -1110,7 +1162,10 @@ function guidanceBounds(config: WaveguideConfig): GuidanceBounds {
   const values = materialValues(config);
   const maximum = (material: { nx: number; ny: number; nz: number }) => Math.max(material.nx, material.ny, material.nz);
   const hasSubstrate = (config.geometry ?? "channel") === "multilayer" || (config.stackLayers?.length ?? 0) > 0;
-  const active = [values.core, values.cladding, ...(hasSubstrate ? [values.substrate, ...values.layers] : [])];
+  const polygonActive = (config.geometry ?? "channel") === "polygon";
+  const active = polygonActive
+    ? [values.cladding, ...values.polygons]
+    : [values.core, values.cladding, ...(hasSubstrate ? [values.substrate, ...values.layers] : [])];
   const dielectric = active.filter((material) => !material.metallic);
   const metals = active.filter((material) => material.metallic);
   const exteriorIndex = dielectric.reduce((value, material) => Math.max(value, maximum(material)), 0);
@@ -1129,10 +1184,10 @@ function guidanceBounds(config: WaveguideConfig): GuidanceBounds {
     };
   }
   return {
-    exteriorIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)),
+    exteriorIndex: polygonActive ? maximum(values.cladding) : Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)),
     maximumIndex,
-    targetIndex: config.targetEffectiveIndex ?? (0.55 * maximumIndex + 0.45 * Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum))),
-    lowerIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)) + 1e-5,
+    targetIndex: config.targetEffectiveIndex ?? (0.55 * maximumIndex + 0.45 * (polygonActive ? maximum(values.cladding) : Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)))),
+    lowerIndex: (polygonActive ? maximum(values.cladding) : Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum))) + 1e-5,
     upperIndex: maximumIndex * 1.01,
     plasmonic: false,
   };
@@ -1159,6 +1214,11 @@ function surfacePlasmonIndex(metal: MaterialValue, dielectric: MaterialValue): n
 
 function coreFractionAtCell(x0: number, x1: number, y0: number, y1: number, config: WaveguideConfig): number {
   const geometry = config.geometry ?? "channel";
+  if (geometry === "polygon") {
+    return clamp((config.polygonRegions ?? []).reduce((sum, region) => sum + polygonFraction(
+      x0, x1, y0, y1, region.vertices.map((vertex) => ({ x: vertex.xUm, y: vertex.yUm })),
+    ), 0), 0, 1);
+  }
   const coreBottom = -config.heightUm / 2;
   const coreTop = config.heightUm / 2;
   let core = 0;
@@ -1200,6 +1260,18 @@ function materialComponentsAtCell(
   config: WaveguideConfig,
   material: ReturnType<typeof materialValues>,
 ): Array<{ region: string; fraction: number; value: MaterialValue }> {
+  if ((config.geometry ?? "channel") === "polygon") {
+    const regions = (config.polygonRegions ?? []).map((region, index) => ({
+      region: region.name,
+      fraction: polygonFraction(x0, x1, y0, y1, region.vertices.map((vertex) => ({ x: vertex.xUm, y: vertex.yUm }))),
+      value: material.polygons[index],
+    }));
+    return [...regions, {
+      region: "Cladding",
+      fraction: Math.max(0, 1 - regions.reduce((sum, region) => sum + region.fraction, 0)),
+      value: material.cladding,
+    }];
+  }
   const core = coreFractionAtCell(x0, x1, y0, y1, config);
   const stack = stackFractions(y0, y1, config);
   const layerTotal = stack.layers.reduce((sum, fraction) => sum + fraction, 0);
@@ -1220,7 +1292,7 @@ function intervalFraction(value0: number, value1: number, interval0: number, int
 }
 
 function sidewallExpansion(config: WaveguideConfig): number {
-  if ((config.geometry ?? "channel") === "slot") return 0;
+  if (["slot", "polygon"].includes(config.geometry ?? "channel")) return 0;
   const etchedHeight = (config.geometry ?? "channel") === "rib"
     ? config.heightUm - (config.slabHeightUm ?? config.heightUm / 2)
     : config.heightUm;
@@ -1262,6 +1334,60 @@ function polygonFraction(x0: number, x1: number, y0: number, y1: number, polygon
     twiceArea += clipped[index].x * next.y - next.x * clipped[index].y;
   }
   return Math.abs(twiceArea) / 2 / ((x1 - x0) * (y1 - y0));
+}
+
+function signedPolygonArea(vertices: PolygonVertex[]): number {
+  return vertices.reduce((area, vertex, index) => {
+    const next = vertices[(index + 1) % vertices.length];
+    return area + vertex.xUm * next.yUm - next.xUm * vertex.yUm;
+  }, 0) / 2;
+}
+
+function isConvexPolygon(vertices: PolygonVertex[]): boolean {
+  if (vertices.length < 3 || Math.abs(signedPolygonArea(vertices)) <= 1e-12) return false;
+  if (vertices.some((vertex, index) => {
+    const next = vertices[(index + 1) % vertices.length];
+    return (vertex.xUm - next.xUm) ** 2 + (vertex.yUm - next.yUm) ** 2 <= 1e-24;
+  })) return false;
+  let orientation = 0;
+  for (let index = 0; index < vertices.length; index += 1) {
+    const first = vertices[index];
+    const second = vertices[(index + 1) % vertices.length];
+    const third = vertices[(index + 2) % vertices.length];
+    const cross = (second.xUm - first.xUm) * (third.yUm - second.yUm)
+      - (second.yUm - first.yUm) * (third.xUm - second.xUm);
+    if (Math.abs(cross) <= 1e-12) continue;
+    if (orientation === 0) orientation = Math.sign(cross);
+    else if (Math.sign(cross) !== orientation) return false;
+  }
+  return orientation !== 0;
+}
+
+function convexIntersectionArea(first: PolygonVertex[], second: PolygonVertex[]): number {
+  if (!isConvexPolygon(first) || !isConvexPolygon(second)) return 0;
+  let clipped = first.map((vertex) => ({ x: vertex.xUm, y: vertex.yUm }));
+  const orientation = Math.sign(signedPolygonArea(second));
+  for (let index = 0; index < second.length && clipped.length > 0; index += 1) {
+    const edge0 = second[index];
+    const edge1 = second[(index + 1) % second.length];
+    const side = (point: { x: number; y: number }) => orientation * (
+      (edge1.xUm - edge0.xUm) * (point.y - edge0.yUm) - (edge1.yUm - edge0.yUm) * (point.x - edge0.xUm)
+    ) >= -1e-12;
+    clipped = clipPolygon(clipped, side, (start, end) => {
+      const edgeX = edge1.xUm - edge0.xUm;
+      const edgeY = edge1.yUm - edge0.yUm;
+      const segmentX = end.x - start.x;
+      const segmentY = end.y - start.y;
+      const denominator = segmentX * edgeY - segmentY * edgeX;
+      if (Math.abs(denominator) <= 1e-15) return end;
+      const fraction = ((edge0.xUm - start.x) * edgeY - (edge0.yUm - start.y) * edgeX) / denominator;
+      return { x: start.x + fraction * segmentX, y: start.y + fraction * segmentY };
+    });
+  }
+  return Math.abs(clipped.reduce((area, vertex, index) => {
+    const next = clipped[(index + 1) % clipped.length];
+    return area + vertex.x * next.y - next.x * vertex.y;
+  }, 0)) / 2;
 }
 
 function clipPolygon(
@@ -1328,6 +1454,10 @@ function alignEdgesToInterfaces(edges: number[], interfaces: number[]): number[]
 
 function geometryInterfaces(config: WaveguideConfig): { x: number[]; y: number[] } {
   const geometry = config.geometry ?? "channel";
+  if (geometry === "polygon") return {
+    x: (config.polygonRegions ?? []).flatMap((region) => region.vertices.map((vertex) => vertex.xUm)),
+    y: (config.polygonRegions ?? []).flatMap((region) => region.vertices.map((vertex) => vertex.yUm)),
+  };
   const bottom = -config.heightUm / 2;
   const top = config.heightUm / 2;
   const expansion = sidewallExpansion(config);
@@ -1545,12 +1675,16 @@ function createGrid(config: WaveguideConfig): Grid {
   const coreFraction = new Float64Array(nx * ny);
   const material = materialValues(config);
   const energyDerivative = materialEnergyDerivatives(config);
-  const lossRegions = [
+  const materialRegions = (config.geometry ?? "channel") === "polygon" ? [
+    ...material.polygons.map((value, index) => ({ region: config.polygonRegions?.[index]?.name || `Region ${index + 1}`, value, derivative: energyDerivative.polygons[index] })),
+    { region: "Cladding", value: material.cladding, derivative: energyDerivative.cladding },
+  ] : [
     { region: "Core", value: material.core, derivative: energyDerivative.core },
     { region: "Base substrate", value: material.substrate, derivative: energyDerivative.substrate },
     { region: "Cladding", value: material.cladding, derivative: energyDerivative.cladding },
     ...material.layers.map((value, index) => ({ region: config.stackLayers?.[index]?.name || `Layer ${index + 1}`, value, derivative: energyDerivative.layers[index] })),
-  ].map(({ region, value, derivative }) => ({
+  ];
+  const lossRegions = materialRegions.map(({ region, value, derivative }) => ({
     region,
     fraction: new Float64Array(nx * ny),
     epsilonReal: { x: value.epsilonReal.xx, y: value.epsilonReal.yy, z: value.epsilonReal.zz },
@@ -1562,7 +1696,9 @@ function createGrid(config: WaveguideConfig): Grid {
     for (let column = 0; column < nx; column += 1) {
       const index = cellIndex(row, column, nx);
       const components = materialComponentsAtCell(xEdges[column], xEdges[column + 1], yEdges[row], yEdges[row + 1], config, material);
-      coreFraction[index] = components[0].fraction;
+      coreFraction[index] = (config.geometry ?? "channel") === "polygon"
+        ? components.slice(0, -1).reduce((sum, component) => sum + component.fraction, 0)
+        : components[0].fraction;
       components.forEach((component, regionIndex) => { lossRegions[regionIndex].fraction[index] = component.fraction; });
       epsilonCellX[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.xx, 0);
       epsilonCellY[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.yy, 0);

@@ -299,6 +299,15 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .stack-layer .select-field { margin-top: 0; }
 .remove-layer { justify-self: start; padding: 6px 9px; color: #8d351f; background: #fff0e9; border: 0; border-radius: 7px; cursor: pointer; font-size: 0.68rem; font-weight: 700; }
 .add-layer { margin-top: 10px; }
+.polygon-region { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+.polygon-vertices { grid-column: 1 / -1; display: grid; gap: 7px; }
+.polygon-vertices > strong { color: #53666c; font-size: 0.72rem; }
+.polygon-vertices > div { display: grid; grid-template-columns: 1fr 1fr auto; gap: 7px; }
+.polygon-vertices input { min-width: 0; }
+.polygon-vertices .export-button { justify-self: start; }
+.polygon-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 7px; }
+.polygon-actions .export-button { display: inline-flex; align-items: center; }
+.polygon-actions input[type="file"] { display: none; }
 
 .sweep-section {
   margin-top: 14px;

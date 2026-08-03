@@ -21,6 +21,7 @@ import {
   type BlochSweepResult,
   type BlochSweepSettings,
   type GeometryType,
+  type PolygonRegion,
   type GeometrySweepParameter,
   type GeometrySweepResult,
   type GeometrySweepSettings,
@@ -269,6 +270,53 @@ export function App() {
     setDraft((current) => ({ ...current, stackLayers: (current.stackLayers ?? []).filter((_, layerIndex) => layerIndex !== index) }));
   }
 
+  function updatePolygonRegion(index: number, update: Partial<PolygonRegion>) {
+    setDraft((current) => ({ ...current, polygonRegions: (current.polygonRegions ?? []).map((region, regionIndex) => regionIndex === index ? { ...region, ...update } : region) }));
+  }
+
+  function addPolygonRegion() {
+    setDraft((current) => {
+      const count = current.polygonRegions?.length ?? 0;
+      const halfWidth = current.widthUm / 8;
+      const halfHeight = current.heightUm / 8;
+      const centerX = count % 2 === 0 ? -current.widthUm / 4 : current.widthUm / 4;
+      const centerY = Math.floor(count / 2) % 2 === 0 ? 0 : current.heightUm / 4;
+      return { ...current, polygonRegions: [...(current.polygonRegions ?? []), {
+        name: `Region ${count + 1}`, material: "custom", index: current.coreIndex, extinction: 0,
+        vertices: [
+          { xUm: centerX - halfWidth, yUm: centerY - halfHeight }, { xUm: centerX + halfWidth, yUm: centerY - halfHeight },
+          { xUm: centerX + halfWidth, yUm: centerY + halfHeight }, { xUm: centerX - halfWidth, yUm: centerY + halfHeight },
+        ],
+      }] };
+    });
+  }
+
+  function updatePolygonVertex(regionIndex: number, vertexIndex: number, coordinate: "xUm" | "yUm", value: number) {
+    setDraft((current) => ({ ...current, polygonRegions: (current.polygonRegions ?? []).map((region, index) => index === regionIndex ? {
+      ...region, vertices: region.vertices.map((vertex, position) => position === vertexIndex ? { ...vertex, [coordinate]: value } : vertex),
+    } : region) }));
+  }
+
+  async function importPolygons(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const value = JSON.parse(await file.text()) as unknown;
+      const regions = Array.isArray(value) ? value : typeof value === "object" && value !== null && Array.isArray((value as { polygonRegions?: unknown }).polygonRegions)
+        ? (value as { polygonRegions: unknown[] }).polygonRegions : undefined;
+      if (!regions || !isPolygonRegions(regions)) throw new Error("Expected valid polygon regions with name, material, index and finite xUm/yUm vertices.");
+      const next = { ...draft, geometry: "polygon" as const, polygonRegions: regions };
+      const errors = validateWaveguide(next);
+      if (errors.length > 0) throw new Error(errors.join(" "));
+      setDraft(next);
+      setError("");
+      setMessage(`${regions.length} polygon region${regions.length === 1 ? "" : "s"} imported. Solve to apply them.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The polygon JSON could not be imported.");
+    }
+  }
+
   async function solve(event: FormEvent) {
     event.preventDefault();
     const errors = validateWaveguide(draft);
@@ -455,22 +503,55 @@ export function App() {
             </div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3><p>Define the physical structure and propagation path.</p></div>
-              <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => ({ ...current, geometry: event.target.value as GeometryType }))}>
-                <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option>
+              <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => {
+                const geometry = event.target.value as GeometryType;
+                return geometry === "polygon" ? { ...current, geometry, stackLayers: [], symmetryX: "none", symmetryY: "none", polygonRegions: current.polygonRegions?.length ? current.polygonRegions : [{
+                  name: "Core", material: current.coreMaterial ?? "custom", index: current.coreIndex, extinction: current.coreExtinction ?? 0,
+                  vertices: [{ xUm: -current.widthUm / 2, yUm: -current.heightUm / 2 }, { xUm: current.widthUm / 2, yUm: -current.heightUm / 2 }, { xUm: current.widthUm / 2, yUm: current.heightUm / 2 }, { xUm: -current.widthUm / 2, yUm: current.heightUm / 2 }],
+                }] } : { ...current, geometry };
+              })}>
+                <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option><option value="polygon">Polygon regions</option>
               </select></label>
               <div className="form-grid">
-                <NumberField label={(draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
-                <NumberField label="Core height" unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
+                <NumberField label={(draft.geometry ?? "channel") === "polygon" ? "Geometry span x" : (draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
+                <NumberField label={(draft.geometry ?? "channel") === "polygon" ? "Geometry span y" : "Core height"} unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
                 {(draft.geometry ?? "channel") === "rib" && <NumberField label="Slab height" unit="µm" value={draft.slabHeightUm ?? 0.15} min={0.01} max={Number.isFinite(draft.heightUm) ? draft.heightUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slabHeightUm", v)} />}
                 {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
                 {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
-                {(draft.geometry ?? "channel") !== "slot" && <NumberField label="Sidewall angle" unit="°" value={draft.sidewallAngleDeg ?? 90} min={20} max={90} step={1} onChange={(v) => updateNumber("sidewallAngleDeg", v)} />}
+                {!(["slot", "polygon"] as GeometryType[]).includes(draft.geometry ?? "channel") && <NumberField label="Sidewall angle" unit="°" value={draft.sidewallAngleDeg ?? 90} min={20} max={90} step={1} onChange={(v) => updateNumber("sidewallAngleDeg", v)} />}
                 <label className="select-field">Propagation path<select value={(draft.bendRadiusUm ?? 0) > 0 ? "bend" : "straight"} onChange={(event) => setDraft((current) => event.target.value === "bend" ? { ...current, bendRadiusUm: current.bendRadiusUm && current.bendRadiusUm > 0 ? current.bendRadiusUm : 10, boundary: "pml" } : { ...current, bendRadiusUm: 0 })}><option value="straight">Straight</option><option value="bend">Constant-radius bend</option></select></label>
                 {(draft.bendRadiusUm ?? 0) > 0 && <>
                   <NumberField label="Bend radius" unit="µm" value={draft.bendRadiusUm ?? 10} min={0.1} max={PARAMETER_MAXIMUMS.bendRadiusUm} step={0.5} onChange={(v) => updateNumber("bendRadiusUm", v)} />
                   <label className="select-field">Bend direction<select value={draft.bendDirection ?? "positive-x"} onChange={(event) => setDraft((current) => ({ ...current, bendDirection: event.target.value as "positive-x" | "negative-x" }))}><option value="positive-x">Outer side at +x</option><option value="negative-x">Outer side at −x</option></select></label>
                 </>}
               </div>
+              {(draft.geometry ?? "channel") === "polygon" && <details className="advanced-controls" open>
+                <summary>Polygon regions ({draft.polygonRegions?.length ?? 0})</summary>
+                <p>Build arbitrary cross-sections from non-overlapping convex regions. Coordinates are relative to the cross-section centre.</p>
+                <div className="stack-editor polygon-editor">
+                  {(draft.polygonRegions ?? []).map((region, regionIndex) => <div className="stack-layer polygon-region" key={regionIndex}>
+                    <label>Region name<input value={region.name} onChange={(event) => updatePolygonRegion(regionIndex, { name: event.target.value })} /></label>
+                    <MaterialSelect label="Material" value={region.material} allowTabulated={false} onChange={(material) => updatePolygonRegion(regionIndex, { material, index: displayMaterialIndex(material, draft.wavelengthUm, region.index, draft.materialTemperatureC) })} />
+                    <NumberField label="Index" unit="n" value={displayPolygonIndex(region, draft)} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={region.material !== "custom"} onChange={(index) => updatePolygonRegion(regionIndex, { index })} />
+                    <NumberField label="Extinction" unit="Im(n)" value={displayPolygonExtinction(region, draft)} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={isMetalMaterial(region.material)} onChange={(extinction) => updatePolygonRegion(regionIndex, { extinction })} />
+                    <div className="polygon-vertices">
+                      <strong>Vertices (x, y) in µm</strong>
+                      {region.vertices.map((vertex, vertexIndex) => <div key={vertexIndex}>
+                        <input type="number" aria-label={`${region.name} vertex ${vertexIndex + 1} x`} value={Number.isFinite(vertex.xUm) ? vertex.xUm : ""} step="0.01" onChange={(event) => updatePolygonVertex(regionIndex, vertexIndex, "xUm", event.target.valueAsNumber)} />
+                        <input type="number" aria-label={`${region.name} vertex ${vertexIndex + 1} y`} value={Number.isFinite(vertex.yUm) ? vertex.yUm : ""} step="0.01" onChange={(event) => updatePolygonVertex(regionIndex, vertexIndex, "yUm", event.target.valueAsNumber)} />
+                        <button type="button" className="remove-layer" disabled={region.vertices.length <= 3} onClick={() => updatePolygonRegion(regionIndex, { vertices: region.vertices.filter((_, index) => index !== vertexIndex) })} aria-label={`Remove vertex ${vertexIndex + 1}`}>−</button>
+                      </div>)}
+                      <button type="button" className="export-button" disabled={region.vertices.length >= 32} onClick={() => {
+                        const first = region.vertices[0]; const last = region.vertices[region.vertices.length - 1];
+                        updatePolygonRegion(regionIndex, { vertices: [...region.vertices, { xUm: (first.xUm + last.xUm) / 2, yUm: (first.yUm + last.yUm) / 2 }] });
+                      }}>Add vertex</button>
+                    </div>
+                    <button type="button" className="remove-layer" onClick={() => setDraft((current) => ({ ...current, polygonRegions: (current.polygonRegions ?? []).filter((_, index) => index !== regionIndex) }))} aria-label={`Remove ${region.name}`}>Remove region</button>
+                  </div>)}
+                </div>
+                <div className="polygon-actions"><button type="button" className="export-button" onClick={addPolygonRegion} disabled={(draft.polygonRegions?.length ?? 0) >= 12}>Add region</button><button type="button" className="export-button" onClick={() => download(JSON.stringify({ polygonRegions: draft.polygonRegions ?? [] }, null, 2), "waveguide-polygons.json", "application/json;charset=utf-8")}>Export JSON</button><label className="export-button">Import JSON<input type="file" accept="application/json,.json" onChange={(event) => void importPolygons(event)} /></label></div>
+              </details>}
+              {(draft.geometry ?? "channel") !== "polygon" &&
               <details className="advanced-controls">
                 <summary>Vertical stack ({draft.stackLayers?.length ?? 0} layers)</summary>
                 <p>Finite layers are listed from the core downward; the base substrate continues below the final layer.</p>
@@ -484,41 +565,41 @@ export function App() {
                   </div>)}
                 </div>
                 <button type="button" className="export-button add-layer" onClick={addStackLayer} disabled={(draft.stackLayers?.length ?? 0) >= 6}>Add layer</button>
-              </details>
+              </details>}
             </section>
 
             <section id="configuration-materials" className="configuration-section" role="tabpanel" hidden={configurationTab !== "materials"}>
               <div className="configuration-heading"><h3>Optical materials</h3><p>Select models and edit custom tensor properties.</p></div>
               <div className="material-selectors">
-                <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />
+                {(draft.geometry ?? "channel") !== "polygon" && <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />}
                 <MaterialSelect label="Cladding material" value={draft.claddingMaterial ?? "custom"} onChange={(value) => updateMaterial("claddingMaterial", "claddingIndex", value)} />
                 {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <MaterialSelect label="Base substrate" value={draft.substrateMaterial ?? "custom"} onChange={(value) => updateMaterial("substrateMaterial", "substrateIndex", value)} />}
               </div>
               <div className="form-grid">
-                <NumberField label="Core nₓ" unit="n" value={displayMaterialAxis(draft, "core", "x")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndex", v)} />
+                {(draft.geometry ?? "channel") !== "polygon" && <NumberField label="Core nₓ" unit="n" value={displayMaterialAxis(draft, "core", "x")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndex", v)} />}
                 <NumberField label="Cladding nₓ" unit="n" value={displayMaterialAxis(draft, "cladding", "x")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndex", v)} />
                 {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <NumberField label="Base substrate n" unit="n" value={displayMaterialIndex(draft.substrateMaterial, draft.wavelengthUm, draft.substrateIndex ?? draft.claddingIndex, draft.materialTemperatureC, draft.substrateOpticAxis, 0, draft.substrateMaterialTable)} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndex", v)} />}
               </div>
               <details className="advanced-controls">
-                <summary>Anisotropy, loss & dispersion</summary>
+                <summary>{(draft.geometry ?? "channel") === "polygon" ? "Cladding loss & dispersion" : "Anisotropy, loss & dispersion"}</summary>
               <div className="material-table-imports">
-                {(draft.coreMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Core" table={draft.coreMaterialTable} onChange={(event) => void importMaterialCsv("core", event)} />}
+                {(draft.geometry ?? "channel") !== "polygon" && (draft.coreMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Core" table={draft.coreMaterialTable} onChange={(event) => void importMaterialCsv("core", event)} />}
                 {(draft.claddingMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Cladding" table={draft.claddingMaterialTable} onChange={(event) => void importMaterialCsv("cladding", event)} />}
                 {(draft.substrateMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Substrate" table={draft.substrateMaterialTable} onChange={(event) => void importMaterialCsv("substrate", event)} />}
               </div>
               <div className="form-grid">
-                <NumberField label="Core nᵧ" unit="n" value={displayMaterialAxis(draft, "core", "y")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexY", v)} />
-                <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={displayMaterialAxis(draft, "core", "z")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexZ", v)} />
+                {(draft.geometry ?? "channel") !== "polygon" && <><NumberField label="Core nᵧ" unit="n" value={displayMaterialAxis(draft, "core", "y")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexY", v)} />
+                <NumberField label={<>Core n<sub>z</sub></>} unit="n" value={displayMaterialAxis(draft, "core", "z")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreIndexZ", v)} /></>}
                 <NumberField label="Cladding nᵧ" unit="n" value={displayMaterialAxis(draft, "cladding", "y")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndexY", v)} />
                 <NumberField label={<>Cladding n<sub>z</sub></>} unit="n" value={displayMaterialAxis(draft, "cladding", "z")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndexZ", v)} />
-                {materialDefinition(draft.coreMaterial ?? "custom").anisotropic && <>
+                {(draft.geometry ?? "channel") !== "polygon" && materialDefinition(draft.coreMaterial ?? "custom").anisotropic && <>
                   <NumberField label="Optic-axis polar angle θ" unit="° from +y" value={draft.coreOpticAxisTiltDeg ?? legacyOpticAxisTilt(draft.coreOpticAxis)} min={0} max={90} step={1} onChange={(v) => updateNumber("coreOpticAxisTiltDeg", v)} />
                   <NumberField label="Optic-axis azimuth φ" unit="° from +z toward +x" value={draft.coreOpticAxisAzimuthDeg ?? legacyOpticAxisAzimuth(draft.coreOpticAxis)} min={0} max={360} step={1} onChange={(v) => updateNumber("coreOpticAxisAzimuthDeg", v)} />
                 </>}
-                {(draft.coreMaterial ?? "custom") === "lithium-niobate" && <><NumberField label="LiNbO₃ temperature" unit="°C" value={draft.materialTemperatureC ?? 21} min={20} max={240} step={1} onChange={(v) => updateNumber("materialTemperatureC", v)} /><NumberField label="DC field along optic axis" unit="V/µm" value={draft.coreElectricFieldVPerUm ?? 0} min={-100} max={100} step={0.1} onChange={(v) => updateNumber("coreElectricFieldVPerUm", v)} /></>}
-                <NumberField label="Core κ" unit="Im(n)" value={displayMaterialExtinction(draft, "core")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.coreMaterial ?? "custom") === "tabulated" || isMetalMaterial(draft.coreMaterial)} onChange={(v) => updateNumber("coreExtinction", v)} />
+                {(draft.geometry ?? "channel") !== "polygon" && (draft.coreMaterial ?? "custom") === "lithium-niobate" && <><NumberField label="LiNbO₃ temperature" unit="°C" value={draft.materialTemperatureC ?? 21} min={20} max={240} step={1} onChange={(v) => updateNumber("materialTemperatureC", v)} /><NumberField label="DC field along optic axis" unit="V/µm" value={draft.coreElectricFieldVPerUm ?? 0} min={-100} max={100} step={0.1} onChange={(v) => updateNumber("coreElectricFieldVPerUm", v)} /></>}
+                {(draft.geometry ?? "channel") !== "polygon" && <NumberField label="Core κ" unit="Im(n)" value={displayMaterialExtinction(draft, "core")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.coreMaterial ?? "custom") === "tabulated" || isMetalMaterial(draft.coreMaterial)} onChange={(v) => updateNumber("coreExtinction", v)} />}
                 <NumberField label="Cladding κ" unit="Im(n)" value={displayMaterialExtinction(draft, "cladding")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.claddingMaterial ?? "custom") === "tabulated" || isMetalMaterial(draft.claddingMaterial)} onChange={(v) => updateNumber("claddingExtinction", v)} />
-                <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />
+                {(draft.geometry ?? "channel") !== "polygon" && <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />}
                 <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
                 {(draft.geometry ?? "channel") === "multilayer" && <>
                   <NumberField label="Substrate nᵧ" unit="n" value={draft.substrateIndexY ?? draft.substrateIndex ?? draft.claddingIndex} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndexY", v)} />
@@ -710,7 +791,8 @@ function MaterialCsvInput({ region, table, onChange }: { region: string; table?:
 
 function MaterialSources({ config }: { config: WaveguideConfig }) {
   const substrateActive = (config.geometry ?? "channel") === "multilayer" || (config.stackLayers?.length ?? 0) > 0;
-  const selected = [...new Set([config.coreMaterial, config.claddingMaterial, ...(substrateActive ? [config.substrateMaterial] : []), ...(config.stackLayers ?? []).map((layer) => layer.material)])]
+  const polygonActive = (config.geometry ?? "channel") === "polygon";
+  const selected = [...new Set([...(polygonActive ? [] : [config.coreMaterial]), config.claddingMaterial, ...(substrateActive ? [config.substrateMaterial] : []), ...(config.stackLayers ?? []).map((layer) => layer.material), ...(polygonActive ? (config.polygonRegions ?? []).map((region) => region.material) : [])])]
     .filter((id): id is MaterialId => Boolean(id && id !== "custom" && id !== "tabulated"))
     .map(materialDefinition);
   const imported = [config.coreMaterial === "tabulated" ? config.coreMaterialTable : undefined,
@@ -719,6 +801,30 @@ function MaterialSources({ config }: { config: WaveguideConfig }) {
     .filter((table): table is TabulatedMaterialData => Boolean(table));
   if (selected.length === 0 && imported.length === 0) return null;
   return <p className="material-sources">Models: {selected.map((material, index) => <span key={material.id}>{index > 0 && " · "}{material.sourceUrl ? <a href={material.sourceUrl} target="_blank" rel="noreferrer">{material.sourceLabel}</a> : material.name} ({material.minimumWavelengthUm}–{material.maximumWavelengthUm} µm)</span>)}{imported.map((table) => <span key={table.name}> · {table.name} ({table.wavelengthUm[0]}–{table.wavelengthUm[table.wavelengthUm.length - 1]} µm)</span>)}</p>;
+}
+
+function displayPolygonIndex(region: PolygonRegion, config: WaveguideConfig): number {
+  if (isMetalMaterial(region.material)) {
+    try { return complexRefractiveIndex(evaluateMetalPermittivity(region.material, config.wavelengthUm)).n; } catch { return region.index; }
+  }
+  return displayMaterialIndex(region.material, config.wavelengthUm, region.index, config.materialTemperatureC);
+}
+
+function displayPolygonExtinction(region: PolygonRegion, config: WaveguideConfig): number {
+  if (isMetalMaterial(region.material)) {
+    try { return complexRefractiveIndex(evaluateMetalPermittivity(region.material, config.wavelengthUm)).k; } catch { return region.extinction ?? 0; }
+  }
+  return region.extinction ?? 0;
+}
+
+function isPolygonRegions(value: unknown[]): value is PolygonRegion[] {
+  return value.every((region) => typeof region === "object" && region !== null
+    && typeof (region as PolygonRegion).name === "string"
+    && MATERIALS.some((material) => material.id === (region as PolygonRegion).material)
+    && typeof (region as PolygonRegion).index === "number"
+    && ((region as PolygonRegion).extinction === undefined || typeof (region as PolygonRegion).extinction === "number")
+    && Array.isArray((region as PolygonRegion).vertices)
+    && (region as PolygonRegion).vertices.every((vertex) => typeof vertex?.xUm === "number" && typeof vertex?.yUm === "number"));
 }
 
 function displayMaterialIndex(materialId: MaterialId | undefined, wavelengthUm: number, fallback: number, temperatureC = 21, opticAxis: OpticAxis = "y", electricFieldVPerUm = 0, table?: TabulatedMaterialData): number {

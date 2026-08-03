@@ -2,13 +2,14 @@
 
 Browser-based educational full-vector finite-difference eigenmode solver for integrated photonics.
 
-It solves full-vector straight and constant-radius bent-waveguide eigenproblems on a Yee grid and reconstructs all six field components. Supported cross-sections are channel, rib, slot, two-guide coupler and multilayer ridge waveguides.
+It solves full-vector straight and constant-radius bent-waveguide eigenproblems on a Yee grid and reconstructs all six field components. Supported cross-sections are channel, rib, slot, two-guide coupler, multilayer ridge and user-defined polygon waveguides.
 
 ## Features
 
 - Uniform, manually graded or automatic axis-specific center-graded transverse mesh with subpixel interface averaging and geometry-aligned interfaces on resolved grids.
 - Technology presets for SOI strip, rib and slot guides, SiN, thin-film lithium niobate, weak-guidance silica and polymer platforms.
 - Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
+- Editable or JSON-imported non-overlapping convex polygon regions with independent isotropic material models and exact cell-area subpixel fractions.
 - Dominant-field TE/TM mode labels with transverse node counts, symmetry metrics, cutoff warnings and family-aware sweep tracking.
 - Dispersive material models for LiNbO₃, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
 - MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
@@ -60,7 +61,7 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, manual and automatic graded meshes, transverse and longitudinal anisotropic coupling, complex loss, dispersive energy, PML participation, PEC/PMC symmetry projection, reciprocal Bloch phases and phase sweeps in x/y, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
+The tests exercise automated three-grid convergence, subpixel and polygon-interface convergence, the finest supported grid, every geometry, manual and automatic graded meshes, transverse and longitudinal anisotropic coupling, complex loss, dispersive energy, PML participation, PEC/PMC symmetry projection, reciprocal Bloch phases and phase sweeps in x/y, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
 
 ## Numerical scope
 
@@ -78,6 +79,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 - Mode labels are inferred from the dominant real transverse electric-field component. Treat labels near degeneracies, strong hybridization or asymmetric geometries as diagnostic rather than exact quantum numbers.
 - Modes within 10⁻⁴ in effective index are tracked as a shared subspace. The subspace is continuous under basis rotation, but an individual eigenvector inside an exact degeneracy is not uniquely defined.
 - Finite stack layers are horizontal and lie below the core. Dielectric guidance requires a core index above the exterior; metallic stacks instead use a surface-plasmon search interval. High-index-substrate leakage still requires a dedicated leaky-mode formulation and PML convergence study.
+- User-defined regions are convex and must not overlap; combine several regions to represent a concave cross-section. GDSII layer mapping and curved polygon edges are not imported directly.
 - The LiNbO₃ temperature correction applies the congruent-LN wavelength-dependent thermo-optic fit of Moretti et al. to the 5% MgO Sellmeier base as an approximation and is restricted to 20–240 °C. Its electro-optic control assumes a uniform DC field parallel to the optical axis and uses telecom values r₁₃ = 8.6 pm/V and r₃₃ = 30.8 pm/V; process-specific data are required and it does not solve electrodes or RF/optical overlap.
 - Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
