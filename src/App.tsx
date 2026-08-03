@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { ModePlot } from "./ModePlot";
+import { ModePlot, type FieldPart } from "./ModePlot";
 import { GeometryPlot } from "./GeometryPlot";
 import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
@@ -141,6 +141,7 @@ export function App() {
   const [result, setResult] = useState<SolverResult>();
   const [selectedMode, setSelectedMode] = useState(0);
   const [component, setComponent] = useState<FieldComponent>("Ex");
+  const [fieldPart, setFieldPart] = useState<FieldPart>("real");
   const [resultView, setResultView] = useState<"mode" | "geometry">("mode");
   const [sweepSettings, setSweepSettings] = useState(initialSweep);
   const [sweepResult, setSweepResult] = useState<SweepResult>();
@@ -160,6 +161,9 @@ export function App() {
       result.xUm.filter((x) => Math.abs(x) <= config.widthUm / 2).length,
       result.yUm.filter((y) => Math.abs(y) <= config.heightUm / 2).length,
     ) >= 8 },
+    ...(mode.absorbedPowerPerM > 0 && (config.boundary ?? "hard") === "hard"
+      ? [{ label: "Eigenvalue / absorption loss balance", pass: mode.lossBalanceRelativeDifference < 0.1 }]
+      : []),
     ...((config.bendRadiusUm ?? 0) > 0 ? [{ label: "Open radial boundary", pass: (config.boundary ?? "hard") === "pml" }] : []),
   ] : [], [config, mode, result]);
   const geometrySweepMaximum = geometrySweep.parameter === "bendRadiusUm" ? PARAMETER_MAXIMUMS.bendRadiusUm : PARAMETER_MAXIMUMS.dimensionUm;
@@ -281,7 +285,7 @@ export function App() {
     try {
         const next = await runSolverWorker<SweepResult>({ kind: "wavelengthSweep", config, settings: { ...sweepSettings, modeIndex: selectedMode } });
         setSweepResult(next);
-        setSweepMessage(`${next.points.length} wavelengths solved with field-overlap mode tracking.`);
+        setSweepMessage(`${next.points.length} wavelengths solved with reciprocal complex-mode tracking.`);
     } catch (caught) {
         setError(caught instanceof Error ? caught.message : "The wavelength sweep failed.");
         setSweepMessage("Sweep failed.");
@@ -296,7 +300,7 @@ export function App() {
     try {
       const next = await runSolverWorker<GeometrySweepResult>({ kind: "geometrySweep", config, settings: { ...geometrySweep, modeIndex: selectedMode } });
       setGeometrySweepResult(next);
-      setGeometrySweepMessage(`${next.points.length} geometries solved with resampled field-overlap tracking.`);
+      setGeometrySweepMessage(`${next.points.length} geometries solved with resampled reciprocal tracking.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The geometry sweep failed.");
       setGeometrySweepMessage("Geometry sweep failed.");
@@ -305,12 +309,17 @@ export function App() {
 
   function exportField() {
     if (!mode || !result) return;
-    const rows = ["x_um,y_um,Ex_V_m,Ey_V_m,Ez_V_m,Hx_A_m,Hy_A_m,Hz_A_m,E2_V2_m2,Sz_W_m2"];
+    const rows = ["x_um,y_um,Ex_real_V_m,Ex_imag_V_m,Ey_real_V_m,Ey_imag_V_m,Ez_real_V_m,Ez_imag_V_m,Hx_real_A_m,Hx_imag_A_m,Hy_real_A_m,Hy_imag_A_m,Hz_real_A_m,Hz_imag_A_m,E2_V2_m2,Sz_W_m2"];
     for (let row = 0; row < result.yUm.length; row += 1) {
       for (let column = 0; column < result.xUm.length; column += 1) {
-        rows.push([result.xUm[column], result.yUm[row], mode.fields.Ex[row][column], mode.fields.Ey[row][column],
-          mode.fields.Ez[row][column], mode.fields.Hx[row][column], mode.fields.Hy[row][column],
-          mode.fields.Hz[row][column], mode.fields.intensity[row][column], mode.fields.poynting[row][column]].join(","));
+        rows.push([result.xUm[column], result.yUm[row],
+          mode.complexFields.Ex.real[row][column], mode.complexFields.Ex.imaginary[row][column],
+          mode.complexFields.Ey.real[row][column], mode.complexFields.Ey.imaginary[row][column],
+          mode.complexFields.Ez.real[row][column], mode.complexFields.Ez.imaginary[row][column],
+          mode.complexFields.Hx.real[row][column], mode.complexFields.Hx.imaginary[row][column],
+          mode.complexFields.Hy.real[row][column], mode.complexFields.Hy.imaginary[row][column],
+          mode.complexFields.Hz.real[row][column], mode.complexFields.Hz.imaginary[row][column],
+          mode.fields.intensity[row][column], mode.fields.poynting[row][column]].join(","));
       }
     }
     download(rows.join("\n"), `waveguide-${mode.id.toLowerCase()}-${config.wavelengthUm.toFixed(3)}um.csv`);
@@ -488,6 +497,14 @@ export function App() {
                   <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
                 </>}
               </div>
+              <details className="advanced-controls">
+                <summary>Mode targeting</summary>
+                <div className="form-grid">
+                  <NumberField label={<>Target Re(<i>n</i><sub>eff</sub>)</>} unit="0 = auto" value={draft.targetEffectiveIndex ?? 0} min={0} max={100} step={0.01} onChange={(value) => setDraft((current) => ({ ...current, targetEffectiveIndex: value > 0 ? value : undefined }))} />
+                  <NumberField label={<>Target Im(<i>n</i><sub>eff</sub>)</>} unit="optional" value={draft.targetEffectiveIndexImaginary ?? 0} min={0} max={100} step={0.000001} disabled={draft.targetEffectiveIndex === undefined} onChange={(value) => setDraft((current) => ({ ...current, targetEffectiveIndexImaginary: value > 0 ? value : undefined }))} />
+                </div>
+                <p>The real target sets the shift used by the eigensolver. The imaginary target ranks complex candidates; it does not widen the physically admissible index window.</p>
+              </details>
               <p className="configuration-note">Use the Analysis view for mesh and boundary convergence before interpreting quantitative results.</p>
             </section>
             <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
@@ -510,6 +527,7 @@ export function App() {
               <Metric label="Longitudinal E fraction" value={`${(mode.longitudinalElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="x-polarized E fraction" value={`${(mode.xPolarizedElectricFraction * 100).toFixed(1)}%`} />
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
+              <Metric label="Propagation length" value={Number.isFinite(mode.propagationLengthUm) ? `${mode.propagationLengthUm.toPrecision(4)} µm` : "∞"} />
               <Metric label={<>Imaginary index Im(<i>n</i><sub>eff</sub>)</>} value={mode.effectiveIndexImaginary.toExponential(3)} />
               <Metric label="Normalized modal power" value={`${(mode.modalPowerW * 1e3).toFixed(3)} mW`} />
               <Metric label="Guidance margin" value={`${mode.guidanceMargin.toExponential(3)}${mode.nearCutoff ? " · review" : ""}`} />
@@ -517,7 +535,8 @@ export function App() {
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
             </div>
             <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
-            <ModePlot component={component} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} />
+            {component !== "intensity" && component !== "poynting" && <div className="field-toolbar field-part-toolbar" aria-label="Complex field representation"><span>View</span>{(["real", "imaginary", "magnitude", "phase"] as FieldPart[]).map((part) => <button type="button" className={fieldPart === part ? "active" : ""} aria-pressed={fieldPart === part} key={part} onClick={() => setFieldPart(part)}>{part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "|·|" : "Phase"}</button>)}</div>}
+            <ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} />
             </> : <div className="empty-state">No guided mode was found. Inspect the structure and mesh, then increase the core size or index contrast.</div>}
           </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
         </section>
@@ -525,7 +544,7 @@ export function App() {
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
-      <ViewHeading eyebrow="Parametric exploration" title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry while preserving field-overlap continuity.</ViewHeading>
+      <ViewHeading eyebrow="Parametric exploration" title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
       <section className="sweep-section">
         <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runSweep}>
@@ -567,6 +586,20 @@ export function App() {
         <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals; arbitrary real symmetric tensors require hard boundaries. Metallic bends and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
         <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label}</dd></div><div><dt>x/y symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
       </section>
+      {mode && result && <section className="sweep-section validation-diagnostics">
+        <div className="panel-heading"><div><span className="step">V1</span><h2>Complex-mode diagnostics</h2></div><a className="export-button" href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</a></div>
+        <div className="analysis-metrics">
+          <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(4)} dB/cm`} />
+          <Metric label="Material absorption" value={`${mode.absorptionLossDbPerCm.toPrecision(4)} dB/cm`} />
+          <Metric label="PML / radiative excess" value={`${mode.radiationLossDbPerCm.toPrecision(4)} dB/cm`} />
+          <Metric label="Loss-balance mismatch" value={`${(100 * mode.lossBalanceRelativeDifference).toPrecision(3)}%`} />
+          <Metric label="Absorbed power per length" value={`${mode.absorbedPowerPerM.toExponential(3)} W/m`} />
+          <Metric label="Propagation length" value={Number.isFinite(mode.propagationLengthUm) ? `${mode.propagationLengthUm.toPrecision(5)} µm` : "∞"} />
+        </div>
+        {mode.materialAbsorption.length > 0 && <div className="comparison-scroll"><table className="comparison-table"><caption>Material absorption decomposition</caption><thead><tr><th>Region</th><th>Absorbed power per length</th><th>Fraction</th></tr></thead><tbody>{mode.materialAbsorption.map((entry) => <tr key={entry.region}><th>{entry.region}</th><td>{entry.powerPerM.toExponential(4)} W/m</td><td>{(100 * entry.fraction).toFixed(2)}%</td></tr>)}</tbody></table></div>}
+        <p className="limitation">Material absorption is obtained from the local Im(ε) field integral. The PML/radiative term is the positive excess of eigenvalue attenuation over material absorption; establish it with boundary and mesh convergence before treating it as physical radiation loss.</p>
+        <div className="comparison-scroll"><table className="comparison-table candidate-table"><caption>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</caption><thead><tr><th>Candidate</th><th>Re(neff)</th><th>Im(neff)</th><th>Residual</th><th>Status</th><th>Reason</th></tr></thead><tbody>{result.candidates.map((candidate, index) => <tr key={`${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`}><th>{candidate.label ?? `Ritz ${index + 1}`}</th><td>{candidate.effectiveIndex.toFixed(7)}</td><td>{candidate.effectiveIndexImaginary.toExponential(3)}</td><td>{candidate.residual.toExponential(2)}</td><td><span className={candidate.status === "selected" || candidate.status === "available" ? "pass" : "warn"}>{candidate.status}</span></td><td>{candidate.reason}</td></tr>)}</tbody></table></div>
+      </section>}
       </section>
     </main>
     <footer><span>Waveguide Mode Solver</span><span>Built for photonics education · Check mesh, boundary and sweep convergence before design use.</span></footer>

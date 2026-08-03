@@ -1,9 +1,12 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import type { FieldComponent, WaveguideConfig, WaveguideMode } from "./solver";
+import type { FieldComponent, PhysicalFieldComponent, WaveguideConfig, WaveguideMode } from "./solver";
+
+export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
 
 interface Props {
   component: FieldComponent;
+  part: FieldPart;
   config: WaveguideConfig;
   mode: WaveguideMode;
   xUm: number[];
@@ -38,16 +41,20 @@ const units: Record<FieldComponent, string> = {
   intensity: "V²/m²", poynting: "W/m²",
 };
 
-export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
+export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
   const fieldRef = useRef<HTMLDivElement>(null);
   const cutRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!fieldRef.current || !cutRef.current) return;
-    const signedField = component !== "intensity";
-    const z = mode.fields[component];
+    const physical = isPhysicalField(component);
+    const activePart = physical ? part : "real";
+    const z = physical ? displayComplexField(mode, component, activePart) : mode.fields[component];
+    const signedField = activePart !== "magnitude" && activePart !== "phase" && component !== "intensity";
+    const phaseField = activePart === "phase";
     const bent = (config.bendRadiusUm ?? 0) > 0;
-    const componentLabel = bent && component === "Ez" ? "E<sub>θ</sub>" : bent && component === "Hz" ? "H<sub>θ</sub>" : bent && component === "poynting" ? "S<sub>θ</sub> (W/m²)" : labels[component];
+    const baseLabel = bent && component === "Ez" ? "E<sub>θ</sub>" : bent && component === "Hz" ? "H<sub>θ</sub>" : bent && component === "poynting" ? "S<sub>θ</sub> (W/m²)" : labels[component];
+    const componentLabel = physical ? `${partLabel(activePart)}(${baseLabel})` : baseLabel;
     const values = z.flat();
     const maximum = Math.max(...values.map((value) => Math.abs(value)), Number.EPSILON);
     const commonConfig = { displaylogo: false, responsive: true, scrollZoom: false };
@@ -63,16 +70,16 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       x: xUm,
       y: yUm,
       z,
-      zmin: signedField ? -maximum : 0,
-      zmax: maximum,
+      zmin: phaseField ? -180 : signedField ? -maximum : 0,
+      zmax: phaseField ? 180 : maximum,
       zmid: signedField ? 0 : undefined,
-      colorscale: signedField ? "RdBu" : "Viridis",
+      colorscale: phaseField ? "HSV" : signedField ? "RdBu" : "Viridis",
       colorbar: {
         title: { text: componentLabel, side: "right" },
         thickness: 12,
         len: 0.82,
       },
-      hovertemplate: `x = %{x:.3f} µm<br>y = %{y:.3f} µm<br>value = %{z:.4g} ${units[component]}<extra></extra>`,
+      hovertemplate: `x = %{x:.3f} µm<br>y = %{y:.3f} µm<br>value = %{z:.4g} ${phaseField ? "°" : units[component]}<extra></extra>`,
     } as unknown as Plotly.Data;
     void Plotly.react(fieldRef.current, [heatmap], {
       margin: { l: 58, r: 36, t: 18, b: 52 },
@@ -94,7 +101,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
         x: xUm,
         y: z[centerRow],
         line: { color: "#087f8c", width: 2.5 },
-        hovertemplate: `x = %{x:.3f} µm<br>value = %{y:.4g} ${units[component]}<extra>horizontal</extra>`,
+        hovertemplate: `x = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>horizontal</extra>`,
       },
       {
         type: "scatter",
@@ -103,7 +110,7 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
         x: yUm,
         y: z.map((row) => row[centerColumn]),
         line: { color: "#ed6a3a", width: 2.5, dash: "dash" },
-        hovertemplate: `y = %{x:.3f} µm<br>value = %{y:.4g} ${units[component]}<extra>vertical</extra>`,
+        hovertemplate: `y = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>vertical</extra>`,
       },
     ], {
       margin: { l: 56, r: 20, t: 18, b: 50 },
@@ -112,14 +119,14 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
-      yaxis: { ...axisStyle, title: { text: componentLabel }, range: signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
+      yaxis: { ...axisStyle, title: { text: componentLabel }, range: phaseField ? [-180, 180] : signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
     }, commonConfig);
 
     return () => {
       if (fieldRef.current) Plotly.purge(fieldRef.current);
       if (cutRef.current) Plotly.purge(cutRef.current);
     };
-  }, [component, config, mode, xUm, yUm]);
+  }, [component, part, config, mode, xUm, yUm]);
 
   return (
     <div className="plots" role="group" aria-label={`${plainLabels[component]} profile and central transverse cuts for ${mode.polarization} mode ${mode.order + 1}`}>
@@ -127,6 +134,24 @@ export function ModePlot({ component, config, mode, xUm, yUm }: Props) {
       <div ref={cutRef} className="cut-plot" />
     </div>
   );
+}
+
+function isPhysicalField(component: FieldComponent): component is PhysicalFieldComponent {
+  return component !== "intensity" && component !== "poynting";
+}
+
+function displayComplexField(mode: WaveguideMode, component: PhysicalFieldComponent, part: FieldPart): number[][] {
+  const field = mode.complexFields[component];
+  if (part === "real") return field.real;
+  if (part === "imaginary") return field.imaginary;
+  return field.real.map((row, rowIndex) => row.map((real, columnIndex) => {
+    const imaginary = field.imaginary[rowIndex][columnIndex];
+    return part === "magnitude" ? Math.hypot(real, imaginary) : Math.atan2(imaginary, real) * 180 / Math.PI;
+  }));
+}
+
+function partLabel(part: FieldPart): string {
+  return part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "abs" : "arg";
 }
 
 function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {

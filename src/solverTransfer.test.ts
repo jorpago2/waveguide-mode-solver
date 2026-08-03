@@ -10,9 +10,10 @@ describe("solver result transfer", () => {
     });
     const packed = packSolverResult(original);
     const restored = unpackSolverResult(packed.result);
-    expect(packed.transfer.length).toBe(14);
+    expect(packed.transfer.length).toBe(26);
     expect(restored.modes[0].effectiveIndex).toBe(original.modes[0].effectiveIndex);
     expect(restored.modes[0].fields.Ex[0][0]).toBe(Math.fround(original.modes[0].fields.Ex[0][0]));
+    expect(restored.modes[0].complexFields.Ex.imaginary[0][0]).toBe(Math.fround(original.modes[0].complexFields.Ex.imaginary[0][0]));
     expect(restored.permittivity.real.x[0][0]).toBe(Math.fround(original.permittivity.real.x[0][0]));
   });
 });

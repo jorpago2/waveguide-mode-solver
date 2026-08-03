@@ -16,7 +16,8 @@ try {
   // The diagonal and transverse-rotation TypeScript solvers remain available.
 }
 
-export type FieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz" | "intensity" | "poynting";
+export type PhysicalFieldComponent = "Ex" | "Ey" | "Ez" | "Hx" | "Hy" | "Hz";
+export type FieldComponent = PhysicalFieldComponent | "intensity" | "poynting";
 export type GeometryType = "channel" | "rib" | "slot" | "multilayer" | "coupler";
 export type BoundaryType = "hard" | "pml";
 export type BendDirection = "positive-x" | "negative-x";
@@ -102,6 +103,28 @@ export interface WaveguideConfig {
   stackLayers?: VerticalLayer[];
   bendRadiusUm?: number;
   bendDirection?: BendDirection;
+  targetEffectiveIndex?: number;
+  targetEffectiveIndexImaginary?: number;
+}
+
+export interface ComplexFieldMatrix {
+  real: number[][];
+  imaginary: number[][];
+}
+
+export interface MaterialAbsorption {
+  region: string;
+  powerPerM: number;
+  fraction: number;
+}
+
+export interface ModeCandidateDiagnostic {
+  effectiveIndex: number;
+  effectiveIndexImaginary: number;
+  residual: number;
+  status: "selected" | "available" | "outside-window" | "duplicate" | "poor-residual";
+  reason: string;
+  label?: string;
 }
 
 export interface WaveguideMode {
@@ -123,6 +146,12 @@ export interface WaveguideMode {
   longitudinalElectricFraction: number;
   xPolarizedElectricFraction: number;
   lossDbPerCm: number;
+  absorptionLossDbPerCm: number;
+  radiationLossDbPerCm: number;
+  propagationLengthUm: number;
+  lossBalanceRelativeDifference: number;
+  absorbedPowerPerM: number;
+  materialAbsorption: MaterialAbsorption[];
   modalPowerW: number;
   peakPoyntingWPerM2: number;
   guidanceMargin: number;
@@ -130,6 +159,7 @@ export interface WaveguideMode {
   bendRadiusUm?: number;
   azimuthalModeNumber?: number;
   fields: Record<FieldComponent, number[][]>;
+  complexFields: Record<PhysicalFieldComponent, ComplexFieldMatrix>;
 }
 
 export interface SolverResult {
@@ -146,6 +176,9 @@ export interface SolverResult {
   dxMaxUm: number;
   dyMaxUm: number;
   warnings: string[];
+  candidates: ModeCandidateDiagnostic[];
+  searchTargetEffectiveIndex: number;
+  searchWindow: { minimum: number; maximum: number };
   arnoldiDimension: number;
   formulation: "transverse-h" | "transverse-e" | "first-order";
   backend: "TypeScript" | "Rust/WASM";
@@ -230,6 +263,11 @@ interface Grid {
   epsilonCellYZImaginary: Float64Array;
   cellArea: Float64Array;
   coreFraction: Float64Array;
+  lossRegions: Array<{
+    region: string;
+    fraction: Float64Array;
+    epsilonImaginary: { x: number; y: number; z: number };
+  }>;
   epsilonX: Float64Array;
   epsilonY: Float64Array;
   inverseEpsilonX: Float64Array;
@@ -322,10 +360,17 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
     config.substrateExtinction, config.coreDispersionPerUm, config.claddingDispersionPerUm,
     config.substrateDispersionPerUm, config.meshBias, config.coreIndexOffset,
     config.sidewallAngleDeg, config.materialTemperatureC, config.coreElectricFieldVPerUm, config.bendRadiusUm,
+    config.targetEffectiveIndex, config.targetEffectiveIndexImaginary,
     config.coreOpticAxisTiltDeg, config.coreOpticAxisAzimuthDeg, config.claddingOpticAxisTiltDeg,
     config.claddingOpticAxisAzimuthDeg, config.substrateOpticAxisTiltDeg, config.substrateOpticAxisAzimuthDeg,
   ].every((value) => value === undefined || Number.isFinite(value));
   if (!finiteOptional) errors.push("Optional material and mesh values must be finite.");
+  if (config.targetEffectiveIndex !== undefined && (config.targetEffectiveIndex <= 0 || config.targetEffectiveIndex > 100)) {
+    errors.push("The real effective-index target must be greater than 0 and no larger than 100.");
+  }
+  if (config.targetEffectiveIndexImaginary !== undefined && (config.targetEffectiveIndexImaginary < 0 || config.targetEffectiveIndexImaginary > 100)) {
+    errors.push("The imaginary effective-index target must be between 0 and 100.");
+  }
   if ([config.coreExtinction ?? 0, config.claddingExtinction ?? 0, config.substrateExtinction ?? 0]
     .some((value) => value < 0 || value > PARAMETER_MAXIMUMS.extinction)) {
     errors.push(`Extinction coefficients must be between 0 and ${PARAMETER_MAXIMUMS.extinction}.`);
@@ -475,13 +520,37 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     )) === index;
   });
   const convergedPairs = uniquePairs.filter((pair) => pair.residual <= 2e-2);
-  const modes = convergedPairs
-    .slice(0, config.modeCount)
+  const selectedPairs = convergedPairs.slice(0, config.modeCount);
+  const modes = selectedPairs
     .map((pair, index) => operator.formulation === "transverse-e"
       ? buildReducedBendMode(pair, index, config, operator)
       : operator.eigenvaluePower === 1
         ? buildFirstOrderMode(pair, index, config, operator)
         : buildMode(pair, index, config, operator));
+  const candidates: ModeCandidateDiagnostic[] = pairs.map((pair) => {
+    const effectiveIndex = pairEffectiveIndexComplex(pair, operator);
+    const selectedIndex = selectedPairs.indexOf(pair);
+    if (!guidedPairs.includes(pair)) return {
+      effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
+      residual: pair.residual, status: "outside-window", reason: `Outside ${lowerIndex.toFixed(4)}–${upperIndex.toFixed(4)} search window.`,
+    };
+    if (!uniquePairs.includes(pair)) return {
+      effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
+      residual: pair.residual, status: "duplicate", reason: "Duplicate Ritz value within 10⁻⁷ in effective index.",
+    };
+    if (!convergedPairs.includes(pair)) return {
+      effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
+      residual: pair.residual, status: "poor-residual", reason: "Relative eigenpair residual exceeds 2 × 10⁻².",
+    };
+    if (selectedIndex >= 0) return {
+      effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
+      residual: pair.residual, status: "selected", reason: "Selected and reconstructed.", label: modes[selectedIndex].label,
+    };
+    return {
+      effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
+      residual: pair.residual, status: "available", reason: "Converged candidate beyond the requested mode count.",
+    };
+  });
 
   const warnings: string[] = [];
   const cellsAcrossCore = Math.min(
@@ -492,6 +561,9 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
   if (convergedPairs.length < uniquePairs.length) warnings.push(`${uniquePairs.length - convergedPairs.length} poorly converged mode${uniquePairs.length - convergedPairs.length === 1 ? " was" : "s were"} discarded because the field residual exceeded 2 × 10⁻².`);
   if (modes.length < config.modeCount) warnings.push(`Only ${modes.length} guided mode${modes.length === 1 ? " was" : "s were"} found inside the modal search interval.`);
   if (modes.some((mode) => mode.residual > 2e-3)) warnings.push("One or more eigenpairs need review; reduce the requested mode count or mesh bias before interpreting the field profile.");
+  if (config.targetEffectiveIndex !== undefined && (config.targetEffectiveIndex <= lowerIndex || config.targetEffectiveIndex >= upperIndex)) {
+    warnings.push("The requested effective-index target lies outside the physical search window; inspect rejected candidates or revise the target.");
+  }
   if ((config.bendRadiusUm ?? 0) > 0 && (config.boundary ?? "hard") !== "pml") warnings.push("A bent guide with hard walls cannot yield physical radiation loss; use PML and verify mesh, padding and absorber convergence.");
   if (guidanceBounds(config).plasmonic) {
     warnings.push("Metal results use a local bulk permittivity model. Thin-film morphology, surface scattering and nonlocal response are not included.");
@@ -523,6 +595,9 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     dxMaxUm: Math.max(...grid.dxCell),
     dyMaxUm: Math.max(...grid.dyCell),
     warnings,
+    candidates,
+    searchTargetEffectiveIndex: guidanceBounds(config).targetIndex,
+    searchWindow: { minimum: lowerIndex, maximum: upperIndex },
     arnoldiDimension,
     formulation: operator.formulation,
     backend: operator.backend,
@@ -530,8 +605,14 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
 }
 
 function pairEffectiveIndex(pair: RitzPair, operator: OperatorContext): number {
-  const beta = operator.eigenvaluePower === 1 ? pair.eigenvalue : Math.sqrt(Math.max(0, pair.eigenvalue));
-  return beta / operator.k0;
+  return pairEffectiveIndexComplex(pair, operator).real;
+}
+
+function pairEffectiveIndexComplex(pair: RitzPair, operator: OperatorContext): { real: number; imaginary: number } {
+  const beta = operator.eigenvaluePower === 1
+    ? { real: pair.eigenvalue, imaginary: pair.eigenvalueImaginary }
+    : complexSquareRoot(pair.eigenvalue, pair.eigenvalueImaginary);
+  return { real: beta.real / operator.k0, imaginary: Math.abs(beta.imaginary / operator.k0) };
 }
 
 export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings): SweepResult {
@@ -548,28 +629,32 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
   const anchor = wavelengths.reduce((best, value, index) => (
     Math.abs(value - config.wavelengthUm) < Math.abs(wavelengths[best] - config.wavelengthUm) ? index : best
   ), 0);
-  const tracked: Array<{ mode: WaveguideMode; overlap: number } | undefined> = new Array(settings.points);
-  const solveAt = (index: number) => solveWaveguide({ ...config, wavelengthUm: wavelengths[index] }, true).modes;
-  const anchorModes = solveAt(anchor);
-  if (anchorModes.length === 0) throw new Error("No guided mode exists at the sweep anchor wavelength.");
-  tracked[anchor] = { mode: anchorModes[Math.min(settings.modeIndex, anchorModes.length - 1)], overlap: 1 };
+  const tracked: Array<{ result: SolverResult; mode: WaveguideMode; overlap: number } | undefined> = new Array(settings.points);
+  const solveAt = (index: number) => solveWaveguide({ ...config, wavelengthUm: wavelengths[index] }, true);
+  const anchorResult = solveAt(anchor);
+  if (anchorResult.modes.length === 0) throw new Error("No guided mode exists at the sweep anchor wavelength.");
+  tracked[anchor] = { result: anchorResult, mode: anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)], overlap: 1 };
   const anchorSubspace = recycledArnoldiSubspace;
 
   for (const direction of [1, -1]) {
     recycledArnoldiSubspace = anchorSubspace;
     for (let index = anchor + direction; index >= 0 && index < wavelengths.length; index += direction) {
-      const previous = tracked[index - direction]?.mode;
-      const candidates = solveAt(index);
-      if (!previous || candidates.length === 0) break;
-      const matching = candidates.filter((mode) => sameModeFamily(previous, mode));
-      const ranked = (matching.length > 0 ? matching : candidates).map((mode) => ({ mode, overlap: modeOverlap(previous, mode) }))
+      const previous = tracked[index - direction];
+      const candidateResult = solveAt(index);
+      if (!previous || candidateResult.modes.length === 0) break;
+      const matching = candidateResult.modes.filter((mode) => sameModeFamily(previous.mode, mode));
+      const ranked = (matching.length > 0 ? matching : candidateResult.modes).map((mode) => ({
+        result: candidateResult,
+        mode,
+        overlap: resampledModeOverlap(previous.result, previous.mode, candidateResult, mode),
+      }))
         .sort((first, second) => second.overlap - first.overlap);
       tracked[index] = ranked[0];
     }
   }
 
   const valid = tracked.map((entry, index) => entry && ({ wavelengthUm: wavelengths[index], ...entry })).filter(Boolean) as Array<{
-    wavelengthUm: number; mode: WaveguideMode; overlap: number;
+    wavelengthUm: number; result: SolverResult; mode: WaveguideMode; overlap: number;
   }>;
   if (valid.length < 5) throw new Error("The selected mode could not be tracked across at least five wavelengths.");
   const lambda = valid.map((entry) => entry.wavelengthUm);
@@ -796,7 +881,7 @@ function guidanceBounds(config: WaveguideConfig): GuidanceBounds {
   if (metals.length > 0 && dielectric.length > 0) {
     const targets = metals.flatMap((metal) => dielectric.map((medium) => surfacePlasmonIndex(metal, medium)))
       .filter((value) => Number.isFinite(value) && value > 0);
-    const targetIndex = targets.length > 0 ? Math.max(...targets) : Math.max(exteriorIndex, 1);
+    const targetIndex = config.targetEffectiveIndex ?? (targets.length > 0 ? Math.max(...targets) : Math.max(exteriorIndex, 1));
     return {
       exteriorIndex,
       maximumIndex: Math.max(maximumIndex, targetIndex),
@@ -809,7 +894,7 @@ function guidanceBounds(config: WaveguideConfig): GuidanceBounds {
   return {
     exteriorIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)),
     maximumIndex,
-    targetIndex: 0.55 * maximumIndex + 0.45 * Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)),
+    targetIndex: config.targetEffectiveIndex ?? (0.55 * maximumIndex + 0.45 * Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum))),
     lowerIndex: Math.max(maximum(values.cladding), hasSubstrate ? maximum(values.substrate) : 0, ...values.layers.map(maximum)) + 1e-5,
     upperIndex: maximumIndex * 1.01,
     plasmonic: false,
@@ -871,6 +956,26 @@ function stackFractions(y0: number, y1: number, config: WaveguideConfig): { laye
     return fraction;
   });
   return { layers: fractions, substrate: intervalFraction(y0, y1, Number.NEGATIVE_INFINITY, top) };
+}
+
+function materialComponentsAtCell(
+  x0: number, x1: number, y0: number, y1: number,
+  config: WaveguideConfig,
+  material: ReturnType<typeof materialValues>,
+): Array<{ region: string; fraction: number; value: MaterialValue }> {
+  const core = coreFractionAtCell(x0, x1, y0, y1, config);
+  const stack = stackFractions(y0, y1, config);
+  const layerTotal = stack.layers.reduce((sum, fraction) => sum + fraction, 0);
+  return [
+    { region: "Core", fraction: core, value: material.core },
+    { region: "Base substrate", fraction: stack.substrate, value: material.substrate },
+    { region: "Cladding", fraction: Math.max(0, 1 - core - stack.substrate - layerTotal), value: material.cladding },
+    ...stack.layers.map((fraction, index) => ({
+      region: config.stackLayers?.[index]?.name || `Layer ${index + 1}`,
+      fraction,
+      value: material.layers[index],
+    })),
+  ];
 }
 
 function intervalFraction(value0: number, value1: number, interval0: number, interval1: number): number {
@@ -1022,48 +1127,72 @@ function dualSpacing(cellSpacing: number[]): number[] {
   });
 }
 
-function modeOverlap(first: WaveguideMode, second: WaveguideMode): number {
-  let numerator = 0;
-  let firstNorm = 0;
-  let secondNorm = 0;
-  for (const component of ["Ex", "Ey", "Ez"] as const) {
-    for (let row = 0; row < first.fields[component].length; row += 1) {
-      for (let column = 0; column < first.fields[component][row].length; column += 1) {
-        const a = first.fields[component][row][column];
-        const b = second.fields[component][row][column];
-        numerator += a * b;
-        firstNorm += a * a;
-        secondNorm += b * b;
-      }
-    }
-  }
-  return Math.abs(numerator) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
-}
-
 export function resampledModeOverlap(
   firstResult: SolverResult,
   first: WaveguideMode,
   secondResult: SolverResult,
   second: WaveguideMode,
 ): number {
-  let numerator = 0;
-  let firstNorm = 0;
-  let secondNorm = 0;
-  for (const component of ["Ex", "Ey", "Ez"] as const) {
-    for (let row = 0; row < firstResult.yUm.length; row += 1) {
-      for (let column = 0; column < firstResult.xUm.length; column += 1) {
-        const a = first.fields[component][row][column];
-        const b = bilinearSample(second.fields[component], secondResult.xUm, secondResult.yUm,
-          firstResult.xUm[column], firstResult.yUm[row]);
-        if (b === undefined) continue;
-        const area = coordinateSpacing(firstResult.xUm, column) * coordinateSpacing(firstResult.yUm, row);
-        numerator += a * b * area;
-        firstNorm += a * a * area;
-        secondNorm += b * b * area;
-      }
+  let cross12 = { real: 0, imaginary: 0 };
+  let cross11 = { real: 0, imaginary: 0 };
+  let cross22 = { real: 0, imaginary: 0 };
+  for (let row = 0; row < firstResult.yUm.length; row += 1) {
+    for (let column = 0; column < firstResult.xUm.length; column += 1) {
+      const sampleX = firstResult.xUm[column];
+      const sampleY = firstResult.yUm[row];
+      const secondFields = Object.fromEntries((["Ex", "Ey", "Hx", "Hy"] as const).map((component) => [
+        component,
+        sampleComplexField(second.complexFields[component], secondResult.xUm, secondResult.yUm, sampleX, sampleY),
+      ])) as Record<"Ex" | "Ey" | "Hx" | "Hy", ComplexValue | undefined>;
+      if (Object.values(secondFields).some((value) => value === undefined)) continue;
+      const firstFields = Object.fromEntries((["Ex", "Ey", "Hx", "Hy"] as const).map((component) => [
+        component,
+        complexMatrixValue(first.complexFields[component], row, column),
+      ])) as Record<"Ex" | "Ey" | "Hx" | "Hy", ComplexValue>;
+      const sampled = secondFields as Record<"Ex" | "Ey" | "Hx" | "Hy", ComplexValue>;
+      const area = coordinateSpacing(firstResult.xUm, column) * coordinateSpacing(firstResult.yUm, row);
+      cross12 = complexValueAdd(cross12, complexValueScale(complexValueAdd(
+        transverseCross(firstFields, sampled), transverseCross(sampled, firstFields),
+      ), area));
+      cross11 = complexValueAdd(cross11, complexValueScale(transverseCross(firstFields, firstFields), 2 * area));
+      cross22 = complexValueAdd(cross22, complexValueScale(transverseCross(sampled, sampled), 2 * area));
     }
   }
-  return Math.abs(numerator) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
+  const numerator = Math.hypot(cross12.real, cross12.imaginary);
+  const denominator = Math.sqrt(Math.max(
+    Math.hypot(cross11.real, cross11.imaginary) * Math.hypot(cross22.real, cross22.imaginary), 1e-30,
+  ));
+  return clamp(numerator / denominator, 0, 1);
+}
+
+interface ComplexValue { real: number; imaginary: number }
+
+function complexMatrixValue(field: ComplexFieldMatrix, row: number, column: number): ComplexValue {
+  return { real: field.real[row][column], imaginary: field.imaginary[row][column] };
+}
+
+function complexValueMultiply(first: ComplexValue, second: ComplexValue): ComplexValue {
+  return {
+    real: first.real * second.real - first.imaginary * second.imaginary,
+    imaginary: first.real * second.imaginary + first.imaginary * second.real,
+  };
+}
+
+function complexValueAdd(first: ComplexValue, second: ComplexValue): ComplexValue {
+  return { real: first.real + second.real, imaginary: first.imaginary + second.imaginary };
+}
+
+function complexValueScale(value: ComplexValue, factor: number): ComplexValue {
+  return { real: value.real * factor, imaginary: value.imaginary * factor };
+}
+
+function transverseCross(
+  electric: Record<"Ex" | "Ey", ComplexValue>,
+  magnetic: Record<"Hx" | "Hy", ComplexValue>,
+): ComplexValue {
+  const first = complexValueMultiply(electric.Ex, magnetic.Hy);
+  const second = complexValueMultiply(electric.Ey, magnetic.Hx);
+  return { real: first.real - second.real, imaginary: first.imaginary - second.imaginary };
 }
 
 function coordinateSpacing(coordinates: number[], index: number): number {
@@ -1081,6 +1210,14 @@ function bilinearSample(field: number[][], x: number[], y: number[], sampleX: nu
   const lower = field[row][column] * (1 - tx) + field[row][column + 1] * tx;
   const upper = field[row + 1][column] * (1 - tx) + field[row + 1][column + 1] * tx;
   return lower * (1 - ty) + upper * ty;
+}
+
+function sampleComplexField(
+  field: ComplexFieldMatrix, x: number[], y: number[], sampleX: number, sampleY: number,
+): ComplexValue | undefined {
+  const real = bilinearSample(field.real, x, y, sampleX, sampleY);
+  const imaginary = bilinearSample(field.imaginary, x, y, sampleX, sampleY);
+  return real === undefined || imaginary === undefined ? undefined : { real, imaginary };
 }
 
 function lowerIndex(values: number[], target: number): number {
@@ -1143,21 +1280,23 @@ function createGrid(config: WaveguideConfig): Grid {
   const cellArea = new Float64Array(nx * ny);
   const coreFraction = new Float64Array(nx * ny);
   const material = materialValues(config);
+  const lossRegions = [
+    { region: "Core", value: material.core },
+    { region: "Base substrate", value: material.substrate },
+    { region: "Cladding", value: material.cladding },
+    ...material.layers.map((value, index) => ({ region: config.stackLayers?.[index]?.name || `Layer ${index + 1}`, value })),
+  ].map(({ region, value }) => ({
+    region,
+    fraction: new Float64Array(nx * ny),
+    epsilonImaginary: { x: value.epsilonImaginary.xx, y: value.epsilonImaginary.yy, z: value.epsilonImaginary.zz },
+  }));
 
   for (let row = 0; row < ny; row += 1) {
     for (let column = 0; column < nx; column += 1) {
       const index = cellIndex(row, column, nx);
-      const core = coreFractionAtCell(xEdges[column], xEdges[column + 1], yEdges[row], yEdges[row + 1], config);
-      const stack = stackFractions(yEdges[row], yEdges[row + 1], config);
-      const layerTotal = stack.layers.reduce((sum, fraction) => sum + fraction, 0);
-      const claddingFraction = Math.max(0, 1 - core - stack.substrate - layerTotal);
-      const components = [
-        { fraction: core, value: material.core },
-        { fraction: stack.substrate, value: material.substrate },
-        { fraction: claddingFraction, value: material.cladding },
-        ...stack.layers.map((fraction, layerIndex) => ({ fraction, value: material.layers[layerIndex] })),
-      ];
-      coreFraction[index] = core;
+      const components = materialComponentsAtCell(xEdges[column], xEdges[column + 1], yEdges[row], yEdges[row + 1], config, material);
+      coreFraction[index] = components[0].fraction;
+      components.forEach((component, regionIndex) => { lossRegions[regionIndex].fraction[index] = component.fraction; });
       epsilonCellX[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.xx, 0);
       epsilonCellY[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.yy, 0);
       epsilonCellZ[index] = components.reduce((sum, component) => sum + component.fraction * component.value.epsilonReal.zz, 0);
@@ -1260,6 +1399,7 @@ function createGrid(config: WaveguideConfig): Grid {
     epsilonCellYZImaginary,
     cellArea,
     coreFraction,
+    lossRegions,
     epsilonX,
     epsilonY,
     inverseEpsilonX: inverseEpsilonX.real,
@@ -1492,8 +1632,13 @@ function solveLargestEigenpairs(
     multiplyScalarInPlace(vector, 1 / Math.max(norm(vector), 1e-30));
   }
   const finish = (candidates: RitzPair[]): RitzPair[] => {
-    const sorted = candidates.sort((first, second) => plasmonic
-      ? Math.abs(pairEffectiveIndex(first, operator) - targetIndex) - Math.abs(pairEffectiveIndex(second, operator) - targetIndex)
+    const targetImaginary = config.targetEffectiveIndexImaginary ?? 0;
+    const targetDistance = (pair: RitzPair) => {
+      const index = pairEffectiveIndexComplex(pair, operator);
+      return Math.hypot(index.real - targetIndex, index.imaginary - targetImaginary);
+    };
+    const sorted = candidates.sort((first, second) => (plasmonic || config.targetEffectiveIndex !== undefined)
+      ? targetDistance(first) - targetDistance(second)
       : second.eigenvalue - first.eigenvalue);
     const reusable = sorted.filter((pair) => {
       const index = pairEffectiveIndex(pair, operator);
@@ -1918,6 +2063,7 @@ function finalizeMode(
   let modalPowerW = 0;
   let corePowerW = 0;
   let electricLossIntegralVm2 = 0;
+  const regionLossIntegrals = new Map<string, number>();
   for (let index = 0; index < physicalIntensity.length; index += 1) {
     const ex2 = complexMagnitudeSquaredAt(physicalEx, index);
     const ey2 = complexMagnitudeSquaredAt(physicalEy, index);
@@ -1930,20 +2076,44 @@ function finalizeMode(
     const cellPowerW = physicalPoynting[index] * grid.cellArea[index] * 1e-12;
     modalPowerW += cellPowerW;
     corePowerW += grid.coreFraction[index] * cellPowerW;
-    electricLossIntegralVm2 += (grid.epsilonCellXImaginary[index] * ex2
-      + grid.epsilonCellYImaginary[index] * ey2 + grid.epsilonCellZImaginary[index] * ez2) * grid.cellArea[index] * 1e-12;
+    for (const region of grid.lossRegions) {
+      if (region.fraction[index] <= 0) continue;
+      const integral = region.fraction[index] * (
+        region.epsilonImaginary.x * ex2
+        + region.epsilonImaginary.y * ey2
+        + region.epsilonImaginary.z * ez2
+      ) * grid.cellArea[index] * 1e-12;
+      electricLossIntegralVm2 += integral;
+      regionLossIntegrals.set(region.region, (regionLossIntegrals.get(region.region) ?? 0) + integral);
+    }
   }
   const angularFrequency = 2 * Math.PI * 299_792_458 / (config.wavelengthUm * 1e-6);
   const absorbedPowerPerM = 0.5 * angularFrequency * 8.854_187_8128e-12 * Math.max(0, electricLossIntegralVm2);
   const absorptionBetaImaginaryPerUm = absorbedPowerPerM / (2 * Math.max(Math.abs(modalPowerW), 1e-30)) * 1e-6;
-  const betaImaginaryPerUm = Math.max(Math.abs(betaComplex.imaginary), absorptionBetaImaginaryPerUm);
+  const eigenBetaImaginaryPerUm = Math.abs(betaComplex.imaginary);
+  const betaImaginaryPerUm = Math.max(eigenBetaImaginaryPerUm, absorptionBetaImaginaryPerUm);
+  const radiationBetaImaginaryPerUm = Math.max(0, eigenBetaImaginaryPerUm - absorptionBetaImaginaryPerUm);
+  const lossDbPerCm = (betaImaginary: number) => (20 / Math.log(10)) * betaImaginary * 10_000;
+  const materialAbsorption = [...regionLossIntegrals.entries()]
+    .map(([region, integral]) => ({
+      region,
+      powerPerM: 0.5 * angularFrequency * 8.854_187_8128e-12 * Math.max(0, integral),
+      fraction: 0,
+    }))
+    .filter((entry) => entry.powerPerM > 1e-18);
+  materialAbsorption.forEach((entry) => { entry.fraction = entry.powerPerM / Math.max(absorbedPowerPerM, 1e-30); });
+  const physicalFields = { Ex: physicalEx, Ey: physicalEy, Ez: physicalEz, Hx: physicalHx, Hy: physicalHy, Hz: physicalHz } as const;
+  const complexFields = Object.fromEntries(Object.entries(physicalFields).map(([name, field]) => [name, {
+    real: toMatrix(field.real, nx, ny),
+    imaginary: toMatrix(field.imaginary, nx, ny),
+  }])) as Record<PhysicalFieldComponent, ComplexFieldMatrix>;
   const fields: Record<FieldComponent, number[][]> = {
-    Ex: toMatrix(physicalEx.real, nx, ny),
-    Ey: toMatrix(physicalEy.real, nx, ny),
-    Ez: toMatrix(physicalEz.real, nx, ny),
-    Hx: toMatrix(physicalHx.real, nx, ny),
-    Hy: toMatrix(physicalHy.real, nx, ny),
-    Hz: toMatrix(physicalHz.real, nx, ny),
+    Ex: complexFields.Ex.real,
+    Ey: complexFields.Ey.real,
+    Ez: complexFields.Ez.real,
+    Hx: complexFields.Hx.real,
+    Hy: complexFields.Hy.real,
+    Hz: complexFields.Hz.real,
     intensity: toMatrix(physicalIntensity, nx, ny),
     poynting: toMatrix(physicalPoynting, nx, ny),
   };
@@ -1972,7 +2142,14 @@ function finalizeMode(
     effectiveAreaUm2: electricTotal ** 2 / electricSquared,
     longitudinalElectricFraction: ezEnergy / electricTotal,
     xPolarizedElectricFraction: exEnergy / transverseElectricEnergy,
-    lossDbPerCm: (20 / Math.log(10)) * betaImaginaryPerUm * 10_000,
+    lossDbPerCm: lossDbPerCm(betaImaginaryPerUm),
+    absorptionLossDbPerCm: lossDbPerCm(absorptionBetaImaginaryPerUm),
+    radiationLossDbPerCm: lossDbPerCm(radiationBetaImaginaryPerUm),
+    propagationLengthUm: betaImaginaryPerUm > 0 ? 1 / (2 * betaImaginaryPerUm) : Number.POSITIVE_INFINITY,
+    lossBalanceRelativeDifference: Math.abs(eigenBetaImaginaryPerUm - absorptionBetaImaginaryPerUm)
+      / Math.max(eigenBetaImaginaryPerUm, absorptionBetaImaginaryPerUm, 1e-30),
+    absorbedPowerPerM,
+    materialAbsorption,
     modalPowerW,
     peakPoyntingWPerM2: Math.max(...physicalPoynting),
     guidanceMargin,
@@ -1984,6 +2161,7 @@ function finalizeMode(
       azimuthalModeNumber: beta * bendRadiusUm,
     } : {}),
     fields,
+    complexFields,
   };
 }
 

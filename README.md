@@ -19,10 +19,12 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
 - Rigorous constant-radius bends using a radial coordinate transformation: the metric factor 1 + x/R enters the material operators, a reduced transverse-electric eigenproblem is solved, and all six fields are reconstructed.
-- Wavelength sweeps with field-overlap mode tracking.
-- Width, height, slot-gap and bend-radius sweeps with resampled field-overlap mode tracking.
+- Wavelength sweeps with reciprocal complex-field mode tracking.
+- Complex-field maps for Re, Im, magnitude and phase of all six electromagnetic components, with reciprocal unconjugated E×H tracking for lossy and leaky modes.
+- Width, height, slot-gap and bend-radius sweeps with resampled reciprocal mode tracking.
 - Effective and imaginary index, group index, D and β₂ dispersion, attenuation, electric and power confinement, polarization fractions and effective area.
 - Complex Poynting-vector normalization to 1 mW modal power.
+- Material-resolved absorption, propagation length and eigenvalue-versus-power-balance loss diagnostics.
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps, transverse cuts, sweep plots and CSV exports.
@@ -35,6 +37,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Modal power-overlap and effective-index-mismatch matrices between two waveguide cross-sections.
 - Two-dimensional mode-count and effective-index maps for visualizing cutoff regions.
 - Versioned JSON project export/import plus numeric CSV exports.
+- User-defined complex effective-index targets and an inspectable Ritz-candidate table with residuals and rejection reasons.
 
 ## Run locally
 
@@ -52,7 +55,7 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, PML, power normalization, dielectric and metallic material models, a planar gold/air SPP benchmark, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
+The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, PML, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
 
 ## Numerical scope
 
@@ -70,7 +73,11 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 - Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
 
-## Reference
+## References
+
+The complete, feature-mapped bibliography and traceability notes are maintained in [REFERENCES.md](REFERENCES.md).
+
+### Core references
 
 A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modesolver for Anisotropic Dielectric Waveguides,” *Journal of Lightwave Technology* 26(11), 1423–1431 (2008). [doi:10.1109/JLT.2008.923643](https://doi.org/10.1109/JLT.2008.923643)
 

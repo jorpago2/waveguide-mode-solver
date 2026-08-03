@@ -43,6 +43,10 @@ describe("plasmonic mode solver", () => {
     expect(result.modes[0].polarization).toBe("quasi-TM");
     expect(Math.abs(result.modes[0].effectiveIndex - analyticSurfacePlasmonIndex())).toBeLessThan(0.01);
     expect(result.modes[0].effectiveIndexImaginary).toBeGreaterThan(0);
+    expect(result.modes[0].propagationLengthUm).toBeGreaterThan(0);
+    expect(result.modes[0].absorbedPowerPerM).toBeGreaterThan(0);
+    expect(result.modes[0].materialAbsorption.some((entry) => entry.region === "Base substrate" && entry.fraction > 0.9)).toBe(true);
+    expect(Number.isFinite(result.modes[0].lossBalanceRelativeDifference)).toBe(true);
     expect(Math.min(...result.permittivity.real.x.flat())).toBeLessThan(0);
     expect(Math.max(...result.permittivity.imaginary.x.flat())).toBeGreaterThan(0);
   }, 20_000);

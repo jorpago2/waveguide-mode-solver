@@ -71,6 +71,9 @@ describe("full-vector finite-difference mode solver", () => {
     expect(mode.fields.Ex).toHaveLength(26);
     expect(mode.fields.Ex[0]).toHaveLength(32);
     expect(mode.modalPowerW).toBeCloseTo(NORMALIZED_MODAL_POWER_W, 8);
+    expect(mode.complexFields.Ex.imaginary).toHaveLength(result.ny);
+    expect(mode.complexFields.Hz.real[0]).toHaveLength(result.nx);
+    expect(mode.propagationLengthUm).toBe(Number.POSITIVE_INFINITY);
     expect(mode.peakPoyntingWPerM2).toBeGreaterThan(0);
     expect(result.xEdgesUm).toHaveLength(result.nx + 1);
     expect(result.yEdgesUm).toHaveLength(result.ny + 1);
@@ -78,6 +81,14 @@ describe("full-vector finite-difference mode solver", () => {
     expect(result.permittivity.imaginary.x).toHaveLength(result.ny);
     expect(result.permittivity.real.x[0]).toHaveLength(result.nx);
     expect(Math.max(...result.permittivity.real.x.flat())).toBeGreaterThan(Math.min(...result.permittivity.real.x.flat()));
+  });
+
+  it("targets an effective index and reports every Ritz candidate", () => {
+    const result = solveWaveguide({ ...benchmark, modeCount: 1, targetEffectiveIndex: 1.65, targetEffectiveIndexImaginary: 0 });
+    expect(result.searchTargetEffectiveIndex).toBe(1.65);
+    expect(result.candidates.length).toBeGreaterThan(result.modes.length);
+    expect(result.candidates.some((candidate) => candidate.status === "selected" && candidate.label)).toBe(true);
+    expect(result.candidates.every((candidate) => candidate.reason.length > 0)).toBe(true);
   });
 
   it("rejects a non-guiding index profile", () => {
