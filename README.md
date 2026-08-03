@@ -6,7 +6,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 
 ## Features
 
-- Uniform or center-graded transverse mesh with subpixel interface averaging and geometry-aligned interfaces on resolved grids.
+- Uniform, manually graded or automatic axis-specific center-graded transverse mesh with subpixel interface averaging and geometry-aligned interfaces on resolved grids.
 - Technology presets for SOI strip, rib and slot guides, SiN, thin-film lithium niobate, weak-guidance silica and polymer platforms.
 - Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
 - Dominant-field TE/TM mode labels with transverse node counts, symmetry metrics, cutoff warnings and family-aware sweep tracking.
@@ -19,9 +19,9 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
 - Rigorous constant-radius bends using a radial coordinate transformation: the metric factor 1 + x/R enters the material operators, a reduced transverse-electric eigenproblem is solved, and all six fields are reconstructed.
-- Wavelength sweeps with reciprocal complex-field mode tracking.
+- Wavelength sweeps with reciprocal complex-field, near-degenerate-subspace mode tracking.
 - Complex-field maps for Re, Im, magnitude and phase of all six electromagnetic components, with reciprocal unconjugated E×H tracking for lossy and leaky modes.
-- Width, height, slot-gap and bend-radius sweeps with resampled reciprocal mode tracking.
+- Width, height, slot-gap and bend-radius sweeps with resampled reciprocal subspace tracking.
 - Effective and imaginary index, group index, D and β₂ dispersion, attenuation, electric and power confinement, polarization fractions and effective area.
 - Complex Poynting-vector normalization to 1 mW modal power.
 - Material-resolved absorption, propagation length and eigenvalue-versus-power-balance loss diagnostics.
@@ -29,6 +29,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Stored-energy PML participation, boundary participation and automatic straight-guide PML-mode rejection; bent modes remain subject to convergence checks rather than participation-only rejection.
 - PEC/PMC x/y symmetry projections for compatible straight cross-sections, reducing the modal state by approximately 2× per selected plane while retaining full-domain field exports.
 - Bloch-periodic x/y boundary pairs with independent phase in [−π, π]; zero phase gives ordinary periodicity and PML can remain on the non-periodic transverse axis.
+- Transverse Bloch-phase dispersion sweeps showing every calculated eigenvalue, a tracked modal branch, loss and ±θ reciprocity error.
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
 - Plotly field maps with an independent 1×/2×/4× interpolated display mesh, transverse cuts, sweep plots and raw solver-grid CSV exports.
@@ -59,7 +60,7 @@ pnpm test
 pnpm run build
 ```
 
-The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, graded meshes, transverse and longitudinal anisotropic coupling, complex loss, dispersive energy, PML participation, PEC/PMC symmetry projection, reciprocal Bloch phases in x/y, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
+The tests exercise automated three-grid convergence, subpixel convergence, the finest supported grid, every geometry, manual and automatic graded meshes, transverse and longitudinal anisotropic coupling, complex loss, dispersive energy, PML participation, PEC/PMC symmetry projection, reciprocal Bloch phases and phase sweeps in x/y, power normalization, dielectric and metallic material models, dielectric-slab, MIM, IMI and planar gold/air SPP benchmarks, vertical stacks, mode classification, seeded tolerances, coupling, cross-section comparison, modal maps, the infinite-radius limit, bend-direction symmetry and radiative bend loss.
 
 ## Numerical scope
 
@@ -75,6 +76,7 @@ The tests exercise automated three-grid convergence, subpixel convergence, the f
 - dn/dλ is a local linear model. Use a sufficiently narrow sweep and verify the material data range.
 - Group index and dispersion are numerical finite differences and require wavelength-step convergence.
 - Mode labels are inferred from the dominant real transverse electric-field component. Treat labels near degeneracies, strong hybridization or asymmetric geometries as diagnostic rather than exact quantum numbers.
+- Modes within 10⁻⁴ in effective index are tracked as a shared subspace. The subspace is continuous under basis rotation, but an individual eigenvector inside an exact degeneracy is not uniquely defined.
 - Finite stack layers are horizontal and lie below the core. Dielectric guidance requires a core index above the exterior; metallic stacks instead use a surface-plasmon search interval. High-index-substrate leakage still requires a dedicated leaky-mode formulation and PML convergence study.
 - The LiNbO₃ temperature correction applies the congruent-LN wavelength-dependent thermo-optic fit of Moretti et al. to the 5% MgO Sellmeier base as an approximation and is restricted to 20–240 °C. Its electro-optic control assumes a uniform DC field parallel to the optical axis and uses telecom values r₁₃ = 8.6 pm/V and r₃₃ = 30.8 pm/V; process-specific data are required and it does not solve electrodes or RF/optical overlap.
 - Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.

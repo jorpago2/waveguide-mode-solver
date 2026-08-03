@@ -3,6 +3,7 @@ import { ModePlot, type DisplayInterpolation, type FieldPart } from "./ModePlot"
 import { GeometryPlot } from "./GeometryPlot";
 import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
+import { BlochSweepPlot } from "./BlochSweepPlot";
 import { runSolverWorker } from "./workerClient";
 import { AdvancedAnalyses } from "./AdvancedAnalyses";
 import packageJson from "../package.json";
@@ -16,6 +17,9 @@ import {
   validateWaveguide,
   PARAMETER_MAXIMUMS,
   type FieldComponent,
+  type BlochSweepAxis,
+  type BlochSweepResult,
+  type BlochSweepSettings,
   type GeometryType,
   type GeometrySweepParameter,
   type GeometrySweepResult,
@@ -40,6 +44,7 @@ const common = {
   substrateDispersionPerUm: 0,
   materialReferenceWavelengthUm: 1.55,
   meshBias: 0,
+  autoMeshBias: true,
   boundary: "hard" as const,
   symmetryX: "none" as const,
   symmetryY: "none" as const,
@@ -120,6 +125,7 @@ const presets: Record<string, WaveguideConfig> = {
 const initialConfig = presets["SiN · channel"];
 const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm: 1.65, points: 9, modeIndex: 0 };
 const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
+const initialBlochSweep: BlochSweepSettings = { axis: "x", startPhaseRad: -Math.PI, stopPhaseRad: Math.PI, points: 9, modeIndex: 0 };
 const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity", "poynting"];
 const fieldLabels: Record<FieldComponent, ReactNode> = {
   Ex: <>E<sub>x</sub></>, Ey: <>E<sub>y</sub></>, Ez: <>E<sub>z</sub></>,
@@ -155,9 +161,12 @@ export function App() {
   const [sweepResult, setSweepResult] = useState<SweepResult>();
   const [geometrySweep, setGeometrySweep] = useState(initialGeometrySweep);
   const [geometrySweepResult, setGeometrySweepResult] = useState<GeometrySweepResult>();
+  const [blochSweep, setBlochSweep] = useState(initialBlochSweep);
+  const [blochSweepResult, setBlochSweepResult] = useState<BlochSweepResult>();
   const [message, setMessage] = useState("Solving the default full-vector mode…");
   const [sweepMessage, setSweepMessage] = useState("Choose a wavelength range to calculate dispersion.");
   const [geometrySweepMessage, setGeometrySweepMessage] = useState("Sweep a device dimension while tracking the selected mode.");
+  const [blochSweepMessage, setBlochSweepMessage] = useState("Enable a periodic boundary to calculate transverse-array dispersion.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const initialized = useRef(false);
@@ -184,11 +193,16 @@ export function App() {
     void runSolverWorker<SolverResult>({ kind: "solve", config: initialConfig })
       .then((initialResult) => {
         setResult(initialResult);
-        setMessage(`${initialResult.modes.length} guided mode${initialResult.modes.length === 1 ? "" : "s"} found on a ${initialResult.nx} × ${initialResult.ny} Yee grid.`);
+        setMessage(`${initialResult.modes.length} guided mode${initialResult.modes.length === 1 ? "" : "s"} found on a ${initialResult.nx} × ${initialResult.ny} Yee grid with automatic x/y grading ${initialResult.meshBiasX.toFixed(2)}/${initialResult.meshBiasY.toFixed(2)}.`);
       })
       .catch((caught) => { setError(caught instanceof Error ? caught.message : "The initial mode solve failed."); setMessage("Solve failed."); })
       .finally(() => setBusy(false));
   }, []);
+
+  useEffect(() => {
+    if (blochSweep.axis === "x" && !config.periodicX && config.periodicY) setBlochSweep((current) => ({ ...current, axis: "y" }));
+    if (blochSweep.axis === "y" && !config.periodicY && config.periodicX) setBlochSweep((current) => ({ ...current, axis: "x" }));
+  }, [blochSweep.axis, config.periodicX, config.periodicY]);
 
   useEffect(() => {
     const syncView = () => setActiveView(viewFromHash());
@@ -273,6 +287,7 @@ export function App() {
         setSelectedMode(0);
         setSweepResult(undefined);
         setGeometrySweepResult(undefined);
+        setBlochSweepResult(undefined);
         setSolverPane("results");
         setGeometrySweep((current) => (
           (current.parameter === "slotGapUm" && (draft.geometry ?? "channel") !== "slot")
@@ -280,7 +295,8 @@ export function App() {
           || (current.parameter === "bendRadiusUm" && (draft.bendRadiusUm ?? 0) <= 0)
             ? { ...current, parameter: "widthUm" } : current
         ));
-        setMessage(`${next.modes.length} guided mode${next.modes.length === 1 ? "" : "s"} found on a ${next.nx} × ${next.ny} Yee grid.`);
+        setBlochSweep((current) => ({ ...current, axis: draft.periodicX ? "x" : draft.periodicY ? "y" : current.axis }));
+        setMessage(`${next.modes.length} guided mode${next.modes.length === 1 ? "" : "s"} found on a ${next.nx} × ${next.ny} Yee grid${draft.autoMeshBias ? ` with automatic x/y grading ${next.meshBiasX.toFixed(2)}/${next.meshBiasY.toFixed(2)}` : ""}.`);
     } catch (caught) {
         setError(caught instanceof Error ? caught.message : "The mode solve failed.");
         setMessage("Solve failed.");
@@ -317,6 +333,21 @@ export function App() {
     } finally { setBusy(false); }
   }
 
+  async function runBlochSweep(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setBlochSweepMessage("Tracking the modal subspace across Bloch phase…");
+    try {
+      const next = await runSolverWorker<BlochSweepResult>({ kind: "blochSweep", config, settings: { ...blochSweep, modeIndex: selectedMode } });
+      setBlochSweepResult(next);
+      setBlochSweepMessage(`${next.points.length} Bloch phases solved with degenerate-subspace tracking.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The Bloch sweep failed.");
+      setBlochSweepMessage("Bloch sweep failed.");
+    } finally { setBusy(false); }
+  }
+
   function exportField() {
     if (!mode || !result) return;
     const rows = ["x_um,y_um,Ex_real_V_m,Ex_imag_V_m,Ey_real_V_m,Ey_imag_V_m,Ez_real_V_m,Ez_imag_V_m,Hx_real_A_m,Hx_imag_A_m,Hy_real_A_m,Hy_imag_A_m,Hz_real_A_m,Hz_imag_A_m,E2_V2_m2,Sz_W_m2"];
@@ -337,18 +368,26 @@ export function App() {
 
   function exportSweep() {
     if (!sweepResult) return;
-    const rows = ["wavelength_um,mode_label,near_cutoff,n_eff,n_group,dispersion_ps_nm_km,beta2_ps2_km,loss_db_cm,mode_overlap",
-      ...sweepResult.points.map((point) => [point.wavelengthUm, point.modeLabel, point.nearCutoff, point.effectiveIndex,
+    const rows = ["wavelength_um,mode_label,near_cutoff,subspace_size,n_eff,n_group,dispersion_ps_nm_km,beta2_ps2_km,loss_db_cm,subspace_overlap",
+      ...sweepResult.points.map((point) => [point.wavelengthUm, point.modeLabel, point.nearCutoff, point.degenerateSubspaceSize, point.effectiveIndex,
         point.groupIndex, point.dispersionPsPerNmKm, point.beta2Ps2PerKm, point.lossDbPerCm, point.overlap].join(","))];
     download(rows.join("\n"), "waveguide-dispersion.csv");
   }
 
   function exportGeometrySweep() {
     if (!geometrySweepResult) return;
-    const rows = ["value_um,mode_label,near_cutoff,n_eff,confinement,effective_area_um2,loss_db_cm,mode_overlap",
-      ...geometrySweepResult.points.map((point) => [point.valueUm, point.modeLabel, point.nearCutoff, point.effectiveIndex, point.electricConfinement,
+    const rows = ["value_um,mode_label,near_cutoff,subspace_size,n_eff,confinement,effective_area_um2,loss_db_cm,subspace_overlap",
+      ...geometrySweepResult.points.map((point) => [point.valueUm, point.modeLabel, point.nearCutoff, point.degenerateSubspaceSize, point.effectiveIndex, point.electricConfinement,
         point.effectiveAreaUm2, point.lossDbPerCm, point.overlap].join(","))];
     download(rows.join("\n"), `waveguide-${geometrySweepResult.parameter}-sweep.csv`);
+  }
+
+  function exportBlochSweep() {
+    if (!blochSweepResult) return;
+    const rows = ["phase_rad,phase_over_pi,mode_label,subspace_size,n_eff,n_eff_imag,loss_db_cm,subspace_overlap",
+      ...blochSweepResult.points.map((point) => [point.phaseRad, point.phaseRad / Math.PI, point.modeLabel, point.degenerateSubspaceSize,
+        point.effectiveIndex, point.effectiveIndexImaginary, point.lossDbPerCm, point.overlap].join(","))];
+    download(rows.join("\n"), `waveguide-bloch-${blochSweepResult.axis}-sweep.csv`);
   }
 
   function exportProject() {
@@ -360,6 +399,7 @@ export function App() {
       result,
       wavelengthSweep: sweepResult,
       geometrySweep: geometrySweepResult,
+      blochSweep: blochSweepResult,
     };
     download(JSON.stringify(project, null, 2), `waveguide-project-v${packageJson.version}.json`, "application/json;charset=utf-8");
   }
@@ -499,8 +539,9 @@ export function App() {
                 <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
                 <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={PARAMETER_MAXIMUMS.modeCount} step={1} onChange={(v) => updateNumber("modeCount", v)} />
                 <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={PARAMETER_MAXIMUMS.gridResolution} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
-                <NumberField label="Mesh bias" unit={`0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} onChange={(v) => updateNumber("meshBias", v)} />
+                <NumberField label="Mesh bias" unit={draft.autoMeshBias ? "automatic" : `0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} disabled={draft.autoMeshBias} onChange={(v) => updateNumber("meshBias", v)} />
                 <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
+                <label className="checkbox-field"><input type="checkbox" checked={draft.autoMeshBias ?? false} onChange={(event) => setDraft((current) => ({ ...current, autoMeshBias: event.target.checked }))} /><span>Automatic mesh grading</span></label>
                 <label className="select-field">Outer boundary<select value={draft.boundary ?? "hard"} onChange={(event) => setDraft((current) => ({ ...current, boundary: event.target.value as "hard" | "pml" }))}><option value="hard">Hard wall</option><option value="pml">PML (open)</option></select></label>
                 <label className="select-field">x symmetry plane<select value={draft.symmetryX ?? "none"} onChange={(event) => setDraft((current) => ({ ...current, symmetryX: event.target.value as SymmetryBoundary, ...(event.target.value !== "none" ? { periodicX: false, periodicY: false, blochPhaseXRad: 0, blochPhaseYRad: 0 } : {}) }))}><option value="none">None</option><option value="pec">PEC · tangential E = 0</option><option value="pmc">PMC · tangential H = 0</option></select></label>
                 <label className="select-field">y symmetry plane<select value={draft.symmetryY ?? "none"} onChange={(event) => setDraft((current) => ({ ...current, symmetryY: event.target.value as SymmetryBoundary, ...(event.target.value !== "none" ? { periodicX: false, periodicY: false, blochPhaseXRad: 0, blochPhaseYRad: 0 } : {}) }))}><option value="none">None</option><option value="pec">PEC · tangential E = 0</option><option value="pmc">PMC · tangential H = 0</option></select></label>
@@ -509,6 +550,7 @@ export function App() {
                   <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
                 </>}
               </div>
+              {draft.autoMeshBias && <p className="configuration-note">Automatic grading selects independent x/y center refinement from the core-to-domain span; geometry interfaces remain aligned explicitly.</p>}
               {((draft.symmetryX ?? "none") !== "none" || (draft.symmetryY ?? "none") !== "none") && <p className="configuration-note">Symmetry projects the full Yee operator onto the selected parity subspace. Use it only when the geometry and material tensor are mirror-symmetric.</p>}
               <details className="advanced-controls">
                 <summary>Mode targeting</summary>
@@ -597,6 +639,20 @@ export function App() {
         </form>
         <p className="status" aria-live="polite">{geometrySweepMessage}</p>
         {geometrySweepResult && <><GeometrySweepPlot result={geometrySweepResult} />{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+      </section>
+
+      <section className="sweep-section">
+        <div className="panel-heading"><div><span className="step">05</span><h2>Transverse Bloch dispersion</h2></div><button className="export-button" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</button></div>
+        <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
+        <form className="sweep-controls" onSubmit={runBlochSweep}>
+          <label className="select-field">Periodic axis<select value={blochSweep.axis} onChange={(event) => setBlochSweep((current) => ({ ...current, axis: event.target.value as BlochSweepAxis }))}><option value="x" disabled={!config.periodicX}>x boundary pair</option><option value="y" disabled={!config.periodicY}>y boundary pair</option></select></label>
+          <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
+          <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
+          <NumberField label="Samples" unit="points" value={blochSweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setBlochSweep((current) => ({ ...current, points: value }))} />
+          <button className="solve-button" type="submit" disabled={busy || !mode || (!config.periodicX && !config.periodicY)}>Run Bloch sweep <span aria-hidden="true">→</span></button>
+        </form>
+        <p className="status" aria-live="polite">{blochSweepMessage}</p>
+        {blochSweepResult && <><div className="analysis-metrics"><div><span>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</span><strong>{blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)}</strong></div><div><span>Tracked subspace</span><strong>{Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)</strong></div></div><BlochSweepPlot result={blochSweepResult} />{blochSweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
       </section>
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpolateFieldMatrix, NORMALIZED_MODAL_POWER_W, solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
+import { interpolateFieldMatrix, NORMALIZED_MODAL_POWER_W, PARAMETER_MAXIMUMS, solveWaveguide, sweepBlochPhase, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
   wavelengthUm: 1.55,
@@ -46,6 +46,26 @@ describe("full-vector finite-difference mode solver", () => {
     expect(interpolated.y).toEqual([0, 1, 2]);
     expect(interpolated.values).toEqual([[0, 0.5, 1], [2, 2.5, 3], [4, 4.5, 5]]);
     expect(field).toEqual([[0, 1], [4, 5]]);
+  });
+
+  it("selects independent automatic mesh grading on each axis", () => {
+    const result = solveWaveguide({ ...benchmark, gridResolution: 24, modeCount: 1, autoMeshBias: true });
+    expect(result.meshBiasX).toBeGreaterThan(0);
+    expect(result.meshBiasY).toBeGreaterThan(result.meshBiasX);
+    expect(result.meshBiasY).toBeLessThanOrEqual(PARAMETER_MAXIMUMS.meshBias);
+    expect(result.dxUm).toBeLessThan(result.dxMaxUm);
+    expect(result.dyUm).toBeLessThan(result.dyMaxUm);
+  });
+
+  it("retains linearly independent modes at a physical degeneracy", () => {
+    const squareGuide = { ...benchmark, widthUm: 1, heightUm: 1, gridResolution: 24, modeCount: 4 };
+    const result = solveWaveguide(squareGuide);
+    const degeneratePair = result.modes.some((mode, index) => result.modes.some((candidate, candidateIndex) => (
+      candidateIndex > index && Math.abs(candidate.effectiveIndex - mode.effectiveIndex) <= 1e-4
+    )));
+    expect(degeneratePair).toBe(true);
+    const sweep = sweepGeometry(squareGuide, { parameter: "widthUm", startValueUm: 0.95, stopValueUm: 1.05, points: 3, modeIndex: 0 });
+    expect(Math.max(...sweep.points.map((point) => point.degenerateSubspaceSize))).toBeGreaterThan(1);
   });
 
   it("converges toward the subpixel-interface reference", () => {
@@ -331,5 +351,16 @@ describe("full-vector finite-difference mode solver", () => {
     });
     expect(sweep.points).toHaveLength(3);
     expect(Math.min(...sweep.points.map((point) => point.overlap))).toBeGreaterThan(0.7);
+    expect(sweep.points.every((point) => point.degenerateSubspaceSize >= 1)).toBe(true);
+  });
+
+  it("builds a reciprocal transverse Bloch dispersion sweep", () => {
+    const sweep = sweepBlochPhase({ ...benchmark, gridResolution: 24, modeCount: 2, periodicX: true }, {
+      axis: "x", startPhaseRad: -0.3, stopPhaseRad: 0.3, points: 3, modeIndex: 0,
+    });
+    expect(sweep.points).toHaveLength(3);
+    expect(sweep.points.every((point) => point.candidates.length > 0)).toBe(true);
+    expect(sweep.reciprocityError).toBeLessThan(1e-5);
+    expect(() => sweepBlochPhase(benchmark, { axis: "x", startPhaseRad: -0.3, stopPhaseRad: 0.3, points: 3, modeIndex: 0 })).toThrow(/periodic/);
   });
 });

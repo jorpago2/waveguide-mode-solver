@@ -78,6 +78,7 @@ export interface WaveguideConfig {
   substrateDispersionPerUm?: number;
   materialReferenceWavelengthUm?: number;
   meshBias?: number;
+  autoMeshBias?: boolean;
   boundary?: BoundaryType;
   symmetryX?: SymmetryBoundary;
   symmetryY?: SymmetryBoundary;
@@ -202,6 +203,8 @@ export interface SolverResult {
   formulation: "transverse-h" | "transverse-e" | "first-order";
   backend: "TypeScript" | "Rust/WASM";
   symmetryReductionFactor: number;
+  meshBiasX: number;
+  meshBiasY: number;
 }
 
 export interface SweepSettings {
@@ -221,6 +224,7 @@ export interface SweepPoint {
   overlap: number;
   modeLabel: string;
   nearCutoff: boolean;
+  degenerateSubspaceSize: number;
 }
 
 export interface SweepResult {
@@ -247,11 +251,40 @@ export interface GeometrySweepPoint {
   overlap: number;
   modeLabel: string;
   nearCutoff: boolean;
+  degenerateSubspaceSize: number;
 }
 
 export interface GeometrySweepResult {
   parameter: GeometrySweepParameter;
   points: GeometrySweepPoint[];
+  warnings: string[];
+}
+
+export type BlochSweepAxis = "x" | "y";
+
+export interface BlochSweepSettings {
+  axis: BlochSweepAxis;
+  startPhaseRad: number;
+  stopPhaseRad: number;
+  points: number;
+  modeIndex: number;
+}
+
+export interface BlochSweepPoint {
+  phaseRad: number;
+  effectiveIndex: number;
+  effectiveIndexImaginary: number;
+  lossDbPerCm: number;
+  overlap: number;
+  modeLabel: string;
+  degenerateSubspaceSize: number;
+  candidates: Array<{ effectiveIndex: number; effectiveIndexImaginary: number; modeLabel: string }>;
+}
+
+export interface BlochSweepResult {
+  axis: BlochSweepAxis;
+  points: BlochSweepPoint[];
+  reciprocityError?: number;
   warnings: string[];
 }
 
@@ -312,6 +345,8 @@ interface Grid {
   periodicY: boolean;
   blochPhaseXRad: number;
   blochPhaseYRad: number;
+  meshBiasX: number;
+  meshBiasY: number;
 }
 
 interface OperatorContext {
@@ -563,10 +598,13 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     return effectiveIndex > lowerIndex && effectiveIndex < upperIndex;
   });
   const uniquePairs = guidedPairs.filter((pair, index, all) => {
-    const effectiveIndex = pairEffectiveIndex(pair, operator);
-    return all.findIndex((candidate) => (
-      Math.abs(pairEffectiveIndex(candidate, operator) - effectiveIndex) < 1e-7
-    )) === index;
+    const effectiveIndex = pairEffectiveIndexComplex(pair, operator);
+    return all.findIndex((candidate) => {
+      const candidateIndex = pairEffectiveIndexComplex(candidate, operator);
+      return Math.abs(candidateIndex.real - effectiveIndex.real) < 1e-7
+        && Math.abs(candidateIndex.imaginary - effectiveIndex.imaginary) < 1e-7
+        && ritzVectorOverlap(pair, candidate) > 0.999;
+    }) === index;
   });
   const convergedPairs = uniquePairs.filter((pair) => pair.residual <= 2e-2);
   const rebuild = (pair: RitzPair, index: number) => {
@@ -591,7 +629,7 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     };
     if (!uniquePairs.includes(pair)) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
-      residual: pair.residual, status: "duplicate", reason: "Duplicate Ritz value within 10⁻⁷ in effective index.",
+      residual: pair.residual, status: "duplicate", reason: "Collinear Ritz vector with the same complex effective index within 10⁻⁷.",
     };
     if (!convergedPairs.includes(pair)) return {
       effectiveIndex: effectiveIndex.real, effectiveIndexImaginary: effectiveIndex.imaginary,
@@ -665,6 +703,8 @@ export function solveWaveguide(config: WaveguideConfig, recycleSubspace = false)
     formulation: operator.formulation,
     backend: operator.backend,
     symmetryReductionFactor: baseOperator.physicalVectorSize / operator.physicalVectorSize,
+    meshBiasX: grid.meshBiasX,
+    meshBiasY: grid.meshBiasY,
   };
 }
 
@@ -677,6 +717,57 @@ function pairEffectiveIndexComplex(pair: RitzPair, operator: OperatorContext): {
     ? { real: pair.eigenvalue, imaginary: pair.eigenvalueImaginary }
     : complexSquareRoot(pair.eigenvalue, pair.eigenvalueImaginary);
   return { real: beta.real / operator.k0, imaginary: Math.abs(beta.imaginary / operator.k0) };
+}
+
+function ritzVectorOverlap(first: RitzPair, second: RitzPair): number {
+  const firstImaginary = first.vectorImaginary ?? new Float64Array(first.vector.length);
+  const secondImaginary = second.vectorImaginary ?? new Float64Array(second.vector.length);
+  let real = 0;
+  let imaginary = 0;
+  let firstNorm = 0;
+  let secondNorm = 0;
+  for (let index = 0; index < first.vector.length; index += 1) {
+    real += first.vector[index] * second.vector[index] + firstImaginary[index] * secondImaginary[index];
+    imaginary += first.vector[index] * secondImaginary[index] - firstImaginary[index] * second.vector[index];
+    firstNorm += first.vector[index] ** 2 + firstImaginary[index] ** 2;
+    secondNorm += second.vector[index] ** 2 + secondImaginary[index] ** 2;
+  }
+  return Math.hypot(real, imaginary) / Math.sqrt(Math.max(firstNorm * secondNorm, 1e-30));
+}
+
+const DEGENERATE_INDEX_TOLERANCE = 1e-4;
+
+interface TrackedMode {
+  result: SolverResult;
+  mode: WaveguideMode;
+  overlap: number;
+  degenerateSubspaceSize: number;
+}
+
+function degenerateModes(result: SolverResult, mode: WaveguideMode): WaveguideMode[] {
+  return result.modes.filter((candidate) => Math.abs(candidate.effectiveIndex - mode.effectiveIndex) <= DEGENERATE_INDEX_TOLERANCE);
+}
+
+function trackMode(previous: TrackedMode, candidateResult: SolverResult): TrackedMode | undefined {
+  if (candidateResult.modes.length === 0) return undefined;
+  const previousSubspace = degenerateModes(previous.result, previous.mode);
+  const sameFamily = candidateResult.modes.filter((mode) => sameModeFamily(previous.mode, mode));
+  const candidates = previousSubspace.length > 1 || sameFamily.length === 0 ? candidateResult.modes : sameFamily;
+  const ranked = candidates.map((mode) => {
+    const directOverlap = resampledModeOverlap(previous.result, previous.mode, candidateResult, mode);
+    const subspaceOverlap = clamp(Math.sqrt(previousSubspace.reduce((sum, basisMode) => {
+      const overlap = resampledModeOverlap(previous.result, basisMode, candidateResult, mode);
+      return sum + overlap ** 2;
+    }, 0)), 0, 1);
+    return {
+      result: candidateResult,
+      mode,
+      overlap: subspaceOverlap,
+      directOverlap,
+      degenerateSubspaceSize: Math.max(previousSubspace.length, degenerateModes(candidateResult, mode).length),
+    };
+  }).sort((first, second) => second.overlap - first.overlap || second.directOverlap - first.directOverlap);
+  return ranked[0];
 }
 
 export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings): SweepResult {
@@ -693,11 +784,12 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
   const anchor = wavelengths.reduce((best, value, index) => (
     Math.abs(value - config.wavelengthUm) < Math.abs(wavelengths[best] - config.wavelengthUm) ? index : best
   ), 0);
-  const tracked: Array<{ result: SolverResult; mode: WaveguideMode; overlap: number } | undefined> = new Array(settings.points);
+  const tracked: Array<TrackedMode | undefined> = new Array(settings.points);
   const solveAt = (index: number) => solveWaveguide({ ...config, wavelengthUm: wavelengths[index] }, true);
   const anchorResult = solveAt(anchor);
   if (anchorResult.modes.length === 0) throw new Error("No guided mode exists at the sweep anchor wavelength.");
-  tracked[anchor] = { result: anchorResult, mode: anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)], overlap: 1 };
+  const anchorMode = anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)];
+  tracked[anchor] = { result: anchorResult, mode: anchorMode, overlap: 1, degenerateSubspaceSize: degenerateModes(anchorResult, anchorMode).length };
   const anchorSubspace = recycledArnoldiSubspace;
 
   for (const direction of [1, -1]) {
@@ -706,19 +798,12 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
       const previous = tracked[index - direction];
       const candidateResult = solveAt(index);
       if (!previous || candidateResult.modes.length === 0) break;
-      const matching = candidateResult.modes.filter((mode) => sameModeFamily(previous.mode, mode));
-      const ranked = (matching.length > 0 ? matching : candidateResult.modes).map((mode) => ({
-        result: candidateResult,
-        mode,
-        overlap: resampledModeOverlap(previous.result, previous.mode, candidateResult, mode),
-      }))
-        .sort((first, second) => second.overlap - first.overlap);
-      tracked[index] = ranked[0];
+      tracked[index] = trackMode(previous, candidateResult);
     }
   }
 
   const valid = tracked.map((entry, index) => entry && ({ wavelengthUm: wavelengths[index], ...entry })).filter(Boolean) as Array<{
-    wavelengthUm: number; result: SolverResult; mode: WaveguideMode; overlap: number;
+    wavelengthUm: number; result: SolverResult; mode: WaveguideMode; overlap: number; degenerateSubspaceSize: number;
   }>;
   if (valid.length < 5) throw new Error("The selected mode could not be tracked across at least five wavelengths.");
   const lambda = valid.map((entry) => entry.wavelengthUm);
@@ -739,11 +824,13 @@ export function sweepWaveguide(config: WaveguideConfig, settings: SweepSettings)
       overlap: entry.overlap,
       modeLabel: entry.mode.label,
       nearCutoff: entry.mode.nearCutoff,
+      degenerateSubspaceSize: entry.degenerateSubspaceSize,
     };
   });
   const warnings: string[] = [];
   if (valid.length < settings.points) warnings.push(`Mode tracking stopped at ${valid.length} of ${settings.points} wavelengths.`);
   if (points.some((point) => point.overlap < 0.75)) warnings.push("A low field overlap indicates a possible mode crossing; inspect that interval.");
+  if (points.some((point) => point.degenerateSubspaceSize > 1)) warnings.push("A near-degenerate modal subspace was tracked; its span is continuous, but individual eigenvectors inside it are not unique.");
   if (points.some((point) => point.nearCutoff)) warnings.push("The tracked mode approaches cutoff; increase padding and verify mesh convergence near that interval.");
   warnings.push("Group index and dispersion use finite differences; repeat with more wavelength points to check convergence.");
   return { points, warnings };
@@ -774,7 +861,7 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
   const anchor = values.reduce((best, value, index) => (
     Math.abs(value - currentValue) < Math.abs(values[best] - currentValue) ? index : best
   ), 0);
-  const tracked: Array<{ result: SolverResult; mode: WaveguideMode; overlap: number } | undefined> = new Array(settings.points);
+  const tracked: Array<TrackedMode | undefined> = new Array(settings.points);
   const solveAt = (index: number) => {
     const nextConfig = { ...config, [settings.parameter]: values[index] };
     const errors = validateWaveguide(nextConfig);
@@ -783,10 +870,12 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
   };
   const anchorResult = solveAt(anchor);
   if (!anchorResult?.modes.length) throw new Error("No guided mode exists at the geometry-sweep anchor.");
+  const anchorMode = anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)];
   tracked[anchor] = {
     result: anchorResult,
-    mode: anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)],
+    mode: anchorMode,
     overlap: 1,
+    degenerateSubspaceSize: degenerateModes(anchorResult, anchorMode).length,
   };
   const anchorSubspace = recycledArnoldiSubspace;
 
@@ -796,13 +885,7 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
       const previous = tracked[index - direction];
       const candidateResult = solveAt(index);
       if (!previous || !candidateResult?.modes.length) break;
-      const matching = candidateResult.modes.filter((mode) => sameModeFamily(previous.mode, mode));
-      const ranked = (matching.length > 0 ? matching : candidateResult.modes).map((mode) => ({
-        result: candidateResult,
-        mode,
-        overlap: resampledModeOverlap(previous.result, previous.mode, candidateResult, mode),
-      })).sort((first, second) => second.overlap - first.overlap);
-      tracked[index] = ranked[0];
+      tracked[index] = trackMode(previous, candidateResult);
     }
   }
 
@@ -815,13 +898,76 @@ export function sweepGeometry(config: WaveguideConfig, settings: GeometrySweepSe
     overlap: entry.overlap,
     modeLabel: entry.mode.label,
     nearCutoff: entry.mode.nearCutoff,
+    degenerateSubspaceSize: entry.degenerateSubspaceSize,
   })).filter(Boolean) as GeometrySweepPoint[];
   if (points.length < 3) throw new Error("The selected mode could not be tracked across at least three geometry values.");
   const warnings: string[] = [];
   if (points.length < settings.points) warnings.push(`Mode tracking stopped at ${points.length} of ${settings.points} geometry values.`);
   if (points.some((point) => point.overlap < 0.75)) warnings.push("A low field overlap indicates a possible mode crossing; inspect that interval.");
+  if (points.some((point) => point.degenerateSubspaceSize > 1)) warnings.push("A near-degenerate modal subspace was tracked; its span is continuous, but individual eigenvectors inside it are not unique.");
   if (points.some((point) => point.nearCutoff)) warnings.push("The tracked mode approaches cutoff; verify the mesh and domain around that geometry.");
   return { parameter: settings.parameter, points, warnings };
+}
+
+export function sweepBlochPhase(config: WaveguideConfig, settings: BlochSweepSettings): BlochSweepResult {
+  recycledArnoldiSubspace = undefined;
+  if ((settings.axis === "x" && !config.periodicX) || (settings.axis === "y" && !config.periodicY)) {
+    throw new Error(`Bloch phase sweeps require the ${settings.axis} boundary pair to be periodic.`);
+  }
+  if (!(settings.startPhaseRad >= -Math.PI && settings.stopPhaseRad <= Math.PI && settings.stopPhaseRad > settings.startPhaseRad)) {
+    throw new Error("Bloch phase limits must be ordered and stay between −π and π radians.");
+  }
+  if (!Number.isInteger(settings.points) || settings.points < 3 || settings.points > PARAMETER_MAXIMUMS.sweepPoints) {
+    throw new Error(`Bloch sweep points must be an integer between 3 and ${PARAMETER_MAXIMUMS.sweepPoints}.`);
+  }
+  const phases = Array.from({ length: settings.points }, (_, index) => (
+    settings.startPhaseRad + index * (settings.stopPhaseRad - settings.startPhaseRad) / (settings.points - 1)
+  ));
+  const phaseKey = settings.axis === "x" ? "blochPhaseXRad" : "blochPhaseYRad";
+  const currentPhase = config[phaseKey] ?? 0;
+  const anchor = phases.reduce((best, value, index) => Math.abs(value - currentPhase) < Math.abs(phases[best] - currentPhase) ? index : best, 0);
+  const tracked: Array<TrackedMode | undefined> = new Array(settings.points);
+  const solveAt = (index: number) => solveWaveguide({ ...config, [phaseKey]: phases[index] }, true);
+  const anchorResult = solveAt(anchor);
+  if (anchorResult.modes.length === 0) throw new Error("No guided mode exists at the Bloch-sweep anchor phase.");
+  const anchorMode = anchorResult.modes[Math.min(settings.modeIndex, anchorResult.modes.length - 1)];
+  tracked[anchor] = { result: anchorResult, mode: anchorMode, overlap: 1, degenerateSubspaceSize: degenerateModes(anchorResult, anchorMode).length };
+  const anchorSubspace = recycledArnoldiSubspace;
+  for (const direction of [1, -1]) {
+    recycledArnoldiSubspace = anchorSubspace;
+    for (let index = anchor + direction; index >= 0 && index < phases.length; index += direction) {
+      const previous = tracked[index - direction];
+      if (!previous) break;
+      tracked[index] = trackMode(previous, solveAt(index));
+    }
+  }
+  const points = tracked.map((entry, index) => entry && ({
+    phaseRad: phases[index],
+    effectiveIndex: entry.mode.effectiveIndex,
+    effectiveIndexImaginary: entry.mode.effectiveIndexImaginary,
+    lossDbPerCm: entry.mode.lossDbPerCm,
+    overlap: entry.overlap,
+    modeLabel: entry.mode.label,
+    degenerateSubspaceSize: entry.degenerateSubspaceSize,
+    candidates: entry.result.modes.map((mode) => ({
+      effectiveIndex: mode.effectiveIndex,
+      effectiveIndexImaginary: mode.effectiveIndexImaginary,
+      modeLabel: mode.label,
+    })),
+  })).filter(Boolean) as BlochSweepPoint[];
+  if (points.length < 3) throw new Error("The selected mode could not be tracked across at least three Bloch phases.");
+  const symmetricRange = Math.abs(settings.startPhaseRad + settings.stopPhaseRad) < 1e-12 && points.length === settings.points;
+  const reciprocityError = symmetricRange ? Math.max(...points.map((point, index) => (
+    Math.abs(point.effectiveIndex - points[points.length - 1 - index].effectiveIndex)
+  ))) : undefined;
+  const warnings: string[] = [];
+  if (points.length < settings.points) warnings.push(`Mode tracking stopped at ${points.length} of ${settings.points} Bloch phases.`);
+  if (points.some((point) => point.overlap < 0.75)) warnings.push("A low subspace overlap indicates a possible branch change; inspect that phase interval.");
+  if (points.some((point) => point.degenerateSubspaceSize > 1)) warnings.push("A near-degenerate modal subspace was tracked; individual eigenvectors inside it are not unique.");
+  if (config.modeCount < 2) warnings.push("Only one mode was requested; increase Modes to inspect additional Bloch branches and detect degeneracies.");
+  if (reciprocityError !== undefined && reciprocityError > 1e-4) warnings.push("The ±θ reciprocity mismatch exceeds 10⁻⁴ in effective index; refine the mesh or increase the requested mode count.");
+  warnings.push("This is transverse-array dispersion β(θ), not a longitudinal photonic-crystal band structure.");
+  return { axis: settings.axis, points, reciprocityError, warnings };
 }
 
 function sameModeFamily(first: WaveguideMode, second: WaveguideMode): boolean {
@@ -1366,8 +1512,11 @@ function createGrid(config: WaveguideConfig): Grid {
   const nx = Math.max(12, Math.round(domainWidth / nominalStep));
   const ny = Math.max(12, Math.round(domainHeight / nominalStep));
   const interfaces = geometryInterfaces(config);
-  const baseXEdges = stretchedEdges(domainWidth, nx, config.meshBias ?? 0);
-  const baseYEdges = stretchedEdges(domainHeight, ny, config.meshBias ?? 0);
+  const manualBias = config.meshBias ?? 0;
+  const meshBiasX = config.autoMeshBias ? automaticMeshBias(domainWidth, lateralCoreSpan(config)) : manualBias;
+  const meshBiasY = config.autoMeshBias ? automaticMeshBias(domainHeight, config.heightUm) : manualBias;
+  const baseXEdges = stretchedEdges(domainWidth, nx, meshBiasX);
+  const baseYEdges = stretchedEdges(domainHeight, ny, meshBiasY);
   // ponytail: coarse meshes retain smooth grading; interface snapping starts when each feature can keep distinct cells.
   const xEdges = config.gridResolution >= 48 ? alignEdgesToInterfaces(baseXEdges, interfaces.x) : baseXEdges;
   const yEdges = config.gridResolution >= 48 ? alignEdgesToInterfaces(baseYEdges, interfaces.y) : baseYEdges;
@@ -1540,7 +1689,13 @@ function createGrid(config: WaveguideConfig): Grid {
     periodicY: config.periodicY ?? false,
     blochPhaseXRad: config.blochPhaseXRad ?? 0,
     blochPhaseYRad: config.blochPhaseYRad ?? 0,
+    meshBiasX,
+    meshBiasY,
   };
+}
+
+function automaticMeshBias(domainSpan: number, coreSpan: number): number {
+  return clamp(Math.log(domainSpan / Math.max(coreSpan, domainSpan * 1e-6)), 0, PARAMETER_MAXIMUMS.meshBias);
 }
 
 function complexReciprocal(real: Float64Array, imaginary: Float64Array): { real: Float64Array; imaginary: Float64Array } {
