@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import type { FieldComponent, PhysicalFieldComponent, WaveguideConfig, WaveguideMode } from "./solver";
+import { interpolateFieldMatrix, type ComplexFieldMatrix, type FieldComponent, type PhysicalFieldComponent, type WaveguideConfig, type WaveguideMode } from "./solver";
 
 export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
+export type DisplayInterpolation = 1 | 2 | 4;
 
 interface Props {
   component: FieldComponent;
@@ -11,6 +12,7 @@ interface Props {
   mode: WaveguideMode;
   xUm: number[];
   yUm: number[];
+  displayInterpolation: DisplayInterpolation;
 }
 
 const labels: Record<FieldComponent, string> = {
@@ -41,7 +43,7 @@ const units: Record<FieldComponent, string> = {
   intensity: "V²/m²", poynting: "W/m²",
 };
 
-export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
+export function ModePlot({ component, part, config, mode, xUm, yUm, displayInterpolation }: Props) {
   const fieldRef = useRef<HTMLDivElement>(null);
   const cutRef = useRef<HTMLDivElement>(null);
 
@@ -49,14 +51,17 @@ export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
     if (!fieldRef.current || !cutRef.current) return;
     const physical = isPhysicalField(component);
     const activePart = physical ? part : "real";
-    const z = physical ? displayComplexField(mode, component, activePart) : mode.fields[component];
+    const display = buildDisplayField(mode, component, activePart, xUm, yUm, displayInterpolation);
+    const plotXUm = display.x;
+    const plotYUm = display.y;
+    const z = display.values;
     const signedField = activePart !== "magnitude" && activePart !== "phase" && component !== "intensity";
     const phaseField = activePart === "phase";
     const bent = (config.bendRadiusUm ?? 0) > 0;
     const baseLabel = bent && component === "Ez" ? "E<sub>θ</sub>" : bent && component === "Hz" ? "H<sub>θ</sub>" : bent && component === "poynting" ? "S<sub>θ</sub> (W/m²)" : labels[component];
     const componentLabel = physical ? `${partLabel(activePart)}(${baseLabel})` : baseLabel;
-    const values = z.flat();
-    const maximum = Math.max(...values.map((value) => Math.abs(value)), Number.EPSILON);
+    let maximum = Number.EPSILON;
+    for (const row of z) for (const value of row) maximum = Math.max(maximum, Math.abs(value));
     const commonConfig = { displaylogo: false, responsive: true, scrollZoom: false };
     const axisStyle = {
       color: "#53636a",
@@ -67,8 +72,8 @@ export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
 
     const heatmap = {
       type: "heatmap",
-      x: xUm,
-      y: yUm,
+      x: plotXUm,
+      y: plotYUm,
       z,
       zmin: phaseField ? -180 : signedField ? -maximum : 0,
       zmax: phaseField ? 180 : maximum,
@@ -91,14 +96,14 @@ export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
       shapes: geometryShapes(config),
     }, commonConfig);
 
-    const centerRow = Math.floor(yUm.length / 2);
-    const centerColumn = Math.floor(xUm.length / 2);
+    const centerRow = Math.floor(plotYUm.length / 2);
+    const centerColumn = Math.floor(plotXUm.length / 2);
     void Plotly.react(cutRef.current, [
       {
         type: "scatter",
         mode: "lines",
         name: "Horizontal cut",
-        x: xUm,
+        x: plotXUm,
         y: z[centerRow],
         line: { color: "#087f8c", width: 2.5 },
         hovertemplate: `x = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>horizontal</extra>`,
@@ -107,7 +112,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
         type: "scatter",
         mode: "lines",
         name: "Vertical cut",
-        x: yUm,
+        x: plotYUm,
         y: z.map((row) => row[centerColumn]),
         line: { color: "#ed6a3a", width: 2.5, dash: "dash" },
         hovertemplate: `y = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>vertical</extra>`,
@@ -126,13 +131,16 @@ export function ModePlot({ component, part, config, mode, xUm, yUm }: Props) {
       if (fieldRef.current) Plotly.purge(fieldRef.current);
       if (cutRef.current) Plotly.purge(cutRef.current);
     };
-  }, [component, part, config, mode, xUm, yUm]);
+  }, [component, part, config, mode, xUm, yUm, displayInterpolation]);
 
   return (
-    <div className="plots" role="group" aria-label={`${plainLabels[component]} profile and central transverse cuts for ${mode.polarization} mode ${mode.order + 1}`}>
-      <div ref={fieldRef} className="field-plot" />
-      <div ref={cutRef} className="cut-plot" />
-    </div>
+    <>
+      <div className="plots" role="group" aria-label={`${plainLabels[component]} profile and central transverse cuts for ${mode.polarization} mode ${mode.order + 1}`}>
+        <div ref={fieldRef} className="field-plot" />
+        <div ref={cutRef} className="cut-plot" />
+      </div>
+      {displayInterpolation > 1 && <p className="plot-note">Display grid: {(xUm.length - 1) * displayInterpolation + 1} × {(yUm.length - 1) * displayInterpolation + 1} bilinearly interpolated samples. Solver accuracy and CSV export remain tied to the original {xUm.length} × {yUm.length} Yee grid.</p>}
+    </>
   );
 }
 
@@ -140,14 +148,64 @@ function isPhysicalField(component: FieldComponent): component is PhysicalFieldC
   return component !== "intensity" && component !== "poynting";
 }
 
-function displayComplexField(mode: WaveguideMode, component: PhysicalFieldComponent, part: FieldPart): number[][] {
-  const field = mode.complexFields[component];
+function displayComplexField(field: ComplexFieldMatrix, part: FieldPart): number[][] {
   if (part === "real") return field.real;
   if (part === "imaginary") return field.imaginary;
   return field.real.map((row, rowIndex) => row.map((real, columnIndex) => {
     const imaginary = field.imaginary[rowIndex][columnIndex];
     return part === "magnitude" ? Math.hypot(real, imaginary) : Math.atan2(imaginary, real) * 180 / Math.PI;
   }));
+}
+
+function buildDisplayField(
+  mode: WaveguideMode, component: FieldComponent, part: FieldPart, x: number[], y: number[], factor: DisplayInterpolation,
+): { x: number[]; y: number[]; values: number[][] } {
+  if (isPhysicalField(component)) {
+    const real = interpolateFieldMatrix(mode.complexFields[component].real, x, y, factor);
+    const imaginary = interpolateFieldMatrix(mode.complexFields[component].imaginary, x, y, factor);
+    return { x: real.x, y: real.y, values: displayComplexField({ real: real.values, imaginary: imaginary.values }, part) };
+  }
+  if (factor === 1) return interpolateFieldMatrix(mode.fields[component], x, y, factor);
+  return component === "intensity"
+    ? interpolatedIntensity(mode, x, y, factor)
+    : interpolatedPoynting(mode, x, y, factor);
+}
+
+function interpolatedIntensity(mode: WaveguideMode, x: number[], y: number[], factor: DisplayInterpolation) {
+  const output = interpolateFieldMatrix(mode.complexFields.Ex.real, x, y, factor);
+  const firstReal = output.values;
+  output.values = output.values.map((row) => row.map(() => 0));
+  for (const component of ["Ex", "Ey", "Ez"] as const) {
+    const real = component === "Ex" ? firstReal : interpolateFieldMatrix(mode.complexFields[component].real, x, y, factor).values;
+    const imaginary = interpolateFieldMatrix(mode.complexFields[component].imaginary, x, y, factor).values;
+    for (let row = 0; row < output.values.length; row += 1) {
+      for (let column = 0; column < output.values[row].length; column += 1) {
+        output.values[row][column] += real[row][column] ** 2 + imaginary[row][column] ** 2;
+      }
+    }
+  }
+  return output;
+}
+
+function interpolatedPoynting(mode: WaveguideMode, x: number[], y: number[], factor: DisplayInterpolation) {
+  const output = interpolateFieldMatrix(mode.complexFields.Ex.real, x, y, factor);
+  const firstElectricReal = output.values;
+  output.values = output.values.map((row) => row.map(() => 0));
+  for (const [electric, magnetic, sign] of [["Ex", "Hy", 1], ["Ey", "Hx", -1]] as const) {
+    const electricReal = electric === "Ex" ? firstElectricReal : interpolateFieldMatrix(mode.complexFields[electric].real, x, y, factor).values;
+    const electricImaginary = interpolateFieldMatrix(mode.complexFields[electric].imaginary, x, y, factor).values;
+    const magneticReal = interpolateFieldMatrix(mode.complexFields[magnetic].real, x, y, factor).values;
+    const magneticImaginary = interpolateFieldMatrix(mode.complexFields[magnetic].imaginary, x, y, factor).values;
+    for (let row = 0; row < output.values.length; row += 1) {
+      for (let column = 0; column < output.values[row].length; column += 1) {
+        output.values[row][column] += 0.5 * sign * (
+          electricReal[row][column] * magneticReal[row][column]
+          + electricImaginary[row][column] * magneticImaginary[row][column]
+        );
+      }
+    }
+  }
+  return output;
 }
 
 function partLabel(part: FieldPart): string {

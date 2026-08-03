@@ -268,6 +268,8 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 }
 .field-toolbar button.active { color: #fff; background: var(--teal); border-color: var(--teal); }
 .field-part-toolbar { margin-top: 7px; padding-top: 7px; border-top: 1px solid #e1e8e6; }
+.display-mesh { margin-left: auto; display: flex; align-items: center; gap: 7px; color: #76878b; font-size: 0.7rem; font-weight: 700; }
+.display-mesh select { min-height: 30px; padding: 3px 28px 3px 9px; color: #53666c; background: #fff; border: 1px solid #d6e0de; border-radius: 8px; font: inherit; }
 .result-view-tabs { margin-bottom: 18px; }
 .geometry-toolbar .checkbox-field { min-height: 30px; padding: 3px 9px; }
 .geometry-toolbar > small { margin-left: auto; color: #76878b; font-size: 0.7rem; }

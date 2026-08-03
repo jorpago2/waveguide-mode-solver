@@ -1293,14 +1293,38 @@ function coordinateSpacing(coordinates: number[], index: number): number {
 }
 
 function bilinearSample(field: number[][], x: number[], y: number[], sampleX: number, sampleY: number): number | undefined {
-  const column = lowerIndex(x, sampleX);
-  const row = lowerIndex(y, sampleY);
-  if (column < 0 || row < 0 || column + 1 >= x.length || row + 1 >= y.length) return undefined;
+  if (sampleX < x[0] || sampleX > x[x.length - 1] || sampleY < y[0] || sampleY > y[y.length - 1]) return undefined;
+  const column = Math.min(lowerIndex(x, sampleX), x.length - 2);
+  const row = Math.min(lowerIndex(y, sampleY), y.length - 2);
+  if (column < 0 || row < 0) return undefined;
   const tx = (sampleX - x[column]) / (x[column + 1] - x[column]);
   const ty = (sampleY - y[row]) / (y[row + 1] - y[row]);
   const lower = field[row][column] * (1 - tx) + field[row][column + 1] * tx;
   const upper = field[row + 1][column] * (1 - tx) + field[row + 1][column + 1] * tx;
   return lower * (1 - ty) + upper * ty;
+}
+
+export function interpolateFieldMatrix(
+  field: number[][], x: number[], y: number[], factor: number,
+): { x: number[]; y: number[]; values: number[][] } {
+  if (!Number.isInteger(factor) || factor < 1) throw new Error("Display interpolation factor must be a positive integer.");
+  if (x.length < 2 || y.length < 2 || field.length !== y.length || field.some((row) => row.length !== x.length)) {
+    throw new Error("Field dimensions must match the display coordinates.");
+  }
+  if (factor === 1) return { x, y, values: field };
+  const denseX = densifyCoordinates(x, factor);
+  const denseY = densifyCoordinates(y, factor);
+  return {
+    x: denseX,
+    y: denseY,
+    values: denseY.map((sampleY) => denseX.map((sampleX) => bilinearSample(field, x, y, sampleX, sampleY)!)),
+  };
+}
+
+function densifyCoordinates(values: number[], factor: number): number[] {
+  return values.flatMap((value, index) => index === values.length - 1
+    ? [value]
+    : Array.from({ length: factor }, (_, offset) => value + (values[index + 1] - value) * offset / factor));
 }
 
 function sampleComplexField(

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { ModePlot, type FieldPart } from "./ModePlot";
+import { ModePlot, type DisplayInterpolation, type FieldPart } from "./ModePlot";
 import { GeometryPlot } from "./GeometryPlot";
 import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
@@ -149,6 +149,7 @@ export function App() {
   const [selectedMode, setSelectedMode] = useState(0);
   const [component, setComponent] = useState<FieldComponent>("Ex");
   const [fieldPart, setFieldPart] = useState<FieldPart>("real");
+  const [displayInterpolation, setDisplayInterpolation] = useState<DisplayInterpolation>(2);
   const [resultView, setResultView] = useState<"mode" | "geometry">("mode");
   const [sweepSettings, setSweepSettings] = useState(initialSweep);
   const [sweepResult, setSweepResult] = useState<SweepResult>();
@@ -559,8 +560,8 @@ export function App() {
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
             </div>
             <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
-            {component !== "intensity" && component !== "poynting" && <div className="field-toolbar field-part-toolbar" aria-label="Complex field representation"><span>View</span>{(["real", "imaginary", "magnitude", "phase"] as FieldPart[]).map((part) => <button type="button" className={fieldPart === part ? "active" : ""} aria-pressed={fieldPart === part} key={part} onClick={() => setFieldPart(part)}>{part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "|·|" : "Phase"}</button>)}</div>}
-            <ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} />
+            <div className="field-toolbar field-part-toolbar" aria-label="Field display settings">{component !== "intensity" && component !== "poynting" && <><span>View</span>{(["real", "imaginary", "magnitude", "phase"] as FieldPart[]).map((part) => <button type="button" className={fieldPart === part ? "active" : ""} aria-pressed={fieldPart === part} key={part} onClick={() => setFieldPart(part)}>{part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "|·|" : "Phase"}</button>)}</>}<label className="display-mesh">Display mesh<select value={displayInterpolation} onChange={(event) => setDisplayInterpolation(Number(event.target.value) as DisplayInterpolation)}><option value={1}>Solver grid</option><option value={2}>2× interpolated</option><option value={4}>4× interpolated</option></select></label></div>
+            <ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} />
             </> : <div className="empty-state">No guided mode was found. Inspect the structure and mesh, then increase the core size or index contrast.</div>}
           </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
         </section>

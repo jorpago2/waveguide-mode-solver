@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NORMALIZED_MODAL_POWER_W, solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
+import { interpolateFieldMatrix, NORMALIZED_MODAL_POWER_W, solveWaveguide, sweepGeometry, sweepWaveguide, validateWaveguide, type GeometryType, type WaveguideConfig } from "./solver";
 
 const benchmark: WaveguideConfig = {
   wavelengthUm: 1.55,
@@ -39,6 +39,15 @@ function horizontalCentroid(field: number[][], xUm: number[]): number {
 }
 
 describe("full-vector finite-difference mode solver", () => {
+  it("interpolates a display mesh without changing the solver samples", () => {
+    const field = [[0, 1], [4, 5]];
+    const interpolated = interpolateFieldMatrix(field, [0, 1], [0, 2], 2);
+    expect(interpolated.x).toEqual([0, 0.5, 1]);
+    expect(interpolated.y).toEqual([0, 1, 2]);
+    expect(interpolated.values).toEqual([[0, 0.5, 1], [2, 2.5, 3], [4, 4.5, 5]]);
+    expect(field).toEqual([[0, 1], [4, 5]]);
+  });
+
   it("converges toward the subpixel-interface reference", () => {
     const result = solveWaveguide(benchmark);
     expect(result.backend).toBe("Rust/WASM");

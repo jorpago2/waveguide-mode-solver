@@ -31,7 +31,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Bloch-periodic x/y boundary pairs with independent phase in [−π, π]; zero phase gives ordinary periodicity and PML can remain on the non-periodic transverse axis.
 - Automated three-grid mode tracking with observed order, Richardson extrapolation and fine-grid GCI.
 - One-at-a-time PML robustness checks for boundary distance, absorber thickness and strength, with configurable loss tolerance and pass/review status.
-- Plotly field maps, transverse cuts, sweep plots and CSV exports.
+- Plotly field maps with an independent 1×/2×/4× interpolated display mesh, transverse cuts, sweep plots and raw solver-grid CSV exports.
 - Solved cross-section inspector with real, imaginary and magnitude maps of complex refractive index and permittivity, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
 - A unified Rust/WebAssembly core evaluates diagonal, tensor and transformed-bend operators, runs shifted linear solves and computes the shift-invert Arnoldi eigensystem. Complex bent modes retain the validated TypeScript reduced-matrix eigendecomposition for stable conjugate-pair selection while their operator and sparse LU remain in Rust.
 - Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
