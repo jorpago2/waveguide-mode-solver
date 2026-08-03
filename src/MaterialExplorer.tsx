@@ -1,0 +1,106 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import Plotly from "plotly.js-cartesian-dist-min";
+import {
+  MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
+  type BuiltInMaterialId,
+} from "./materials";
+
+const MATERIAL_SAMPLES = 240;
+const explorableMaterials = MATERIALS.filter((material): material is typeof material & { id: BuiltInMaterialId } => (
+  material.id !== "custom" && material.id !== "tabulated" && material.id !== "air"
+));
+
+export function MaterialExplorer() {
+  const [materialId, setMaterialId] = useState<BuiltInMaterialId>("silicon");
+  const definition = materialDefinition(materialId);
+  const [wavelengthUm, setWavelengthUm] = useState(1.55);
+  const plotRef = useRef<HTMLDivElement>(null);
+  const data = useMemo(() => sampleMaterial(materialId), [materialId]);
+  const current = useMemo(() => {
+    const index = evaluateMaterialPrincipalIndices(materialId, wavelengthUm);
+    const k = evaluateMaterialExtinction(materialId, wavelengthUm);
+    return { ...index, k, epsilonReal: index.ordinary ** 2 - (k ?? 0) ** 2, epsilonImaginary: k === undefined ? undefined : 2 * index.ordinary * k };
+  }, [materialId, wavelengthUm]);
+
+  useEffect(() => {
+    if (!plotRef.current) return;
+    const axis = { color: "#53636a", gridcolor: "rgba(23,48,58,0.08)", ticks: "outside" as const };
+    const traces: Plotly.Data[] = [
+      { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#087f8c", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#7156a5", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#b6472d", width: 2 }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, xaxis: "x2", yaxis: "y3", line: { color: "#087f8c", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, xaxis: "x2", yaxis: "y3", line: { color: "#ed6a3a", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, xaxis: "x3", yaxis: "y4", line: { color: "#7156a5", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, xaxis: "x3", yaxis: "y4", line: { color: "#ed6a3a", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" } as Plotly.Data] : []),
+    ];
+    void Plotly.react(plotRef.current, traces, {
+      margin: { l: 64, r: 64, t: 38, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      legend: { orientation: "h", x: 0, y: 1.08 },
+      xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
+      yaxis: { ...axis, domain: [0.7, 1], title: { text: "Refractive index" } },
+      yaxis2: { ...axis, domain: [0.7, 1], title: { text: "k" }, overlaying: "y", side: "right", type: "log", showgrid: false },
+      xaxis2: { ...axis, domain: [0, 1], anchor: "y3", matches: "x", showticklabels: false },
+      yaxis3: { ...axis, domain: [0.35, 0.58], title: { text: "Permittivity" } },
+      xaxis3: { ...axis, domain: [0, 1], anchor: "y4", matches: "x", title: { text: "Wavelength (µm)" } },
+      yaxis4: { ...axis, domain: [0, 0.21], title: { text: "dn/dλ (µm⁻¹)" } },
+      shapes: (["x", "x2", "x3"] as const).map((xref, index) => ({
+        type: "line", xref, yref: "paper", x0: wavelengthUm, x1: wavelengthUm,
+        y0: index === 0 ? 0.7 : index === 1 ? 0.35 : 0, y1: index === 0 ? 1 : index === 1 ? 0.58 : 0.21,
+        line: { color: "rgba(25,49,58,0.35)", width: 1, dash: "dot" },
+      })),
+    }, { displaylogo: false, responsive: true, scrollZoom: false });
+    return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
+  }, [data, definition, wavelengthUm]);
+
+  const selectMaterial = (id: BuiltInMaterialId) => {
+    const next = materialDefinition(id);
+    setMaterialId(id);
+    setWavelengthUm(Math.min(next.maximumWavelengthUm, Math.max(next.minimumWavelengthUm, wavelengthUm)));
+  };
+
+  return <section className="sweep-section material-explorer">
+    <aside className="material-explorer-controls">
+      <label className="select-field">Material<select value={materialId} onChange={(event) => selectMaterial(event.target.value as BuiltInMaterialId)}>{explorableMaterials.map((material) => <option value={material.id} key={material.id}>{material.name}</option>)}</select></label>
+      <label className="number-field"><span>Probe wavelength</span><div><input type="number" value={wavelengthUm} min={definition.minimumWavelengthUm} max={definition.maximumWavelengthUm} step="any" onChange={(event) => Number.isFinite(event.target.valueAsNumber) && setWavelengthUm(Math.min(definition.maximumWavelengthUm, Math.max(definition.minimumWavelengthUm, event.target.valueAsNumber)))} /><small>µm</small></div></label>
+      <dl className="material-readouts">
+        <div><dt>n<sub>o</sub></dt><dd>{format(current.ordinary)}</dd></div>
+        {definition.anisotropic && <div><dt>n<sub>e</sub></dt><dd>{format(current.extraordinary)}</dd></div>}
+        <div><dt>k</dt><dd>{current.k === undefined ? "not modelled" : format(current.k)}</dd></div>
+        <div><dt>ε</dt><dd>{format(current.epsilonReal)}{current.epsilonImaginary === undefined ? "" : ` + ${format(current.epsilonImaginary)}i`}</dd></div>
+      </dl>
+      <div className="material-model-note">
+        <strong>{definition.formula}</strong>
+        <span>Validity: {definition.minimumWavelengthUm}–{definition.maximumWavelengthUm} µm</span>
+        <span>{definition.lossModel ? `${definition.lossModel}: ${definition.lossRanges?.map(([minimum, maximum]) => `${minimum}–${maximum} µm`).join(", ")}` : "No built-in extinction model; use measured n,k data for loss."}</span>
+        <span className="material-source-links">{definition.sourceUrl && <a href={definition.sourceUrl} target="_blank" rel="noreferrer">{definition.sourceLabel ?? "Primary source"} ↗</a>}{definition.lossSources?.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.label} ↗</a>)}</span>
+      </div>
+    </aside>
+    <div ref={plotRef} className="material-plot" aria-label="Material refractive index, extinction, permittivity and dispersion plots" />
+  </section>;
+}
+
+function sampleMaterial(materialId: BuiltInMaterialId) {
+  const definition = materialDefinition(materialId);
+  const wavelength = Array.from({ length: MATERIAL_SAMPLES }, (_, index) => definition.minimumWavelengthUm
+    + index * (definition.maximumWavelengthUm - definition.minimumWavelengthUm) / (MATERIAL_SAMPLES - 1));
+  const indices = wavelength.map((value) => evaluateMaterialPrincipalIndices(materialId, value));
+  const extinction = wavelength.map((value) => evaluateMaterialExtinction(materialId, value) ?? null);
+  const derivative = (values: number[]) => values.map((_, index) => {
+    const lower = Math.max(0, index - 1); const upper = Math.min(values.length - 1, index + 1);
+    return (values[upper] - values[lower]) / (wavelength[upper] - wavelength[lower]);
+  });
+  const ordinary = indices.map((value) => value.ordinary);
+  const extraordinary = indices.map((value) => value.extraordinary);
+  return {
+    wavelength, ordinary, extraordinary, extinction,
+    epsilonReal: ordinary.map((n, index) => n ** 2 - (extinction[index] ?? 0) ** 2),
+    epsilonImaginary: ordinary.map((n, index) => extinction[index] === null ? null : 2 * n * extinction[index]),
+    derivativeOrdinary: derivative(ordinary), derivativeExtraordinary: derivative(extraordinary),
+  };
+}
+
+function format(value: number): string {
+  return Math.abs(value) < 1e-3 && value !== 0 ? value.toExponential(3) : value.toPrecision(6);
+}

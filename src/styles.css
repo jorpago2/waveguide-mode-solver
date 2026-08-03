@@ -321,6 +321,19 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .sweep-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
 .sweep-controls .solve-button { margin-top: 0; }
 .sweep-plot { width: 100%; min-height: 520px; }
+.material-explorer { display: grid; grid-template-columns: minmax(220px, 290px) minmax(0, 1fr); gap: 18px; }
+.material-explorer-controls { padding-right: 18px; border-right: 1px solid #e0e7e5; }
+.material-explorer-controls .select-field { margin-top: 0; }
+.material-explorer-controls .number-field { margin-top: 13px; }
+.material-readouts { margin: 16px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.material-readouts > div { min-width: 0; padding: 9px 10px; background: #f1f6f4; border-radius: 8px; }
+.material-readouts dt { color: #708287; font-size: 0.65rem; }
+.material-readouts dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #18343d; font-size: 0.76rem; font-weight: 700; }
+.material-model-note { display: grid; gap: 8px; color: #6b7e83; font-size: 0.7rem; line-height: 1.45; }
+.material-model-note strong { color: #29454d; }
+.material-model-note a { color: var(--teal); font-weight: 700; }
+.material-source-links { display: flex; flex-wrap: wrap; gap: 5px 10px; }
+.material-plot { width: 100%; min-height: 630px; }
 .section-intro { margin: 6px 0 14px; max-width: 760px; color: #6b7e83; font-size: 0.75rem; line-height: 1.5; }
 .analysis-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 12px; align-items: end; }
 .analysis-controls .select-field { margin-top: 0; }
@@ -427,6 +440,8 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .sweep-section { padding: 16px; }
   .section-tabs { overflow-x: auto; grid-template-columns: repeat(3, minmax(150px, 1fr)); scrollbar-width: thin; }
   .analysis-columns { grid-template-columns: 1fr; }
+  .material-explorer { grid-template-columns: 1fr; }
+  .material-explorer-controls { padding: 0 0 16px; border-right: 0; border-bottom: 1px solid #e0e7e5; }
   footer { align-items: flex-start; flex-direction: column; }
 }
 
@@ -442,6 +457,7 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .field-toolbar button { min-width: 35px; padding-inline: 7px; }
   .sweep-controls { grid-template-columns: 1fr; }
   .sweep-plot { min-height: 480px; }
+  .material-plot { min-height: 560px; }
   .analysis-controls.compact { grid-template-columns: 1fr; }
   .stack-layer { grid-template-columns: 1fr; }
   .analysis-card { padding: 16px; }

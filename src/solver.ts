@@ -1,6 +1,6 @@
 import { EigenvalueDecomposition, Matrix } from "ml-matrix";
 import {
-  complexRefractiveIndex, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity, evaluateTabulatedMaterial,
+  complexRefractiveIndex, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity, evaluateTabulatedMaterial,
   isMetalMaterial, materialDefinition,
   opticAxisDirection, uniaxialPermittivityTensor, validateTabulatedMaterial,
   type MaterialId, type OpticAxis, type SymmetricTensor, type TabulatedMaterialData,
@@ -1214,7 +1214,7 @@ function materialValues(config: WaveguideConfig) {
       const extraordinary = principal.extraordinary + indexOffset;
       const axis = opticAxisDirection(opticAxis ?? "y", tiltDeg, azimuthDeg);
       const epsilonReal = uniaxialPermittivityTensor(ordinary, extraordinary, axis);
-      const extinction = k ?? 0;
+      const extinction = evaluateMaterialExtinction(materialId, config.wavelengthUm) ?? k ?? 0;
       epsilonReal.xx -= extinction ** 2;
       epsilonReal.yy -= extinction ** 2;
       epsilonReal.zz -= extinction ** 2;

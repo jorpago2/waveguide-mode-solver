@@ -11,11 +11,13 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Trapezoidal etched sidewalls specified by the top width and angle from the substrate plane (90° is vertical).
 - Editable or JSON-imported non-overlapping convex polygon regions with independent isotropic material models and exact cell-area subpixel fractions.
 - Dominant-field TE/TM mode labels with transverse node counts, symmetry metrics, cutoff warnings and family-aware sweep tracking.
-- Dispersive material models for Si, Ge, Si₃N₄, As₂S₃, LiNbO₃, sapphire, MgF₂, AlN, GaAs, InP and 4H-SiC, including uniaxial orientation where applicable.
+- Dispersive material models for Si, Ge, Si₃N₄, As₂S₃, As₄₀Se₆₀, LiNbO₃, sapphire, MgF₂, CaF₂, AlN, GaN, GaAs, InP, 4H-SiC, diamond and PMMA, including uniaxial orientation where applicable.
 - MgO:LiNbO₃ temperature and uniform optical-axis Pockels controls using the ordinary and extraordinary indices.
 - Editable finite layers below the core with a semi-infinite base substrate.
 - Arbitrarily oriented uniaxial anisotropy, ε = εₒI + (εₑ − εₒ)aaᵀ, including xz/yz coupling, solved by a Rust/WebAssembly four-field first-order Maxwell operator.
 - Imported isotropic `wavelength_um,n,k` CSV material tables with bounded linear interpolation and no extrapolation.
+- A Material Explorer for n, k, complex permittivity, dn/dλ, source ranges and point inspection.
+- Built-in wavelength-dependent extinction for crystalline Si, Ge and As₂S₃ over explicitly documented measurement bands.
 - Dispersive bulk-metal models for Ag, Au and Al, plus a plasmonic shift target derived from the planar-interface SPP dispersion relation.
 - Local linear material dispersion, dn/dλ, about a chosen reference wavelength.
 - Complex-eigenvalue material attenuation and cubic stretched-coordinate PML boundaries.
@@ -37,7 +39,7 @@ It solves full-vector straight and constant-radius bent-waveguide eigenproblems 
 - Solved cross-section inspector with real, imaginary and magnitude maps of complex refractive index and permittivity, selected-mode intensity contours, actual nonuniform mesh boundaries and PML-onset markers.
 - A unified Rust/WebAssembly core evaluates diagonal, tensor and transformed-bend operators, runs shifted linear solves and computes the shift-invert Arnoldi eigensystem. Complex bent modes retain the validated TypeScript reduced-matrix eigendecomposition for stable conjugate-pair selection while their operator and sparse LU remain in Rust.
 - Wavelength and geometry sweeps recycle the preceding modal subspace. A persistent Web Worker keeps the interface responsive and transfers field grids without copying their buffers.
-- Published dispersive material models for crystalline silicon, stoichiometric silicon nitride and fused silica, with explicit wavelength ranges.
+- Published dispersive material models with explicit wavelength ranges and primary-source traceability.
 - Seeded Latin-hypercube width, height, gap, sidewall-angle and core-index tolerance studies with distribution intervals and correlation-based sensitivity ranking.
 - Gaussian-beam overlap and identical two-guide directional-coupler supermode analysis.
 - Modal power-overlap and effective-index-mismatch matrices between two waveguide cross-sections.
@@ -68,6 +70,7 @@ The tests exercise automated three-grid convergence, subpixel and polygon-interf
 
 - Linear, local, non-magnetic media. Straight guides support diagonal complex permittivity, including negative real permittivity; arbitrary real symmetric tensors require hard boundaries. The phasor convention is exp(iβz − iωt), so passive media have Im(ε) ≥ 0 and Im(β) ≥ 0.
 - Built-in metal data use a bulk Lorentz–Drude fit over 0.1–6 eV (0.207–12.4 µm). Thin-film morphology, surface scattering, temperature dependence and nonlocal response are not included; import measured n,k data when available. Metallic bends are outside the validated scope.
+- Built-in dielectric extinction is applied only inside its tabulated bands. In uncovered wavelength regions the editable κ value remains active; no zero-loss assumption or gap interpolation is made.
 - Curved guides must have a constant radius larger than the entire radial half-domain. Varying-radius transitions, Euler bends and longitudinal discontinuities are outside the 2D eigenmode model.
 - Hard-wall and PML outer boundaries are available. Radiation loss requires mesh, padding, PML-thickness and PML-strength convergence checks.
 - The reported GCI applies to effective-index mesh discretization only and is valid only when the three grids converge monotonically in the asymptotic range.
@@ -82,7 +85,7 @@ The tests exercise automated three-grid convergence, subpixel and polygon-interf
 - Finite stack layers are horizontal and lie below the core. Dielectric guidance requires a core index above the exterior; metallic stacks instead use a surface-plasmon search interval. High-index-substrate leakage still requires a dedicated leaky-mode formulation and PML convergence study.
 - User-defined regions are convex and must not overlap; combine several regions to represent a concave cross-section. GDSII layer mapping and curved polygon edges are not imported directly.
 - The LiNbO₃ temperature correction applies the congruent-LN wavelength-dependent thermo-optic fit of Moretti et al. to the 5% MgO Sellmeier base as an approximation and is restricted to 20–240 °C. Its electro-optic control assumes a uniform DC field parallel to the optical axis and uses telecom values r₁₃ = 8.6 pm/V and r₃₃ = 30.8 pm/V; process-specific data are required and it does not solve electrodes or RF/optical overlap.
-- Deposited-film composition, temperature and process variation require custom measured data for quantitative designs.
+- Deposited-film composition, temperature and process variation require custom measured data for quantitative designs. This is especially important for PMMA and deposited chalcogenide films, whose optical constants depend on grade and processing.
 - Gaussian overlap neglects facet reflection. Directional-coupler length assumes identical guides and no longitudinal discontinuities.
 - The reported projected condition number and Kproj = kappa_proj^2 come from the small Arnoldi Ritz matrix. They diagnose non-normal sensitivity of the computed eigensystem but are not a full-Maxwell adjoint Petermann factor. Exceptional-point labels are candidates only; confirmation requires a converged closed loop in two real parameters.
 
@@ -96,7 +99,7 @@ A. B. Fallahkhair, K. S. Li, and T. E. Murphy, “Vector Finite Difference Modes
 
 The cylindrical finite-difference basis for the curved formulation is described by J. Xiao, K. Ni, and X. Sun, “Full-vectorial mode solver for bent waveguides based on two-dimensional finite-difference frequency-domain method,” *Optics Letters* 33, 1848–1850 (2008), [doi:10.1364/OL.33.001848](https://doi.org/10.1364/OL.33.001848).
 
-Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon and germanium](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Rodney et al. arsenic trisulfide](https://doi.org/10.1364/JOSA.48.000633), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), Malitson and Dodge sapphire, [Dodge magnesium fluoride](https://doi.org/10.1364/AO.23.001980), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068), and [Rakic et al. bulk-metal models](https://doi.org/10.1364/AO.37.005271).
+Material models: [Malitson fused silica](https://doi.org/10.1364/JOSA.55.001205), [Li crystalline silicon and germanium](https://doi.org/10.1063/1.555624), [Luke et al. silicon nitride](https://doi.org/10.1364/OL.40.004823), [Rodney et al. arsenic trisulfide](https://doi.org/10.1364/JOSA.48.000633), [Zelmon et al. MgO:LiNbO₃](https://doi.org/10.1364/JOSAB.14.003319), Malitson and Dodge sapphire, [Dodge magnesium fluoride](https://doi.org/10.1364/AO.23.001980), [Moretti et al. LiNbO₃ thermo-optics](https://doi.org/10.1063/1.1988987), [Pastrňák and Roskovcová AlN](https://doi.org/10.1002/pssb.19660140140), [Barker and Ilegems GaN](https://doi.org/10.1103/PhysRevB.7.743), [Skauli et al. GaAs](https://doi.org/10.1063/1.1621740), [Pettit and Turner InP](https://doi.org/10.1063/1.1714393), [Wang et al. 4H-SiC](https://doi.org/10.1002/lpor.201300068), [Turri et al. diamond](https://doi.org/10.1364/OME.7.000855), [Malitson CaF₂](https://doi.org/10.1364/AO.2.001103), [Sultanova et al. PMMA](https://doi.org/10.12693/APhysPolA.116.585), [Dantanarayana et al. As₄₀Se₆₀](https://doi.org/10.1364/OME.4.001444), and [Rakic et al. bulk-metal models](https://doi.org/10.1364/AO.37.005271).
 
 ## License
 

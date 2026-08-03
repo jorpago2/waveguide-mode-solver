@@ -4,11 +4,12 @@ import { GeometryPlot } from "./GeometryPlot";
 import { SweepPlot } from "./SweepPlot";
 import { GeometrySweepPlot } from "./GeometrySweepPlot";
 import { BlochSweepPlot } from "./BlochSweepPlot";
+import { MaterialExplorer } from "./MaterialExplorer";
 import { runSolverWorker } from "./workerClient";
 import { AdvancedAnalyses } from "./AdvancedAnalyses";
 import packageJson from "../package.json";
 import {
-  MATERIALS, complexRefractiveIndex, evaluateMaterialAxes, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity,
+  MATERIALS, complexRefractiveIndex, evaluateMaterialAxes, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity,
   evaluateTabulatedMaterial, isMetalMaterial, materialDefinition,
   opticAxisDirection, parseMaterialCsv, uniaxialPermittivityTensor,
   type MaterialId, type OpticAxis, type TabulatedMaterialData,
@@ -132,10 +133,11 @@ const fieldLabels: Record<FieldComponent, ReactNode> = {
   Ex: <>E<sub>x</sub></>, Ey: <>E<sub>y</sub></>, Ez: <>E<sub>z</sub></>,
   Hx: <>H<sub>x</sub></>, Hy: <>H<sub>y</sub></>, Hz: <>H<sub>z</sub></>, intensity: "|E|²", poynting: <>S<sub>z</sub></>,
 };
-type AppView = "solver" | "sweeps" | "analysis" | "validation";
+type AppView = "solver" | "materials" | "sweeps" | "analysis" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
 const appViews: Array<{ id: AppView; label: string; hint: string }> = [
   { id: "solver", label: "Mode Solver", hint: "Build & inspect" },
+  { id: "materials", label: "Materials", hint: "Inspect optical data" },
   { id: "sweeps", label: "Sweeps", hint: "Track parameters" },
   { id: "analysis", label: "Analysis", hint: "Design studies" },
   { id: "validation", label: "Validation", hint: "Numerical confidence" },
@@ -532,7 +534,7 @@ export function App() {
                     <label>Region name<input value={region.name} onChange={(event) => updatePolygonRegion(regionIndex, { name: event.target.value })} /></label>
                     <MaterialSelect label="Material" value={region.material} allowTabulated={false} onChange={(material) => updatePolygonRegion(regionIndex, { material, index: displayMaterialIndex(material, draft.wavelengthUm, region.index, draft.materialTemperatureC) })} />
                     <NumberField label="Index" unit="n" value={displayPolygonIndex(region, draft)} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={region.material !== "custom"} onChange={(index) => updatePolygonRegion(regionIndex, { index })} />
-                    <NumberField label="Extinction" unit="Im(n)" value={displayPolygonExtinction(region, draft)} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={isMetalMaterial(region.material)} onChange={(extinction) => updatePolygonRegion(regionIndex, { extinction })} />
+                    <NumberField label="Extinction" unit="Im(n)" value={displayPolygonExtinction(region, draft)} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={materialExtinctionIsReadOnly(region.material, draft.wavelengthUm)} onChange={(extinction) => updatePolygonRegion(regionIndex, { extinction })} />
                     <div className="polygon-vertices">
                       <strong>Vertices (x, y) in µm</strong>
                       {region.vertices.map((vertex, vertexIndex) => <div key={vertexIndex}>
@@ -596,14 +598,14 @@ export function App() {
                   <NumberField label="Optic-axis azimuth φ" unit="° from +z toward +x" value={draft.coreOpticAxisAzimuthDeg ?? legacyOpticAxisAzimuth(draft.coreOpticAxis)} min={0} max={360} step={1} onChange={(v) => updateNumber("coreOpticAxisAzimuthDeg", v)} />
                 </>}
                 {(draft.geometry ?? "channel") !== "polygon" && (draft.coreMaterial ?? "custom") === "lithium-niobate" && <><NumberField label="LiNbO₃ temperature" unit="°C" value={draft.materialTemperatureC ?? 21} min={20} max={240} step={1} onChange={(v) => updateNumber("materialTemperatureC", v)} /><NumberField label="DC field along optic axis" unit="V/µm" value={draft.coreElectricFieldVPerUm ?? 0} min={-100} max={100} step={0.1} onChange={(v) => updateNumber("coreElectricFieldVPerUm", v)} /></>}
-                {(draft.geometry ?? "channel") !== "polygon" && <NumberField label="Core κ" unit="Im(n)" value={displayMaterialExtinction(draft, "core")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.coreMaterial ?? "custom") === "tabulated" || isMetalMaterial(draft.coreMaterial)} onChange={(v) => updateNumber("coreExtinction", v)} />}
-                <NumberField label="Cladding κ" unit="Im(n)" value={displayMaterialExtinction(draft, "cladding")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.claddingMaterial ?? "custom") === "tabulated" || isMetalMaterial(draft.claddingMaterial)} onChange={(v) => updateNumber("claddingExtinction", v)} />
+                {(draft.geometry ?? "channel") !== "polygon" && <NumberField label="Core κ" unit="Im(n)" value={displayMaterialExtinction(draft, "core")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={materialExtinctionIsReadOnly(draft.coreMaterial, draft.wavelengthUm)} onChange={(v) => updateNumber("coreExtinction", v)} />}
+                <NumberField label="Cladding κ" unit="Im(n)" value={displayMaterialExtinction(draft, "cladding")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={materialExtinctionIsReadOnly(draft.claddingMaterial, draft.wavelengthUm)} onChange={(v) => updateNumber("claddingExtinction", v)} />
                 {(draft.geometry ?? "channel") !== "polygon" && <NumberField label="Core dn/dλ" unit="µm⁻¹" value={draft.coreDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.coreMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("coreDispersionPerUm", v)} />}
                 <NumberField label="Clad. dn/dλ" unit="µm⁻¹" value={draft.claddingDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingDispersionPerUm", v)} />
                 {(draft.geometry ?? "channel") === "multilayer" && <>
                   <NumberField label="Substrate nᵧ" unit="n" value={draft.substrateIndexY ?? draft.substrateIndex ?? draft.claddingIndex} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndexY", v)} />
                   <NumberField label={<>Substrate n<sub>z</sub></>} unit="n" value={draft.substrateIndexZ ?? draft.substrateIndex ?? draft.claddingIndex} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndexZ", v)} />
-                  <NumberField label="Substrate κ" unit="Im(n)" value={displayMaterialExtinction(draft, "substrate")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={(draft.substrateMaterial ?? "custom") === "tabulated" || isMetalMaterial(draft.substrateMaterial)} onChange={(v) => updateNumber("substrateExtinction", v)} />
+                  <NumberField label="Substrate κ" unit="Im(n)" value={displayMaterialExtinction(draft, "substrate")} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={materialExtinctionIsReadOnly(draft.substrateMaterial, draft.wavelengthUm)} onChange={(v) => updateNumber("substrateExtinction", v)} />
                   <NumberField label="Substrate dn/dλ" unit="µm⁻¹" value={draft.substrateDispersionPerUm ?? 0} min={-PARAMETER_MAXIMUMS.dispersionPerUm} max={PARAMETER_MAXIMUMS.dispersionPerUm} step={0.001} onChange={(v) => updateNumber("substrateDispersionPerUm", v)} />
                 </>}
                 <NumberField label="Reference λ" unit="µm" value={draft.materialReferenceWavelengthUm ?? draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("materialReferenceWavelengthUm", v)} />
@@ -693,6 +695,11 @@ export function App() {
           </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
         </section>
       </div>
+      </section>
+
+      <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title">
+        <ViewHeading eyebrow="Optical material library" title="Material Explorer" id="materials-title">Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
+        <MaterialExplorer />
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
@@ -820,8 +827,8 @@ function displayPolygonIndex(region: PolygonRegion, config: WaveguideConfig): nu
 }
 
 function displayPolygonExtinction(region: PolygonRegion, config: WaveguideConfig): number {
-  if (isMetalMaterial(region.material)) {
-    try { return complexRefractiveIndex(evaluateMetalPermittivity(region.material, config.wavelengthUm)).k; } catch { return region.extinction ?? 0; }
+  if (region.material !== "custom" && region.material !== "tabulated") {
+    try { return evaluateMaterialExtinction(region.material, config.wavelengthUm) ?? region.extinction ?? 0; } catch { /* use stored value */ }
   }
   return region.extinction ?? 0;
 }
@@ -870,12 +877,21 @@ function displayMaterialAxis(config: WaveguideConfig, region: "core" | "cladding
 
 function displayMaterialExtinction(config: WaveguideConfig, region: "core" | "cladding" | "substrate"): number {
   const materialId = region === "core" ? config.coreMaterial : region === "cladding" ? config.claddingMaterial : config.substrateMaterial;
-  if (isMetalMaterial(materialId)) {
-    try { return complexRefractiveIndex(evaluateMetalPermittivity(materialId, config.wavelengthUm)).k; } catch { return 0; }
+  if (materialId && materialId !== "custom" && materialId !== "tabulated") {
+    try {
+      const extinction = evaluateMaterialExtinction(materialId, config.wavelengthUm);
+      if (extinction !== undefined) return extinction;
+    } catch { /* use stored value */ }
   }
   if (materialId !== "tabulated") return (region === "core" ? config.coreExtinction : region === "cladding" ? config.claddingExtinction : config.substrateExtinction) ?? 0;
   const table = region === "core" ? config.coreMaterialTable : region === "cladding" ? config.claddingMaterialTable : config.substrateMaterialTable;
   try { return evaluateTabulatedMaterial(table as TabulatedMaterialData, config.wavelengthUm).k; } catch { return 0; }
+}
+
+function materialExtinctionIsReadOnly(materialId: MaterialId | undefined, wavelengthUm: number): boolean {
+  if (materialId === "tabulated") return true;
+  if (!materialId || materialId === "custom") return false;
+  try { return evaluateMaterialExtinction(materialId, wavelengthUm) !== undefined; } catch { return false; }
 }
 
 function legacyOpticAxisTilt(axis: OpticAxis = "y"): number {
