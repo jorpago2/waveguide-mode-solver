@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { PLOT_CONFIG } from "./plotConfig";
 import {
   MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
   type BuiltInMaterialId,
@@ -50,7 +51,7 @@ export function MaterialExplorer() {
         y0: index === 0 ? 0.7 : index === 1 ? 0.35 : 0, y1: index === 0 ? 1 : index === 1 ? 0.58 : 0.21,
         line: { color: "rgba(25,49,58,0.35)", width: 1, dash: "dot" },
       })),
-    }, { displaylogo: false, responsive: true, scrollZoom: false });
+    }, PLOT_CONFIG);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [data, definition, wavelengthUm]);
 

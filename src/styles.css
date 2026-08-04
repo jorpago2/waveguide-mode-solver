@@ -355,6 +355,8 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .analysis-plot { width: 100%; min-height: 370px; }
 .convergence-plot { min-height: 340px; }
 .mode-map-plot { min-height: 440px; }
+body.plot-fullscreen-open { overflow: hidden; }
+.js-plotly-plot.plot-fullscreen { position: fixed; inset: 0; z-index: 1000; width: 100vw !important; height: 100vh !important; padding: 16px; box-sizing: border-box; background: #f7f9f7; }
 .analysis-error { margin: 18px 0; }
 .comparison-scroll { margin-top: 18px; overflow-x: auto; }
 .comparison-table { width: 100%; min-width: 520px; border-collapse: collapse; color: #29434b; font-size: 0.74rem; }

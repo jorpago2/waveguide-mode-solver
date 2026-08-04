@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { PLOT_CONFIG } from "./plotConfig";
 import type { BlochSweepResult } from "./solver";
 
 export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
@@ -37,7 +38,7 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
       yaxis: { ...axis, domain: [0.4, 1], title: { text: "Effective index" } },
       xaxis2: { ...axis, domain: [0, 1], anchor: "y2", matches: "x", title: { text: `Bloch phase θ<sub>${result.axis}</sub>/π` } },
       yaxis2: { ...axis, domain: [0, 0.25], title: { text: "Loss (dB/cm)" } },
-    }, { displaylogo: false, responsive: true, scrollZoom: false });
+    }, PLOT_CONFIG);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
   return <div ref={plotRef} className="sweep-plot" aria-label={`Transverse Bloch dispersion along ${result.axis}`} />;

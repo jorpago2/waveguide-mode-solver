@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
+import { PLOT_CONFIG } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
@@ -98,7 +99,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       xaxis: { title: { text: "x (µm)" }, color: "#53636a", ticks: "outside", constrain: "domain" },
       yaxis: { title: { text: "y (µm)" }, color: "#53636a", ticks: "outside", scaleanchor: "x", scaleratio: 1 },
       shapes: [...meshShapes, ...pmlShapes, ...periodicShapes],
-    }, { displaylogo: false, responsive: true, scrollZoom: false });
+    }, PLOT_CONFIG);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [axis, config, mode, quantity, result, showMesh, showMode]);
 

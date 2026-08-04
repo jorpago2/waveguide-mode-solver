@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
+import { PLOT_CONFIG } from "./plotConfig";
 import { interpolateFieldMatrix, type ComplexFieldMatrix, type FieldComponent, type PhysicalFieldComponent, type WaveguideConfig, type WaveguideMode } from "./solver";
 
 export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
@@ -63,7 +64,6 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
     const componentLabel = physical ? `${partLabel(activePart)}(${baseLabel})` : baseLabel;
     let maximum = Number.EPSILON;
     for (const row of z) for (const value of row) maximum = Math.max(maximum, Math.abs(value));
-    const commonConfig = { displaylogo: false, responsive: true, scrollZoom: false };
     const axisStyle = {
       color: "#53636a",
       gridcolor: "rgba(23, 48, 58, 0.08)",
@@ -95,7 +95,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       xaxis: { ...axisStyle, title: { text: "x (µm)" }, constrain: "domain" },
       yaxis: { ...axisStyle, title: { text: "y (µm)" }, scaleanchor: "x", scaleratio: 1 },
       shapes: geometryShapes(config),
-    }, commonConfig);
+    }, PLOT_CONFIG);
 
     const centerRow = Math.floor(plotYUm.length / 2);
     const centerColumn = Math.floor(plotXUm.length / 2);
@@ -126,7 +126,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
       yaxis: { ...axisStyle, title: { text: componentLabel }, range: phaseField ? [-180, 180] : signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
-    }, commonConfig);
+    }, PLOT_CONFIG);
 
     return () => {
       if (fieldRef.current) Plotly.purge(fieldRef.current);
