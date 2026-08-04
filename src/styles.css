@@ -413,24 +413,23 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .sweep-controls { grid-template-columns: 1fr 1fr; }
 }
 
-@media (max-width: 780px) {
+@media (max-width: 900px) {
   .site-header { min-height: 58px; padding-inline: 16px; }
   .header-meta span { display: none; }
-  .app-nav { overflow-x: auto; scrollbar-width: none; }
+  .app-nav { overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
   .app-nav::-webkit-scrollbar { display: none; }
   .app-nav > div { width: max-content; min-width: 100%; min-height: 44px; padding-inline: 10px; }
-  .app-nav a { min-width: 112px; padding: 0 12px; display: inline-flex; align-items: center; }
+  .app-nav a { min-width: 112px; padding: 0 12px; display: inline-flex; align-items: center; scroll-snap-align: center; }
   .app-nav a small { display: none; }
-  select, input { min-height: 40px; }
-  .solve-button { min-height: 42px; }
-  main { width: min(100% - 24px, 680px); }
+  select, input, .solve-button, .export-button, .configuration-tabs button, .mobile-pane-tabs button, .field-toolbar button, .display-mesh select, .checkbox-field, .geometry-toolbar .checkbox-field { min-height: 44px; }
+  main { width: min(100% - 24px, 860px); }
   .view-heading { padding: 22px 2px 6px; }
   .workspace-header { padding: 18px 2px 14px; align-items: flex-start; flex-direction: column; gap: 12px; }
   .workspace-actions { width: 100%; justify-items: start; }
   .workspace-context, .project-actions { justify-content: flex-start; }
   .workspace, .validation-section { grid-template-columns: 1fr; }
   .mobile-pane-tabs { margin-bottom: 10px; padding: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: #dfe8e5; border-radius: 10px; }
-  .mobile-pane-tabs button { min-height: 38px; color: #61757a; background: transparent; border: 0; border-radius: 7px; font-size: 0.76rem; font-weight: 700; cursor: pointer; }
+  .mobile-pane-tabs button { color: #61757a; background: transparent; border: 0; border-radius: 7px; font-size: 0.76rem; font-weight: 700; cursor: pointer; }
   .mobile-pane-tabs button.active { color: #075d68; background: var(--paper); box-shadow: 0 2px 8px rgba(20,48,55,0.08); }
   .mobile-pane-tabs button:focus-visible { outline: 3px solid rgba(8,127,140,0.25); }
   .workspace[data-mobile-pane="configure"] .results-panel { display: none; }
@@ -453,10 +452,11 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .header-meta { gap: 0; font-size: 0.72rem; }
   .form-grid { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: 1fr 1fr; }
+  .metric span { white-space: normal; overflow-wrap: anywhere; }
   .field-plot { min-height: 300px; }
   .geometry-plot { min-height: 300px; }
   .field-toolbar { gap: 5px; }
-  .field-toolbar button { min-width: 35px; padding-inline: 7px; }
+  .field-toolbar button { min-width: 44px; padding-inline: 7px; }
   .sweep-controls { grid-template-columns: 1fr; }
   .sweep-plot { min-height: 480px; }
   .material-plot { min-height: 560px; }

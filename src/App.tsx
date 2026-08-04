@@ -215,7 +215,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+    const frame = window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("resize"));
+      if (window.matchMedia("(max-width: 900px)").matches) {
+        document.querySelector(".app-nav a.active")?.scrollIntoView({ block: "nearest", inline: "center" });
+      }
+    });
     return () => window.cancelAnimationFrame(frame);
   }, [activeView, solverPane, sweepPane]);
 
