@@ -483,7 +483,7 @@ export function App() {
       <a className="brand" href="./" aria-label="Waveguide Mode Solver home">
         <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span>Waveguide Mode Solver</span>
       </a>
-      <div className="header-meta"><span>v{packageJson.version} · Full-vector FDM</span><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">GitHub</a></div>
+      <div className="header-meta"><span>v{packageJson.version} · Full-vector FDM</span><a href="https://jorpago2.github.io/" aria-label="Online Simulators & Tools">All tools</a><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">GitHub</a></div>
     </header>
     <nav className="app-nav" aria-label="Solver sections">
       <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
