@@ -30,6 +30,9 @@ button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 a { color: inherit; }
 
+.skip-link { position: fixed; z-index: 100; top: 8px; left: 8px; padding: 10px 14px; color: #fff; background: var(--navy); transform: translateY(-150%); }
+.skip-link:focus { transform: translateY(0); }
+
 .app-shell { min-height: 100vh; }
 
 .site-header {
@@ -339,7 +342,7 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 .analysis-controls .select-field { margin-top: 0; }
 .analysis-controls .solve-button { margin-top: 0; }
 .checkbox-field { min-height: 42px; padding: 0 11px; display: flex; align-items: center; gap: 9px; color: #53666c; background: #f5f8f6; border: 1px solid #d7e1df; border-radius: 10px; font-size: 0.76rem; font-weight: 600; }
-.checkbox-field input { width: 17px; min-height: 17px; margin: 0; padding: 0; accent-color: var(--teal); }
+.checkbox-field input { flex: 0 0 20px; width: 20px; height: 20px; min-height: 20px; margin: 0; padding: 0; accent-color: var(--teal); }
 .analysis-controls.compact { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
 .analysis-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .analysis-card { padding: 16px; background: #f5f8f6; border: 1px solid #dce5e2; border-radius: 11px; }
@@ -404,6 +407,8 @@ footer {
 }
 footer span:first-child { color: #d4e4e1; font-weight: 700; }
 
+.workspace button { min-height: 36px; }
+
 @media (max-width: 1120px) {
   .workspace { grid-template-columns: 290px minmax(0, 1fr); }
   .plots { grid-template-columns: 1fr; }
@@ -421,7 +426,7 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
   .app-nav > div { width: max-content; min-width: 100%; min-height: 44px; padding-inline: 10px; }
   .app-nav a { min-width: 112px; padding: 0 12px; display: inline-flex; align-items: center; scroll-snap-align: center; }
   .app-nav a small { display: none; }
-  select, input, .solve-button, .export-button, .configuration-tabs button, .mobile-pane-tabs button, .field-toolbar button, .display-mesh select, .checkbox-field, .geometry-toolbar .checkbox-field { min-height: 44px; }
+  select, input:not([type="checkbox"]):not([type="file"]), .solve-button, .export-button, .configuration-tabs button, .mobile-pane-tabs button, .field-toolbar button, .display-mesh select, .checkbox-field, .geometry-toolbar .checkbox-field { min-height: 44px; }
   main { width: min(100% - 24px, 860px); }
   .view-heading { padding: 22px 2px 6px; }
   .workspace-header { padding: 18px 2px 14px; align-items: flex-start; flex-direction: column; gap: 12px; }

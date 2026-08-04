@@ -478,6 +478,7 @@ export function App() {
   }
 
   return <div className="app-shell">
+    <a className="skip-link" href="#mode-solver-workspace">Skip to mode solver workspace</a>
     <header className="site-header">
       <a className="brand" href="./" aria-label="Waveguide Mode Solver home">
         <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span>Waveguide Mode Solver</span>
@@ -499,7 +500,7 @@ export function App() {
         <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" className={solverPane === "configure" ? "active" : ""} onClick={() => setSolverPane("configure")}>Configure</button>
         <button type="button" role="tab" aria-selected={solverPane === "results"} aria-controls="results-panel" className={solverPane === "results" ? "active" : ""} onClick={() => setSolverPane("results")}>Results</button>
       </div>
-      <div className="workspace" data-mobile-pane={solverPane}>
+      <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel">
           <div className="panel-heading"><div><span className="step">01</span><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
           <form onSubmit={solve} noValidate>
