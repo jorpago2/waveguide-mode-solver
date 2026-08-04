@@ -6,7 +6,7 @@ import {
   type BuiltInMaterialId,
 } from "./materials";
 
-const MATERIAL_SAMPLES = 240;
+const MATERIAL_SAMPLES = 1000;
 const explorableMaterials = MATERIALS.filter((material): material is typeof material & { id: BuiltInMaterialId } => (
   material.id !== "custom" && material.id !== "tabulated" && material.id !== "air"
 ));
