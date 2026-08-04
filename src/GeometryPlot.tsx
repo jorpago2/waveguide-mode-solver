@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { MATPLOTLIB_RDBU_R } from "./plotColors";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
@@ -73,9 +74,8 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       y: result.yEdgesUm,
       z: map,
       zsmooth: false,
-      colorscale: quantity === "epsilon-real" ? [[0, "#67001f"], [0.1, "#b2182b"], [0.2, "#d6604d"], [0.3, "#f4a582"], [0.4, "#fddbc7"], [0.5, "#f7f7f7"], [0.6, "#d1e5f0"], [0.7, "#92c5de"], [0.8, "#4393c3"], [0.9, "#2166ac"], [1, "#053061"]] : "Cividis",
+      colorscale: quantity === "epsilon-real" ? MATPLOTLIB_RDBU_R : "Cividis",
       ...(quantity === "epsilon-real" ? { zmid: 0 } : {}),
-      reversescale: quantity === "epsilon-real",
       colorbar: { title: { text: label, side: "right" }, thickness: 13, len: 0.84 },
       hovertemplate: `x = %{x:.4f} µm<br>y = %{y:.4f} µm<br>${label} = %{z:.6f}<extra></extra>`,
     } as Plotly.Data];
