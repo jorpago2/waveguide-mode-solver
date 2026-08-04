@@ -78,7 +78,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       zmin: phaseField ? -180 : signedField ? -maximum : 0,
       zmax: phaseField ? 180 : maximum,
       zmid: signedField ? 0 : undefined,
-      colorscale: phaseField ? "HSV" : signedField ? "RdBu" : "Viridis",
+      colorscale: phaseField ? "HSV" : signedField ? [[0, "rgb(5, 10, 172)"], [0.35, "rgb(106, 137, 247)"], [0.5, "#ffffff"], [0.6, "rgb(220, 170, 132)"], [0.7, "rgb(230, 145, 90)"], [1, "rgb(178, 10, 28)"]] : "Viridis",
       colorbar: {
         title: { text: componentLabel, side: "right" },
         thickness: 12,
