@@ -74,7 +74,6 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       z: map,
       zsmooth: false,
       colorscale: quantity === "epsilon-real" ? "RdBu" : "Cividis",
-      reversescale: quantity === "epsilon-real",
       ...(quantity === "epsilon-real" ? { zmid: 0 } : {}),
       colorbar: { title: { text: label, side: "right" }, thickness: 13, len: 0.84 },
       hovertemplate: `x = %{x:.4f} µm<br>y = %{y:.4f} µm<br>${label} = %{z:.6f}<extra></extra>`,
