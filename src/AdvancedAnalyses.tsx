@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import packageJson from "../package.json";
 import { runSolverWorker } from "./workerClient";
 import { ConvergencePlot, ModeMapPlot, ModeTopologyPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
@@ -38,6 +39,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const [comparisonResult, setComparisonResult] = useState<WaveguideComparisonResult>();
   const [topology, setTopology] = useState<TopologySweepSettings>(() => ({ parameter: "widthUm", startValue: 0.8 * config.widthUm, stopValue: 1.2 * config.widthUm, points: 7 }));
   const [topologyResult, setTopologyResult] = useState<TopologySweepResult>();
+  const [exportMessage, setExportMessage] = useState("");
   const [analysisPane, setAnalysisPane] = useState<"numerics" | "robustness" | "coupling">("numerics");
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   }
 
   async function runTopology(event: FormEvent) {
-    event.preventDefault(); setActive("topology"); setError("");
+    event.preventDefault(); setActive("topology"); setError(""); setExportMessage("");
     try { setTopologyResult(await runSolverWorker<TopologySweepResult>({ kind: "modeTopology", config, settings: topology })); }
     catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
   }
@@ -99,6 +101,12 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       : parameter === "slotGapUm" ? config.slotGapUm ?? config.widthUm / 5 : parameter === "couplerGapUm" ? config.couplerGapUm ?? config.widthUm / 2 : config[parameter];
     const span = parameter === "coreExtinction" ? Math.max(0.01, centre) : 0.2 * centre;
     setTopology({ parameter, startValue: Math.max(parameter === "wavelengthUm" ? 0.2 : parameter === "coreExtinction" ? 0 : 0.001, centre - span), stopValue: centre + span, points: topology.points });
+  }
+
+  function downloadTopology() {
+    if (!topologyResult) return;
+    const filename = exportTopology(topologyResult, config, topology);
+    setExportMessage(`Topology sweep exported as ${filename}.`);
   }
 
   const geometry = config.geometry ?? "channel";
@@ -113,7 +121,8 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       <button type="button" className={analysisPane === "coupling" ? "active" : ""} aria-pressed={analysisPane === "coupling"} onClick={() => setAnalysisPane("coupling")}><span>Coupling</span><small>Interfaces & supermodes</small></button>
     </nav>
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="topology-title">
-      <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={() => exportTopology(topologyResult)}>Export CSV</button>}</div>
+      <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={downloadTopology}>Export CSV</button>}</div>
+      {exportMessage && <output className="status" aria-live="polite">{exportMessage}</output>}
       <p className="section-intro">Inspect mode mixing and numerical sensitivity in lossy, leaky or strongly coupled structures. Complex-index trajectories can flag interactions for closer study; exceptional-point labels remain provisional until verified with a converged two-parameter loop.</p>
       {selected && <div className="analysis-metrics">
         <AnalysisMetric label="Projected condition κ" value={formatCondition(selected.eigenvalueConditionEstimate)} />
@@ -246,10 +255,12 @@ function formatCondition(value: number): string { return Number.isFinite(value) 
 function lossValidationLabel(value: ConvergenceResult["lossValidation"]): string { return value === "pass" ? "Pass" : value === "mesh-only" ? "Mesh only" : value === "not-applicable" ? "No measurable loss" : "Review"; }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : "The analysis failed."; }
 
-function exportTopology(result: TopologySweepResult) {
-  const rows = ["parameter,value,branch,label,neff_real,neff_imag,condition_projected,petermann_projected,residual,tracking_overlap",
+function exportTopology(result: TopologySweepResult, config: WaveguideConfig, settings: TopologySweepSettings) {
+  const rows = [`# metadata_json=${JSON.stringify({ solverVersion: packageJson.version, config, settings })}`, "parameter,value,branch,label,neff_real,neff_imag,condition_projected,petermann_projected,residual,tracking_overlap",
     ...result.points.flatMap((point) => point.modes.map((mode) => [result.parameter, point.value, mode.branch + 1, mode.label, mode.effectiveIndex,
       mode.effectiveIndexImaginary, mode.conditionEstimate, mode.petermannFactorEstimate, mode.residual, mode.trackingOverlap].join(",")))];
   const url = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" }));
-  const anchor = document.createElement("a"); anchor.href = url; anchor.download = `mode-topology-${result.parameter}.csv`; anchor.click(); URL.revokeObjectURL(url);
+  const filename = `waveguide-${config.geometry ?? "channel"}-topology-${result.parameter}.csv`;
+  const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url);
+  return filename;
 }

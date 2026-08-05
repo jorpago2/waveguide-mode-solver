@@ -412,7 +412,7 @@ export function App() {
 
   function exportField() {
     if (!mode || !result) return;
-    const rows = ["x_um,y_um,Ex_real_V_m,Ex_imag_V_m,Ey_real_V_m,Ey_imag_V_m,Ez_real_V_m,Ez_imag_V_m,Hx_real_A_m,Hx_imag_A_m,Hy_real_A_m,Hy_imag_A_m,Hz_real_A_m,Hz_imag_A_m,E2_V2_m2,Sz_W_m2"];
+    const rows = [exportMetadata({ modeId: mode.id }), "x_um,y_um,Ex_real_V_m,Ex_imag_V_m,Ey_real_V_m,Ey_imag_V_m,Ez_real_V_m,Ez_imag_V_m,Hx_real_A_m,Hx_imag_A_m,Hy_real_A_m,Hy_imag_A_m,Hz_real_A_m,Hz_imag_A_m,E2_V2_m2,Sz_W_m2"];
     for (let row = 0; row < result.yUm.length; row += 1) {
       for (let column = 0; column < result.xUm.length; column += 1) {
         rows.push([result.xUm[column], result.yUm[row],
@@ -425,31 +425,39 @@ export function App() {
           mode.fields.intensity[row][column], mode.fields.poynting[row][column]].join(","));
       }
     }
-    download(rows.join("\n"), `waveguide-${mode.id.toLowerCase()}-${config.wavelengthUm.toFixed(3)}um.csv`);
+    const filename = `waveguide-${config.geometry ?? "channel"}-${mode.id.toLowerCase()}-${config.wavelengthUm.toFixed(3)}um.csv`;
+    download(rows.join("\n"), filename);
+    setMessage(`Field data exported as ${filename}.`);
   }
 
   function exportSweep() {
     if (!sweepResult) return;
-    const rows = ["wavelength_um,mode_label,near_cutoff,subspace_size,n_eff,n_group,dispersion_ps_nm_km,beta2_ps2_km,loss_db_cm,subspace_overlap",
+    const rows = [exportMetadata({ sweepSettings }), "wavelength_um,mode_label,near_cutoff,subspace_size,n_eff,n_group,dispersion_ps_nm_km,beta2_ps2_km,loss_db_cm,subspace_overlap",
       ...sweepResult.points.map((point) => [point.wavelengthUm, point.modeLabel, point.nearCutoff, point.degenerateSubspaceSize, point.effectiveIndex,
         point.groupIndex, point.dispersionPsPerNmKm, point.beta2Ps2PerKm, point.lossDbPerCm, point.overlap].join(","))];
-    download(rows.join("\n"), "waveguide-dispersion.csv");
+    const filename = `waveguide-${config.geometry ?? "channel"}-dispersion.csv`;
+    download(rows.join("\n"), filename);
+    setSweepMessage(`Sweep exported as ${filename}.`);
   }
 
   function exportGeometrySweep() {
     if (!geometrySweepResult) return;
-    const rows = ["value_um,mode_label,near_cutoff,subspace_size,n_eff,confinement,effective_area_um2,loss_db_cm,subspace_overlap",
+    const rows = [exportMetadata({ geometrySweep }), "value_um,mode_label,near_cutoff,subspace_size,n_eff,confinement,effective_area_um2,loss_db_cm,subspace_overlap",
       ...geometrySweepResult.points.map((point) => [point.valueUm, point.modeLabel, point.nearCutoff, point.degenerateSubspaceSize, point.effectiveIndex, point.electricConfinement,
         point.effectiveAreaUm2, point.lossDbPerCm, point.overlap].join(","))];
-    download(rows.join("\n"), `waveguide-${geometrySweepResult.parameter}-sweep.csv`);
+    const filename = `waveguide-${config.geometry ?? "channel"}-${geometrySweepResult.parameter}-sweep.csv`;
+    download(rows.join("\n"), filename);
+    setGeometrySweepMessage(`Sweep exported as ${filename}.`);
   }
 
   function exportBlochSweep() {
     if (!blochSweepResult) return;
-    const rows = ["phase_rad,phase_over_pi,mode_label,subspace_size,n_eff,n_eff_imag,loss_db_cm,subspace_overlap",
+    const rows = [exportMetadata({ blochSweep }), "phase_rad,phase_over_pi,mode_label,subspace_size,n_eff,n_eff_imag,loss_db_cm,subspace_overlap",
       ...blochSweepResult.points.map((point) => [point.phaseRad, point.phaseRad / Math.PI, point.modeLabel, point.degenerateSubspaceSize,
         point.effectiveIndex, point.effectiveIndexImaginary, point.lossDbPerCm, point.overlap].join(","))];
-    download(rows.join("\n"), `waveguide-bloch-${blochSweepResult.axis}-sweep.csv`);
+    const filename = `waveguide-${config.geometry ?? "channel"}-bloch-${blochSweepResult.axis}-sweep.csv`;
+    download(rows.join("\n"), filename);
+    setBlochSweepMessage(`Sweep exported as ${filename}.`);
   }
 
   function exportProject() {
@@ -463,7 +471,13 @@ export function App() {
       geometrySweep: geometrySweepResult,
       blochSweep: blochSweepResult,
     };
-    download(JSON.stringify(project, null, 2), `waveguide-project-v${packageJson.version}.json`, "application/json;charset=utf-8");
+    const filename = `waveguide-${config.geometry ?? "channel"}-${config.wavelengthUm.toFixed(3)}um-v${packageJson.version}.json`;
+    download(JSON.stringify(project, null, 2), filename, "application/json;charset=utf-8");
+    setMessage(`Project exported as ${filename}.`);
+  }
+
+  function exportMetadata(details: object) {
+    return `# metadata_json=${JSON.stringify({ solverVersion: packageJson.version, config, ...details })}`;
   }
 
   async function importProject(event: ChangeEvent<HTMLInputElement>) {
