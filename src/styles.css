@@ -138,6 +138,11 @@ main { width: min(1320px, calc(100% - 32px)); margin: 0 auto; }
 .workspace-actions { display: grid; justify-items: end; gap: 8px; }
 .workspace-context { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .workspace-context span { padding: 4px 8px; color: #536a70; background: rgba(251,252,250,0.8); border: 1px solid #d6e1de; border-radius: 6px; font-size: 0.65rem; font-weight: 700; text-transform: capitalize; }
+.solve-state { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; color: #536a70; background: rgba(251,252,250,0.8); border: 1px solid #d6e1de; border-radius: 6px; font-size: 0.65rem; font-weight: 700; }
+.solve-state::before { width: 6px; height: 6px; background: currentColor; border-radius: 50%; content: ""; }
+.solve-state-solving { color: #075d68; background: #e7f5f2; border-color: #b7ddd6; }
+.solve-state-solved { color: #176b54; background: #e8f5ef; border-color: #badccc; }
+.solve-state-stale { color: var(--warn); background: var(--warn-soft); border-color: #e3ca8d; }
 .project-actions { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; }
 .project-actions .export-button { display: inline-flex; align-items: center; background: rgba(251,252,250,0.7); }
 .project-actions input[type="file"] { display: none; }

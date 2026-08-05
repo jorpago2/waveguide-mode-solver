@@ -179,6 +179,8 @@ export function App() {
   const helpRef = useRef<HTMLDetailsElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
+  const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
+  const solveStateLabel = busy ? "Solving" : resultIsStale ? "Stale" : result ? "Solved" : "Not solved";
   const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.guidanceMargin > 0 && !mode.nearCutoff },
     { label: "Eigenpair residual", pass: mode.residual < 2e-3 },
@@ -535,7 +537,7 @@ export function App() {
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
       <header className="workspace-header">
         <div><p className="eyebrow">Full-vector eigenmode workspace</p><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
-        <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><span>{config.geometry ?? "channel"}</span><span>{config.wavelengthUm.toFixed(3)} µm</span>{result && <span>{result.nx} × {result.ny} grid</span>}</div><div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div></div>
+        <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><output className={`solve-state solve-state-${solveState}`} aria-live="polite">{solveStateLabel}</output><span>{config.geometry ?? "channel"}</span><span>{config.wavelengthUm.toFixed(3)} µm</span>{result && <span>{result.nx} × {result.ny} grid</span>}</div><div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div></div>
       </header>
 
       <div className="mobile-pane-tabs" role="tablist" aria-label="Mode solver workspace">
