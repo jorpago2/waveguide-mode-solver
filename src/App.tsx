@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { runSolverWorker } from "./workerClient";
+import { nextTabIndex } from "./tabNavigation";
 import packageJson from "../package.json";
 import {
   MATERIALS, complexRefractiveIndex, evaluateMaterialAxes, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity,
@@ -499,8 +500,8 @@ export function App() {
       </header>
 
       <div className="mobile-pane-tabs" role="tablist" aria-label="Mode solver workspace">
-        <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" className={solverPane === "configure" ? "active" : ""} onClick={() => setSolverPane("configure")}>Configure</button>
-        <button type="button" role="tab" aria-selected={solverPane === "results"} aria-controls="results-panel" className={solverPane === "results" ? "active" : ""} onClick={() => setSolverPane("results")}>Results</button>
+        <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" tabIndex={solverPane === "configure" ? 0 : -1} className={solverPane === "configure" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setSolverPane("configure")}>Configure</button>
+        <button type="button" role="tab" aria-selected={solverPane === "results"} aria-controls="results-panel" tabIndex={solverPane === "results" ? 0 : -1} className={solverPane === "results" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setSolverPane("results")}>Results</button>
       </div>
       <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel">
@@ -508,7 +509,7 @@ export function App() {
           <form onSubmit={solve} noValidate>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
             <div className="configuration-tabs" role="tablist" aria-label="Configuration sections">
-              {(["geometry", "materials", "solver"] as ConfigurationTab[]).map((tab) => <button type="button" role="tab" aria-selected={configurationTab === tab} aria-controls={`configuration-${tab}`} className={configurationTab === tab ? "active" : ""} key={tab} onClick={() => setConfigurationTab(tab)}>{tab === "geometry" ? "Geometry" : tab === "materials" ? "Materials" : "Solver"}</button>)}
+              {(["geometry", "materials", "solver"] as ConfigurationTab[]).map((tab) => <button type="button" role="tab" aria-selected={configurationTab === tab} aria-controls={`configuration-${tab}`} tabIndex={configurationTab === tab ? 0 : -1} className={configurationTab === tab ? "active" : ""} key={tab} onKeyDown={handleTabKeyDown} onClick={() => setConfigurationTab(tab)}>{tab === "geometry" ? "Geometry" : tab === "materials" ? "Materials" : "Solver"}</button>)}
             </div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3><p>Define the physical structure and propagation path.</p></div>
@@ -670,9 +671,9 @@ export function App() {
         <section className="results-panel" id="results-panel" aria-labelledby="results-title">
           <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
           {result ? <>
-            <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} className={resultView === "mode" ? "active" : ""} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} className={resultView === "geometry" ? "active" : ""} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
+            <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} tabIndex={resultView === "mode" ? 0 : -1} className={resultView === "mode" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} tabIndex={resultView === "geometry" ? 0 : -1} className={resultView === "geometry" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
-            <div className="mode-tabs" role="tablist" aria-label="Guided modes">{result.modes.map((item, index) => <button type="button" role="tab" aria-selected={selectedMode === index} className={selectedMode === index ? "active" : ""} key={`${item.id}-${index}`} onClick={() => setSelectedMode(index)}><span>{item.label} · {item.polarization}</span><small><i>n</i><sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</small></button>)}</div>
+            <div className="mode-tabs" role="tablist" aria-label="Guided modes">{result.modes.map((item, index) => <button type="button" role="tab" aria-selected={selectedMode === index} tabIndex={selectedMode === index ? 0 : -1} className={selectedMode === index ? "active" : ""} key={`${item.id}-${index}`} onKeyDown={handleTabKeyDown} onClick={() => setSelectedMode(index)}><span>{item.label} · {item.polarization}</span><small><i>n</i><sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</small></button>)}</div>
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
@@ -915,6 +916,15 @@ function legacyOpticAxisAzimuth(axis: OpticAxis = "y"): number {
 }
 
 function Metric({ label, value }: { label: ReactNode; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
+
+function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+  const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)') ?? []);
+  const nextIndex = nextTabIndex(event.key, tabs.indexOf(event.currentTarget), tabs.length);
+  if (nextIndex === undefined) return;
+  event.preventDefault();
+  tabs[nextIndex]?.focus();
+  tabs[nextIndex]?.click();
+}
 
 function download(content: string, filename: string, mimeType = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
