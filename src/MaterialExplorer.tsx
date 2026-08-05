@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_CONFIG } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import {
   MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
   type BuiltInMaterialId,
@@ -25,7 +25,7 @@ export function MaterialExplorer() {
 
   useEffect(() => {
     if (!plotRef.current) return;
-    const axis = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
+    const axis = PLOT_AXIS;
     const traces: Plotly.Data[] = [
       { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
       ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#009e73", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
@@ -37,7 +37,7 @@ export function MaterialExplorer() {
     ];
     void Plotly.react(plotRef.current, traces, {
       margin: { l: 64, r: 64, t: 38, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
+      font: PLOT_FONT,
       legend: { orientation: "h", x: 0, y: 1.08 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.7, 1], title: { text: "Refractive index" } },

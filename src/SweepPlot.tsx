@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_CONFIG } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import type { SweepResult } from "./solver";
 
 export function SweepPlot({ result }: { result: SweepResult }) {
@@ -9,7 +9,7 @@ export function SweepPlot({ result }: { result: SweepResult }) {
   useEffect(() => {
     if (!plotRef.current) return;
     const wavelength = result.points.map((point) => point.wavelengthUm);
-    const axis = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
+    const axis = PLOT_AXIS;
     void Plotly.react(plotRef.current, [
       {
         type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: wavelength,
@@ -42,7 +42,7 @@ export function SweepPlot({ result }: { result: SweepResult }) {
       },
     ] as Plotly.Data[], {
       margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
+      font: PLOT_FONT,
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.69, 1], title: { text: "Modal index" } },

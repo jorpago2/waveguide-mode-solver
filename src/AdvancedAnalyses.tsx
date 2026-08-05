@@ -130,7 +130,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     {active && <div className="analysis-cancel"><output aria-live="polite">Analysis running…</output><button className="export-button" type="button" onClick={cancelSolverWorker}>Cancel analysis</button></div>}
     {runMessage && <output className="status" aria-live="polite">{runMessage}</output>}
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="topology-title">
-      <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={downloadTopology}>Export CSV</button>}</div>
+      <div className="panel-heading"><div><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={downloadTopology}>Export CSV</button>}</div>
       {exportMessage && <output className="status" aria-live="polite">{exportMessage}</output>}
       <p className="section-intro">Inspect mode mixing and numerical sensitivity in lossy, leaky or strongly coupled structures. Complex-index trajectories can flag interactions for closer study; exceptional-point labels remain provisional until verified with a converged two-parameter loop.</p>
       {selected && <div className="analysis-metrics">
@@ -156,7 +156,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       <p className="limitation">K<sub>proj</sub> = κ<sub>proj</sub>² is obtained from left and right eigenvectors of the Arnoldi-projected operator. It is a convergence diagnostic, not yet the full Maxwell adjoint Petermann factor.</p>
     </section>
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="convergence-title">
-      <div className="panel-heading"><div><span className="step">05</span><h2 id="convergence-title">Numerical convergence</h2></div></div>
+      <div className="panel-heading"><div><h2 id="convergence-title">Numerical convergence</h2></div></div>
       <p className="section-intro">Track the selected mode over three systematically refined meshes. Loss is checked against the selected tolerance and, with PML, against boundary and absorber variations.</p>
       <form className="analysis-controls" onSubmit={runConvergence}>
         <AnalysisNumber label="Coarse resolution" unit="cells" value={convergence.coarseResolution} min={24} max={56} step={1} onChange={(value) => setConvergence((current) => ({ ...current, coarseResolution: value }))} />
@@ -193,7 +193,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "robustness"} aria-labelledby="tolerance-title">
-      <div className="panel-heading"><div><span className="step">06</span><h2 id="tolerance-title">Fabrication tolerances</h2></div></div>
+      <div className="panel-heading"><div><h2 id="tolerance-title">Fabrication tolerances</h2></div></div>
       <p className="section-intro">Run a seeded Latin-hypercube Monte Carlo study. Inputs are independent Gaussian standard deviations.</p>
       <form className="analysis-controls" onSubmit={runTolerance}>
         <AnalysisNumber label="Width σ" unit="nm" value={tolerance.widthStdDevNm} min={0} max={1_000} step={1} onChange={(value) => setTolerance((current) => ({ ...current, widthStdDevNm: value }))} />
@@ -209,7 +209,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "coupling"} aria-labelledby="coupling-title">
-      <div className="panel-heading"><div><span className="step">07</span><h2 id="coupling-title">Coupling analysis</h2></div></div>
+      <div className="panel-heading"><div><h2 id="coupling-title">Coupling analysis</h2></div></div>
       <div className="analysis-columns">
         <form className="analysis-card" onSubmit={runGaussian}>
           <h3>Gaussian-beam overlap</h3><p>Approximate butt-coupling overlap with a linearly polarized Gaussian field.</p>
@@ -228,7 +228,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "coupling"} aria-labelledby="comparison-title">
-      <div className="panel-heading"><div><span className="step">08</span><h2 id="comparison-title">Cross-section comparison</h2></div></div>
+      <div className="panel-heading"><div><h2 id="comparison-title">Cross-section comparison</h2></div></div>
       <p className="section-intro">Compare modal power overlap between the current guide and a target platform at the current wavelength. This estimates an abrupt interface, not an optimized taper.</p>
       <form className="analysis-controls" onSubmit={runComparison}>
         <label className="select-field">Target preset<select value={targetPreset} onChange={(event) => setTargetPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
@@ -239,7 +239,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     </section>
 
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "robustness"} aria-labelledby="map-title">
-      <div className="panel-heading"><div><span className="step">09</span><h2 id="map-title">Mode map</h2></div></div>
+      <div className="panel-heading"><div><h2 id="map-title">Mode map</h2></div></div>
       <p className="section-intro">Map guided-mode count and the selected effective index versus wavelength and one geometry parameter.</p>
       <form className="analysis-controls" onSubmit={runModeMap}>
         <label className="select-field">Parameter<select value={modeMap.parameter} onChange={(event) => setModeMap((current) => ({ ...current, parameter: event.target.value as ModeMapParameter }))}><option value="widthUm">Core width</option><option value="heightUm">Core height</option>{geometry === "slot" && <option value="slotGapUm">Slot gap</option>}{geometry === "coupler" && <option value="couplerGapUm">Coupler gap</option>}</select></label>
@@ -254,7 +254,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
 }
 
 function AnalysisNumber({ label, unit, value, min, max, step, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} aria-invalid={!Number.isFinite(value) || value < min || value > max} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
 }
 
 function AnalysisMetric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }

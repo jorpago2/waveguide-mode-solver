@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_CONFIG } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import { interpolateFieldMatrix, type ComplexFieldMatrix, type FieldComponent, type PhysicalFieldComponent, type WaveguideConfig, type WaveguideMode } from "./solver";
 
 export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
@@ -65,8 +65,8 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
     let maximum = Number.EPSILON;
     for (const row of z) for (const value of row) maximum = Math.max(maximum, Math.abs(value));
     const axisStyle = {
-      color: "#40555c",
-      gridcolor: "#e7edef",
+      color: PLOT_AXIS.color,
+      gridcolor: PLOT_AXIS.gridcolor,
       zerolinecolor: "#b7c6ca",
       ticks: "outside" as const,
     };
@@ -91,7 +91,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       margin: { l: 58, r: 36, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
+      font: PLOT_FONT,
       xaxis: { ...axisStyle, title: { text: "x (µm)" }, constrain: "domain" },
       yaxis: { ...axisStyle, title: { text: "y (µm)" }, scaleanchor: "x", scaleratio: 1 },
       shapes: geometryShapes(config),
@@ -122,7 +122,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       margin: { l: 56, r: 20, t: 18, b: 50 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
+      font: PLOT_FONT,
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
       yaxis: { ...axisStyle, title: { text: componentLabel }, range: phaseField ? [-180, 180] : signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },

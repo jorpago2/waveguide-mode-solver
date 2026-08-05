@@ -1,5 +1,8 @@
 import Plotly from "plotly.js-cartesian-dist-min";
 
+export const PLOT_FONT = { family: "IBM Plex Sans, Arial, sans-serif", color: "#40555c", size: 11 };
+export const PLOT_AXIS = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
+
 const fullscreenIcon = {
   width: 24, height: 24, ascent: 24, descent: 0,
   path: "M3 9V3h6v2H5v4H3zm12-6h6v6h-2V5h-4V3zM3 15h2v4h4v2H3v-6zm16 0h2v6h-6v-2h4v-4z",

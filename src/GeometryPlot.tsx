@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_CONFIG } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
@@ -95,9 +95,9 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       margin: { l: 58, r: 42, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
-      xaxis: { title: { text: "x (µm)" }, color: "#40555c", ticks: "outside", constrain: "domain" },
-      yaxis: { title: { text: "y (µm)" }, color: "#40555c", ticks: "outside", scaleanchor: "x", scaleratio: 1 },
+      font: PLOT_FONT,
+      xaxis: { title: { text: "x (µm)" }, color: PLOT_AXIS.color, ticks: "outside", constrain: "domain" },
+      yaxis: { title: { text: "y (µm)" }, color: PLOT_AXIS.color, ticks: "outside", scaleanchor: "x", scaleratio: 1 },
       shapes: [...meshShapes, ...pmlShapes, ...periodicShapes],
     }, PLOT_CONFIG);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };

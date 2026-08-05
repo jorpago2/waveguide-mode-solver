@@ -523,10 +523,9 @@ export function App() {
     <a className="skip-link" href="#mode-solver-workspace">Skip to mode solver workspace</a>
     <header className="site-header">
       <a className="brand" href="./" aria-label="Waveguide Mode Solver home">
-        <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span>Waveguide Mode Solver</span>
+        <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-copy"><strong>Waveguide Mode Solver</strong><small>Full-vector FDM · v{packageJson.version}</small></span>
       </a>
-      <div className="header-meta"><span>v{packageJson.version} · Full-vector FDM</span><a href="https://jorpago2.github.io/" aria-label="Online Simulators & Tools">All tools</a><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">GitHub</a></div>
-      <details className="app-help" ref={helpRef}><summary aria-keyshortcuts="?">Help</summary><div className="app-help-panel"><strong>Quick workflow</strong><p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p><dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl></div></details>
+      <div className="header-tools"><a href="https://jorpago2.github.io/" aria-label="Online Simulators & Tools">All tools</a><details className="app-help" ref={helpRef}><summary aria-keyshortcuts="?">Help</summary><div className="app-help-panel"><strong>Quick workflow</strong><p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p><dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl><p className="help-links"><a href="https://jorpago2.github.io/">All tools</a><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</a></p></div></details></div>
     </header>
     <nav className="app-nav" aria-label="Solver sections">
       <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
@@ -536,7 +535,7 @@ export function App() {
     <main>
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
       <header className="workspace-header">
-        <div><p className="eyebrow">Full-vector eigenmode workspace</p><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
+        <div><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
         <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><output className={`solve-state solve-state-${solveState}`} aria-live="polite">{solveStateLabel}</output><span>{config.geometry ?? "channel"}</span><span>{config.wavelengthUm.toFixed(3)} µm</span>{result && <span>{result.nx} × {result.ny} grid</span>}</div><div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div></div>
       </header>
 
@@ -546,7 +545,7 @@ export function App() {
       </div>
       <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel">
-          <div className="panel-heading"><div><span className="step">01</span><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
+          <div className="panel-heading"><div><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
             <div className="configuration-tabs" role="tablist" aria-label="Configuration sections">
@@ -710,7 +709,7 @@ export function App() {
         </aside>
 
         <section className="results-panel" id="results-panel" aria-labelledby="results-title">
-          <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
+          <div className="panel-heading results-heading"><div><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
           {result ? <>
             <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} tabIndex={resultView === "mode" ? 0 : -1} className={resultView === "mode" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} tabIndex={resultView === "geometry" ? 0 : -1} className={resultView === "geometry" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
@@ -748,19 +747,19 @@ export function App() {
       </section>
 
       <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title">
-        <ViewHeading eyebrow="Optical material library" title="Material Explorer" id="materials-title">Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
+        <ViewHeading title="Material Explorer" id="materials-title">Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
         {activeView === "materials" && <Suspense fallback={<VisualizationFallback />}><MaterialExplorer /></Suspense>}
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
-      <ViewHeading eyebrow="Parametric exploration" title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
+      <ViewHeading title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
       <nav className="section-tabs" aria-label="Sweep type">
         <button type="button" className={sweepPane === "wavelength" ? "active" : ""} aria-pressed={sweepPane === "wavelength"} onClick={() => setSweepPane("wavelength")}><span>Wavelength</span><small>Dispersion & loss</small></button>
         <button type="button" className={sweepPane === "geometry" ? "active" : ""} aria-pressed={sweepPane === "geometry"} onClick={() => setSweepPane("geometry")}><span>Geometry</span><small>Dimensions & bends</small></button>
         <button type="button" className={sweepPane === "bloch" ? "active" : ""} aria-pressed={sweepPane === "bloch"} onClick={() => setSweepPane("bloch")}><span>Bloch phase</span><small>Periodic arrays</small></button>
       </nav>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
-        <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
+        <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
           <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
@@ -772,7 +771,7 @@ export function App() {
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
-        <div className="panel-heading"><div><span className="step">04</span><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
+        <div className="panel-heading"><div><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
         <form className="sweep-controls" onSubmit={runGeometrySweep} aria-busy={busy}>
           <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => event.target.value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: event.target.value as GeometrySweepParameter })}>
             <option value="widthUm">Core width</option><option value="heightUm">Core height</option>{(config.geometry ?? "channel") === "slot" && <option value="slotGapUm">Slot gap</option>}
@@ -789,7 +788,7 @@ export function App() {
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
-        <div className="panel-heading"><div><span className="step">05</span><h2>Transverse Bloch dispersion</h2></div><button className="export-button" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</button></div>
+        <div className="panel-heading"><div><h2>Transverse Bloch dispersion</h2></div><button className="export-button" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</button></div>
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
         <form className="sweep-controls" onSubmit={runBlochSweep} aria-busy={busy}>
           <label className="select-field">Periodic axis<select value={blochSweep.axis} onChange={(event) => setBlochSweep((current) => ({ ...current, axis: event.target.value as BlochSweepAxis }))}><option value="x" disabled={!config.periodicX}>x boundary pair</option><option value="y" disabled={!config.periodicY}>y boundary pair</option></select></label>
@@ -804,18 +803,18 @@ export function App() {
       </section>
 
       <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title">
-      <ViewHeading eyebrow="Research tools" title="Analysis" id="analysis-title">Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
+      <ViewHeading title="Analysis" id="analysis-title">Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
       {activeView === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
 
       <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title">
-      <ViewHeading eyebrow="Scientific confidence" title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
-      <section className="validation-section">
-        <div className="method-card"><p className="eyebrow">Numerical model</p><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
-        <div className="checks-card"><p className="eyebrow">Current solution</p><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && result && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result?.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>
+      <ViewHeading title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
+      <section className={`validation-section${result ? "" : " validation-section-single"}`}>
+        <div className="method-card"><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b>Ψ</b><span>=</span><i>β</i><b>Ψ</b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><i>β</i><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
+        {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>}
       </section>
       {mode && result && <section className="sweep-section validation-diagnostics">
-        <div className="panel-heading"><div><span className="step">V1</span><h2>Complex-mode diagnostics</h2></div><a className="export-button" href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</a></div>
+        <div className="panel-heading"><div><h2>Complex-mode diagnostics</h2></div><a className="export-button" href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</a></div>
         <div className="analysis-metrics">
           <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(4)} dB/cm`} />
           <Metric label="Material absorption" value={`${mode.absorptionLossDbPerCm.toPrecision(4)} dB/cm`} />
@@ -838,8 +837,8 @@ export function App() {
   </div>;
 }
 
-function ViewHeading({ eyebrow, title, id, children }: { eyebrow: string; title: string; id: string; children: ReactNode }) {
-  return <header className="view-heading"><p className="eyebrow">{eyebrow}</p><h1 id={id}>{title}</h1><p>{children}</p></header>;
+function ViewHeading({ title, id, children }: { title: string; id: string; children: ReactNode }) {
+  return <header className="view-heading"><h1 id={id}>{title}</h1><p>{children}</p></header>;
 }
 
 function VisualizationFallback() {
@@ -847,7 +846,7 @@ function VisualizationFallback() {
 }
 
 function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
+  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} aria-invalid={!Number.isFinite(value) || value < min || value > max} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
 }
 
 function MaterialSelect({ label, value, allowTabulated = true, onChange }: { label: string; value: MaterialId; allowTabulated?: boolean; onChange: (value: MaterialId) => void }) {

@@ -1,0 +1,12 @@
+[
+  {
+    "date": "2026-08-05",
+    "scope": "app",
+    "macrostructure": "Workbench",
+    "theme": "custom",
+    "theme_axes": "green-tinted paper / geometric sans / teal",
+    "vibe": "quiet layered scientific workbench",
+    "enrichment": "none",
+    "brief": "Unify the full Waveguide Mode Solver interface"
+  }
+]

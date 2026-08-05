@@ -1,0 +1,9 @@
+{
+  "date": "2026-08-05",
+  "fontStack": "Inter/Aptos system stack; no webfont loaded",
+  "palette": "Teal custom properties plus extensive inline hex values",
+  "motion": "motion-cut; no animation library",
+  "spacing": "mixed values without a named scale",
+  "framework": "React 19 with Vite 8",
+  "designSystem": "design.md"
+}

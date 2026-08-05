@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_CONFIG } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import type { BlochSweepResult } from "./solver";
 
 export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
@@ -10,7 +10,7 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
     const phase = result.points.map((point) => point.phaseRad / Math.PI);
     const candidatePhase = result.points.flatMap((point) => point.candidates.map(() => point.phaseRad / Math.PI));
     const candidates = result.points.flatMap((point) => point.candidates);
-    const axis = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
+    const axis = PLOT_AXIS;
     void Plotly.react(plotRef.current, [
       {
         type: "scatter", mode: "markers", name: "Calculated modes", x: candidatePhase,
@@ -32,7 +32,7 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
       },
     ] as Plotly.Data[], {
       margin: { l: 62, r: 24, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
+      font: PLOT_FONT,
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.4, 1], title: { text: "Effective index" } },
