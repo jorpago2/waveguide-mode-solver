@@ -24,7 +24,7 @@
   --font-display: "Space Grotesk", Arial, sans-serif;
   --font-body: "IBM Plex Sans", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", Consolas, monospace;
-  --font-equation: var(--font-display);
+  --font-equation: var(--font-body);
 
   --space-3xs: 0.25rem;
   --space-2xs: 0.5rem;

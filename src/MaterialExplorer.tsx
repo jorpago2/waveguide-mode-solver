@@ -32,8 +32,8 @@ export function MaterialExplorer() {
       ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#cc79a7", width: 2 }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
       { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, xaxis: "x2", yaxis: "y3", line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
       ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, xaxis: "x2", yaxis: "y3", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
-      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, xaxis: "x3", yaxis: "y4", line: { color: "#009e73", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" },
-      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, xaxis: "x3", yaxis: "y4", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, xaxis: "x3", yaxis: "y4", line: { color: "#009e73", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, xaxis: "x3", yaxis: "y4", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" } as Plotly.Data] : []),
     ];
     void Plotly.react(plotRef.current, traces, {
       margin: { l: 64, r: 64, t: 38, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
@@ -45,7 +45,7 @@ export function MaterialExplorer() {
       xaxis2: { ...axis, domain: [0, 1], anchor: "y3", matches: "x", showticklabels: false },
       yaxis3: { ...axis, domain: [0.35, 0.58], title: { text: "Permittivity" } },
       xaxis3: { ...axis, domain: [0, 1], anchor: "y4", matches: "x", title: { text: "Wavelength (µm)" } },
-      yaxis4: { ...axis, domain: [0, 0.21], title: { text: "dn/dλ (µm⁻¹)" } },
+      yaxis4: { ...axis, domain: [0, 0.21], title: { text: "dn/dλ (µm<sup>−1</sup>)" } },
       shapes: (["x", "x2", "x3"] as const).map((xref, index) => ({
         type: "line", xref, yref: "paper", x0: wavelengthUm, x1: wavelengthUm,
         y0: index === 0 ? 0.7 : index === 1 ? 0.35 : 0, y1: index === 0 ? 1 : index === 1 ? 0.58 : 0.21,
