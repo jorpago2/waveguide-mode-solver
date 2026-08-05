@@ -372,8 +372,9 @@ export function App() {
         setSweepResult(next);
         setSweepMessage(`${next.points.length} wavelengths solved with reciprocal complex-mode tracking.`);
     } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "The wavelength sweep failed.");
-        setSweepMessage("Sweep failed.");
+        const detail = caught instanceof Error ? caught.message : "The wavelength sweep failed.";
+        setError(detail);
+        setSweepMessage(`Sweep failed: ${detail}`);
     } finally { setBusy(false); }
   }
 
@@ -387,8 +388,9 @@ export function App() {
       setGeometrySweepResult(next);
       setGeometrySweepMessage(`${next.points.length} geometries solved with resampled reciprocal tracking.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The geometry sweep failed.");
-      setGeometrySweepMessage("Geometry sweep failed.");
+      const detail = caught instanceof Error ? caught.message : "The geometry sweep failed.";
+      setError(detail);
+      setGeometrySweepMessage(`Geometry sweep failed: ${detail}`);
     } finally { setBusy(false); }
   }
 
@@ -402,8 +404,9 @@ export function App() {
       setBlochSweepResult(next);
       setBlochSweepMessage(`${next.points.length} Bloch phases solved with degenerate-subspace tracking.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The Bloch sweep failed.");
-      setBlochSweepMessage("Bloch sweep failed.");
+      const detail = caught instanceof Error ? caught.message : "The Bloch sweep failed.";
+      setError(detail);
+      setBlochSweepMessage(`Bloch sweep failed: ${detail}`);
     } finally { setBusy(false); }
   }
 
@@ -506,7 +509,7 @@ export function App() {
       <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel">
           <div className="panel-heading"><div><span className="step">01</span><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
-          <form onSubmit={solve} noValidate>
+          <form onSubmit={solve} noValidate aria-busy={busy}>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
             <div className="configuration-tabs" role="tablist" aria-label="Configuration sections">
               {(["geometry", "materials", "solver"] as ConfigurationTab[]).map((tab) => <button type="button" role="tab" aria-selected={configurationTab === tab} aria-controls={`configuration-${tab}`} tabIndex={configurationTab === tab ? 0 : -1} className={configurationTab === tab ? "active" : ""} key={tab} onKeyDown={handleTabKeyDown} onClick={() => setConfigurationTab(tab)}>{tab === "geometry" ? "Geometry" : tab === "materials" ? "Materials" : "Solver"}</button>)}
@@ -663,7 +666,7 @@ export function App() {
               </details>
               <p className="configuration-note">Use the Analysis view for mesh and boundary convergence before interpreting quantitative results.</p>
             </section>
-            <button className="solve-button" type="submit" disabled={busy}>Solve modes <span aria-hidden="true">→</span></button>
+            <button className="solve-button" type="submit" disabled={busy}>{busy ? "Solving…" : "Solve modes"} <span aria-hidden="true">→</span></button>
             <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}
           </form>
         </aside>
@@ -720,7 +723,7 @@ export function App() {
       </nav>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><span className="step">03</span><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
-        <form className="sweep-controls" onSubmit={runSweep}>
+        <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
           <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
           <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
@@ -732,7 +735,7 @@ export function App() {
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
         <div className="panel-heading"><div><span className="step">04</span><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
-        <form className="sweep-controls" onSubmit={runGeometrySweep}>
+        <form className="sweep-controls" onSubmit={runGeometrySweep} aria-busy={busy}>
           <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => event.target.value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: event.target.value as GeometrySweepParameter })}>
             <option value="widthUm">Core width</option><option value="heightUm">Core height</option>{(config.geometry ?? "channel") === "slot" && <option value="slotGapUm">Slot gap</option>}
             {(config.geometry ?? "channel") === "coupler" && <option value="couplerGapUm">Coupler gap</option>}
@@ -750,7 +753,7 @@ export function App() {
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
         <div className="panel-heading"><div><span className="step">05</span><h2>Transverse Bloch dispersion</h2></div><button className="export-button" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</button></div>
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
-        <form className="sweep-controls" onSubmit={runBlochSweep}>
+        <form className="sweep-controls" onSubmit={runBlochSweep} aria-busy={busy}>
           <label className="select-field">Periodic axis<select value={blochSweep.axis} onChange={(event) => setBlochSweep((current) => ({ ...current, axis: event.target.value as BlochSweepAxis }))}><option value="x" disabled={!config.periodicX}>x boundary pair</option><option value="y" disabled={!config.periodicY}>y boundary pair</option></select></label>
           <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
           <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
