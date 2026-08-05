@@ -8,3 +8,9 @@ test("publishes complete social and browser metadata", async () => {
     assert.match(html, new RegExp(metadata));
   }
 });
+
+test("waits for explicit user action before solving modes", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(app, /Configure the cross-section, then select Solve modes\./);
+  assert.doesNotMatch(app, /runSolverWorker<SolverResult>\(\{ kind: "solve", config: initialConfig \}\)/);
+});

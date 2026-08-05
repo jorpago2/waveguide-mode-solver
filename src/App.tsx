@@ -170,13 +170,12 @@ export function App() {
   const [geometrySweepResult, setGeometrySweepResult] = useState<GeometrySweepResult>();
   const [blochSweep, setBlochSweep] = useState(initialBlochSweep);
   const [blochSweepResult, setBlochSweepResult] = useState<BlochSweepResult>();
-  const [message, setMessage] = useState("Solving the default full-vector mode…");
+  const [message, setMessage] = useState("Configure the cross-section, then select Solve modes.");
   const [sweepMessage, setSweepMessage] = useState("Choose a wavelength range to calculate dispersion.");
   const [geometrySweepMessage, setGeometrySweepMessage] = useState("Sweep a device dimension while tracking the selected mode.");
   const [blochSweepMessage, setBlochSweepMessage] = useState("Enable a periodic boundary to calculate transverse-array dispersion.");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(true);
-  const initialized = useRef(false);
+  const [busy, setBusy] = useState(false);
   const helpRef = useRef<HTMLDetailsElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
@@ -195,21 +194,6 @@ export function App() {
     ...((config.bendRadiusUm ?? 0) > 0 ? [{ label: "Open radial boundary", pass: (config.boundary ?? "hard") === "pml" }] : []),
   ] : [], [config, mode, result]);
   const geometrySweepMaximum = geometrySweep.parameter === "bendRadiusUm" ? PARAMETER_MAXIMUMS.bendRadiusUm : PARAMETER_MAXIMUMS.dimensionUm;
-
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    void runSolverWorker<SolverResult>({ kind: "solve", config: initialConfig })
-      .then((initialResult) => {
-        setResult(initialResult);
-        setMessage(`${initialResult.modes.length} guided mode${initialResult.modes.length === 1 ? "" : "s"} found on a ${initialResult.nx} × ${initialResult.ny} Yee grid with automatic x/y grading ${initialResult.meshBiasX.toFixed(2)}/${initialResult.meshBiasY.toFixed(2)}.`);
-      })
-      .catch((caught) => {
-        if (isSolverWorkerCancellation(caught)) setMessage("Initial solve cancelled.");
-        else { setError(caught instanceof Error ? caught.message : "The initial mode solve failed."); setMessage("Solve failed."); }
-      })
-      .finally(() => setBusy(false));
-  }, []);
 
   useEffect(() => {
     if (blochSweep.axis === "x" && !config.periodicX && config.periodicY) setBlochSweep((current) => ({ ...current, axis: "y" }));
