@@ -149,7 +149,8 @@ main { width: min(var(--content-max), calc(100% - var(--space-lg))); margin: 0 a
 .workspace-header > div:first-child > p:last-child { margin: var(--space-2xs) 0 0; color: var(--color-ink-2); font-size: var(--text-sm); }
 .workspace-actions { display: grid; justify-items: end; gap: 8px; }
 .workspace-context { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.workspace-context span { padding: var(--space-3xs) var(--space-2xs); color: var(--color-ink-2); background: var(--color-paper-2); border: 1px solid var(--color-rule); border-radius: var(--radius-status); font-size: var(--text-xs); font-weight: 600; text-transform: capitalize; }
+.workspace-context span { padding: var(--space-3xs) var(--space-2xs); color: var(--color-ink-2); background: var(--color-paper-2); border: 1px solid var(--color-rule); border-radius: var(--radius-status); font-size: var(--text-xs); font-weight: 600; }
+.workspace-context > span:first-of-type { text-transform: capitalize; }
 .solve-state { display: inline-flex; align-items: center; gap: 4px; padding: var(--space-3xs) var(--space-2xs); color: var(--color-ink-2); background: var(--color-paper-2); border: 1px solid var(--color-rule); border-radius: var(--radius-status); font-size: var(--text-xs); font-weight: 600; }
 .solve-state::before { width: 6px; height: 6px; background: currentColor; border-radius: 50%; content: ""; }
 .solve-state-solving { color: var(--color-accent-strong); background: var(--color-accent-soft); border-color: var(--color-rule-strong); }
