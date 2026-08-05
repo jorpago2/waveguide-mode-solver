@@ -177,6 +177,7 @@ export function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const initialized = useRef(false);
+  const helpRef = useRef<HTMLDetailsElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
   const validation = useMemo(() => mode && result ? [
@@ -230,6 +231,24 @@ export function App() {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeView, solverPane, sweepPane]);
+
+  useEffect(() => {
+    const handleShortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.repeat) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        if (!busy) document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit();
+      } else if (event.key === "Escape") {
+        if (helpRef.current) helpRef.current.open = false;
+        if (busy) cancelSolverWorker();
+      } else if (event.key === "?" && !isEditableTarget(event.target)) {
+        event.preventDefault();
+        if (helpRef.current) helpRef.current.open = !helpRef.current.open;
+      }
+    };
+    document.addEventListener("keydown", handleShortcut);
+    return () => document.removeEventListener("keydown", handleShortcut);
+  }, [busy]);
 
   function navigateToView(view: AppView) {
     window.history.pushState(null, "", `#${view}`);
@@ -520,6 +539,7 @@ export function App() {
         <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span>Waveguide Mode Solver</span>
       </a>
       <div className="header-meta"><span>v{packageJson.version} · Full-vector FDM</span><a href="https://jorpago2.github.io/" aria-label="Online Simulators & Tools">All tools</a><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">GitHub</a></div>
+      <details className="app-help" ref={helpRef}><summary aria-keyshortcuts="?">Help</summary><div className="app-help-panel"><strong>Quick workflow</strong><p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p><dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl></div></details>
     </header>
     <nav className="app-nav" aria-label="Solver sections">
       <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
@@ -540,7 +560,7 @@ export function App() {
       <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel">
           <div className="panel-heading"><div><span className="step">01</span><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
-          <form onSubmit={solve} noValidate aria-busy={busy}>
+          <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
             <div className="configuration-tabs" role="tablist" aria-label="Configuration sections">
               {(["geometry", "materials", "solver"] as ConfigurationTab[]).map((tab) => <button type="button" role="tab" aria-selected={configurationTab === tab} aria-controls={`configuration-${tab}`} tabIndex={configurationTab === tab ? 0 : -1} className={configurationTab === tab ? "active" : ""} key={tab} onKeyDown={handleTabKeyDown} onClick={() => setConfigurationTab(tab)}>{tab === "geometry" ? "Geometry" : tab === "materials" ? "Materials" : "Solver"}</button>)}
@@ -958,6 +978,10 @@ function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
   event.preventDefault();
   tabs[nextIndex]?.focus();
   tabs[nextIndex]?.click();
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.matches("input, select, textarea") || target.isContentEditable);
 }
 
 function download(content: string, filename: string, mimeType = "text/csv;charset=utf-8") {

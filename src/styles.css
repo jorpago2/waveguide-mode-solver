@@ -79,6 +79,16 @@ a { color: inherit; }
 .header-meta { display: flex; align-items: center; gap: 20px; font-size: 0.82rem; }
 .header-meta span { color: #9fb5ba; }
 .header-meta a { min-height: 44px; display: inline-flex; align-items: center; color: var(--mint); font-weight: 600; text-underline-offset: 4px; }
+.site-header > .app-help { margin-left: -8px; }
+.app-help { position: relative; }
+.app-help > summary { min-height: 44px; display: inline-flex; align-items: center; color: var(--mint); cursor: pointer; font-weight: 600; list-style: none; }
+.app-help > summary::-webkit-details-marker { display: none; }
+.app-help-panel { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; width: min(22rem, calc(100vw - 24px)); padding: 14px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+.app-help-panel p { margin: 5px 0 12px; color: var(--muted); font-size: 0.72rem; line-height: 1.5; }
+.app-help-panel dl, .app-help-panel dl div { margin: 0; display: grid; gap: 7px; }
+.app-help-panel dl div { grid-template-columns: minmax(120px, auto) 1fr; align-items: center; }
+.app-help-panel dt, .app-help-panel dd { margin: 0; font-size: 0.7rem; }
+.app-help-panel kbd { padding: 2px 5px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 4px; font: 700 0.66rem ui-monospace, monospace; }
 
 .app-nav {
   position: sticky;
@@ -457,6 +467,8 @@ footer span:first-child { color: #d4e4e1; font-weight: 700; }
 }
 
 @media (max-width: 460px) {
+  .site-header { flex-wrap: wrap; }
+  .app-help-panel { position: fixed; top: 64px; right: 12px; left: 12px; width: auto; }
   .brand { font-size: 0.8rem; }
   .brand-mark { width: 26px; }
   .header-meta { gap: 8px; font-size: 0.72rem; }
