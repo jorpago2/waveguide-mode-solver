@@ -97,6 +97,7 @@ a { color: inherit; }
 .app-nav a.active { color: #075d68; border-bottom-color: var(--teal); }
 .app-nav a.active small { color: #5b777c; }
 .app-nav a:focus-visible { outline: 3px solid rgba(8,127,140,0.25); outline-offset: -3px; }
+.stale-banner { padding: 9px clamp(20px, 4vw, 64px); color: #7b351f; background: #fff0e9; border-bottom: 1px solid #efc7b8; font-size: 0.72rem; font-weight: 700; }
 
 main { width: min(1320px, calc(100% - 32px)); margin: 0 auto; }
 [hidden] { display: none !important; }

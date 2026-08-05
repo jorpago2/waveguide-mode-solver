@@ -178,6 +178,7 @@ export function App() {
   const [busy, setBusy] = useState(true);
   const initialized = useRef(false);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
+  const resultIsStale = Boolean(result && draft !== config);
   const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.guidanceMargin > 0 && !mode.nearCutoff },
     { label: "Eigenpair residual", pass: mode.residual < 2e-3 },
@@ -344,7 +345,7 @@ export function App() {
         : "Solving the vector eigenproblem…");
     try {
         const next = await runSolverWorker<SolverResult>({ kind: "solve", config: draft });
-        setConfig({ ...draft });
+        setConfig(draft);
         setResult(next);
         setSelectedMode(0);
         setSweepResult(undefined);
@@ -523,6 +524,7 @@ export function App() {
     <nav className="app-nav" aria-label="Solver sections">
       <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
     </nav>
+    {resultIsStale && <div className="stale-banner" role="status" aria-live="polite">Configuration changed. Results, sweeps, validation and exports still use the last solved configuration.</div>}
 
     <main>
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
