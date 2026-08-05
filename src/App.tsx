@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
-import { runSolverWorker } from "./workerClient";
+import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import { nextTabIndex } from "./tabNavigation";
 import packageJson from "../package.json";
 import {
@@ -202,7 +202,10 @@ export function App() {
         setResult(initialResult);
         setMessage(`${initialResult.modes.length} guided mode${initialResult.modes.length === 1 ? "" : "s"} found on a ${initialResult.nx} × ${initialResult.ny} Yee grid with automatic x/y grading ${initialResult.meshBiasX.toFixed(2)}/${initialResult.meshBiasY.toFixed(2)}.`);
       })
-      .catch((caught) => { setError(caught instanceof Error ? caught.message : "The initial mode solve failed."); setMessage("Solve failed."); })
+      .catch((caught) => {
+        if (isSolverWorkerCancellation(caught)) setMessage("Initial solve cancelled.");
+        else { setError(caught instanceof Error ? caught.message : "The initial mode solve failed."); setMessage("Solve failed."); }
+      })
       .finally(() => setBusy(false));
   }, []);
 
@@ -357,8 +360,11 @@ export function App() {
         setBlochSweep((current) => ({ ...current, axis: draft.periodicX ? "x" : draft.periodicY ? "y" : current.axis }));
         setMessage(`${next.modes.length} guided mode${next.modes.length === 1 ? "" : "s"} found on a ${next.nx} × ${next.ny} Yee grid${draft.autoMeshBias ? ` with automatic x/y grading ${next.meshBiasX.toFixed(2)}/${next.meshBiasY.toFixed(2)}` : ""}.`);
     } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "The mode solve failed.");
-        setMessage("Solve failed.");
+        if (isSolverWorkerCancellation(caught)) setMessage("Calculation cancelled; previous results were kept.");
+        else {
+          setError(caught instanceof Error ? caught.message : "The mode solve failed.");
+          setMessage("Solve failed.");
+        }
     } finally { setBusy(false); }
   }
 
@@ -372,9 +378,12 @@ export function App() {
         setSweepResult(next);
         setSweepMessage(`${next.points.length} wavelengths solved with reciprocal complex-mode tracking.`);
     } catch (caught) {
-        const detail = caught instanceof Error ? caught.message : "The wavelength sweep failed.";
-        setError(detail);
-        setSweepMessage(`Sweep failed: ${detail}`);
+        if (isSolverWorkerCancellation(caught)) setSweepMessage("Sweep cancelled; previous results were kept.");
+        else {
+          const detail = caught instanceof Error ? caught.message : "The wavelength sweep failed.";
+          setError(detail);
+          setSweepMessage(`Sweep failed: ${detail}`);
+        }
     } finally { setBusy(false); }
   }
 
@@ -388,9 +397,12 @@ export function App() {
       setGeometrySweepResult(next);
       setGeometrySweepMessage(`${next.points.length} geometries solved with resampled reciprocal tracking.`);
     } catch (caught) {
-      const detail = caught instanceof Error ? caught.message : "The geometry sweep failed.";
-      setError(detail);
-      setGeometrySweepMessage(`Geometry sweep failed: ${detail}`);
+      if (isSolverWorkerCancellation(caught)) setGeometrySweepMessage("Geometry sweep cancelled; previous results were kept.");
+      else {
+        const detail = caught instanceof Error ? caught.message : "The geometry sweep failed.";
+        setError(detail);
+        setGeometrySweepMessage(`Geometry sweep failed: ${detail}`);
+      }
     } finally { setBusy(false); }
   }
 
@@ -404,9 +416,12 @@ export function App() {
       setBlochSweepResult(next);
       setBlochSweepMessage(`${next.points.length} Bloch phases solved with degenerate-subspace tracking.`);
     } catch (caught) {
-      const detail = caught instanceof Error ? caught.message : "The Bloch sweep failed.";
-      setError(detail);
-      setBlochSweepMessage(`Bloch sweep failed: ${detail}`);
+      if (isSolverWorkerCancellation(caught)) setBlochSweepMessage("Bloch sweep cancelled; previous results were kept.");
+      else {
+        const detail = caught instanceof Error ? caught.message : "The Bloch sweep failed.";
+        setError(detail);
+        setBlochSweepMessage(`Bloch sweep failed: ${detail}`);
+      }
     } finally { setBusy(false); }
   }
 
@@ -680,7 +695,7 @@ export function App() {
               </details>
               <p className="configuration-note">Use the Analysis view for mesh and boundary convergence before interpreting quantitative results.</p>
             </section>
-            <button className="solve-button" type="submit" disabled={busy}>{busy ? "Solving…" : "Solve modes"} <span aria-hidden="true">→</span></button>
+            <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"} <span aria-hidden="true">→</span></button>
             <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}
           </form>
         </aside>
@@ -741,7 +756,7 @@ export function App() {
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
           <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
           <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
-          <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
+          <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"} <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{sweepMessage}</p>
         {activeView === "sweeps" && sweepResult && <><Suspense fallback={<VisualizationFallback />}><SweepPlot result={sweepResult} /></Suspense>{sweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
@@ -758,7 +773,7 @@ export function App() {
           <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
           <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
           <NumberField label="Samples" unit="points" value={geometrySweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={1} onChange={(value) => setGeometrySweep((current) => ({ ...current, points: value }))} />
-          <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
+          <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"} <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{geometrySweepMessage}</p>
         {activeView === "sweeps" && geometrySweepResult && <><Suspense fallback={<VisualizationFallback />}><GeometrySweepPlot result={geometrySweepResult} /></Suspense>{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
@@ -772,7 +787,7 @@ export function App() {
           <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
           <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
           <NumberField label="Samples" unit="points" value={blochSweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setBlochSweep((current) => ({ ...current, points: value }))} />
-          <button className="solve-button" type="submit" disabled={busy || !mode || (!config.periodicX && !config.periodicY)}>Run Bloch sweep <span aria-hidden="true">→</span></button>
+          <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"} <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{blochSweepMessage}</p>
         {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><div><span>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</span><strong>{blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)}</strong></div><div><span>Tracked subspace</span><strong>{Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)</strong></div></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense>{blochSweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}

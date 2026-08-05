@@ -18,6 +18,16 @@ function stopWorker(error: Error): void {
   pending.clear();
 }
 
+export function cancelSolverWorker(): void {
+  const error = new Error("Calculation cancelled.");
+  error.name = "AbortError";
+  stopWorker(error);
+}
+
+export function isSolverWorkerCancellation(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
 function solverWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL("./solver.worker.ts", import.meta.url), { type: "module" });

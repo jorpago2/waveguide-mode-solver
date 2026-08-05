@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runSolverWorker } from "./workerClient";
+import { cancelSolverWorker, runSolverWorker } from "./workerClient";
 
 describe("solver worker client", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { cancelSolverWorker(); vi.unstubAllGlobals(); });
 
   it("rejects instead of remaining busy when the worker cannot start", async () => {
     vi.stubGlobal("Worker", class {
@@ -54,5 +54,23 @@ describe("solver worker client", () => {
     const second = await runSolverWorker<number>(request);
     expect(second).toBe(first + 1);
     expect(constructions).toBe(1);
+  });
+
+  it("terminates and rejects the active calculation when cancelled", async () => {
+    let terminated = false;
+    vi.stubGlobal("Worker", class {
+      onmessage?: (event: { data: unknown }) => void;
+      onerror?: (event: { message: string }) => void;
+      onmessageerror?: () => void;
+      postMessage() {}
+      terminate() { terminated = true; }
+    });
+    const request = runSolverWorker({
+      kind: "solve",
+      config: { wavelengthUm: 1.55, widthUm: 1, heightUm: 0.4, coreIndex: 2, claddingIndex: 1.444, paddingUm: 1.2, gridResolution: 24, modeCount: 1 },
+    });
+    cancelSolverWorker();
+    await expect(request).rejects.toMatchObject({ name: "AbortError", message: "Calculation cancelled." });
+    expect(terminated).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import packageJson from "../package.json";
-import { runSolverWorker } from "./workerClient";
+import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import { ConvergencePlot, ModeMapPlot, ModeTopologyPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
   ConvergenceResult, ConvergenceSettings, DirectionalCouplerResult, DirectionalCouplerSettings, GaussianCouplingResult, GaussianCouplingSettings,
@@ -24,6 +24,7 @@ const initialMap: ModeMapSettings = { parameter: "widthUm", startValueUm: 0.5, s
 export function AdvancedAnalyses({ config, result, selectedMode, presets }: Props) {
   const [active, setActive] = useState<string>();
   const [error, setError] = useState("");
+  const [runMessage, setRunMessage] = useState("");
   const [convergence, setConvergence] = useState(initialConvergence);
   const [convergenceResult, setConvergenceResult] = useState<ConvergenceResult>();
   const [tolerance, setTolerance] = useState(initialTolerance);
@@ -54,46 +55,52 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
     return () => window.cancelAnimationFrame(frame);
   }, [analysisPane]);
 
+  function startAnalysis(name: string) { setActive(name); setError(""); setRunMessage(""); }
+  function handleAnalysisError(caught: unknown) {
+    if (isSolverWorkerCancellation(caught)) setRunMessage("Analysis cancelled; previous results were kept.");
+    else setError(errorMessage(caught));
+  }
+
   async function runConvergence(event: FormEvent) {
-    event.preventDefault(); setActive("convergence"); setError("");
+    event.preventDefault(); startAnalysis("convergence");
     try { setConvergenceResult(await runSolverWorker<ConvergenceResult>({ kind: "convergence", config, settings: { ...convergence, modeIndex: selectedMode } })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   async function runTolerance(event: FormEvent) {
-    event.preventDefault(); setActive("tolerance"); setError("");
+    event.preventDefault(); startAnalysis("tolerance");
     try { setToleranceResult(await runSolverWorker<ToleranceResult>({ kind: "tolerances", config, settings: { ...tolerance, modeIndex: selectedMode } })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   async function runGaussian(event: FormEvent) {
-    event.preventDefault(); if (!result) return; setActive("gaussian"); setError("");
+    event.preventDefault(); if (!result) return; startAnalysis("gaussian");
     try { setGaussianResult(await runSolverWorker<GaussianCouplingResult>({ kind: "gaussianCoupling", result, modeIndex: selectedMode, settings: gaussian })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   async function runCoupler(event: FormEvent) {
-    event.preventDefault(); setActive("coupler"); setError("");
+    event.preventDefault(); startAnalysis("coupler");
     try { setCouplerResult(await runSolverWorker<DirectionalCouplerResult>({ kind: "directionalCoupler", config, settings: coupler })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   async function runModeMap(event: FormEvent) {
-    event.preventDefault(); setActive("map"); setError("");
+    event.preventDefault(); startAnalysis("map");
     try { setModeMapResult(await runSolverWorker<ModeMapResult>({ kind: "modeMap", config, settings: { ...modeMap, modeIndex: selectedMode } })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   async function runComparison(event: FormEvent) {
-    event.preventDefault(); setActive("comparison"); setError("");
+    event.preventDefault(); startAnalysis("comparison");
     try { setComparisonResult(await runSolverWorker<WaveguideComparisonResult>({ kind: "compareWaveguides", sourceConfig: config, targetConfig: presets[targetPreset], maximumModes: comparisonModes })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   async function runTopology(event: FormEvent) {
-    event.preventDefault(); setActive("topology"); setError(""); setExportMessage("");
+    event.preventDefault(); startAnalysis("topology"); setExportMessage("");
     try { setTopologyResult(await runSolverWorker<TopologySweepResult>({ kind: "modeTopology", config, settings: topology })); }
-    catch (caught) { setError(errorMessage(caught)); } finally { setActive(undefined); }
+    catch (caught) { handleAnalysisError(caught); } finally { setActive(undefined); }
   }
 
   function selectTopologyParameter(parameter: TopologySweepParameter) {
@@ -120,6 +127,8 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       <button type="button" className={analysisPane === "robustness" ? "active" : ""} aria-pressed={analysisPane === "robustness"} onClick={() => setAnalysisPane("robustness")}><span>Robustness</span><small>Tolerances & mode maps</small></button>
       <button type="button" className={analysisPane === "coupling" ? "active" : ""} aria-pressed={analysisPane === "coupling"} onClick={() => setAnalysisPane("coupling")}><span>Coupling</span><small>Interfaces & supermodes</small></button>
     </nav>
+    {active && <div className="analysis-cancel"><output aria-live="polite">Analysis running…</output><button className="export-button" type="button" onClick={cancelSolverWorker}>Cancel analysis</button></div>}
+    {runMessage && <output className="status" aria-live="polite">{runMessage}</output>}
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="topology-title">
       <div className="panel-heading"><div><span className="step">T1</span><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={downloadTopology}>Export CSV</button>}</div>
       {exportMessage && <output className="status" aria-live="polite">{exportMessage}</output>}

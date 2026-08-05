@@ -205,6 +205,8 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
   font-weight: 700;
 }
 .solve-button:hover { background: #0d303b; }
+.solve-button[data-action="cancel"] { background: #8d351f; }
+.solve-button[data-action="cancel"]:hover { background: #6f2818; }
 .solve-button:disabled { cursor: wait; opacity: 0.6; }
 .solve-button:focus-visible, .mode-tabs button:focus-visible, .field-toolbar button:focus-visible, .export-button:focus-visible { outline: 3px solid rgba(8,127,140,0.3); outline-offset: 2px; }
 .status { min-height: 1.2em; margin: 13px 2px 0; color: #75868a; font-size: 0.72rem; line-height: 1.45; }
@@ -361,6 +363,8 @@ select:focus, input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgb
 body.plot-fullscreen-open { overflow: hidden; }
 .js-plotly-plot.plot-fullscreen { position: fixed; inset: 0; z-index: 1000; width: 100vw !important; height: 100vh !important; padding: 16px; box-sizing: border-box; background: #f7f9f7; }
 .analysis-error { margin: 18px 0; }
+.analysis-cancel { margin-top: 12px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #8d351f; background: #fff0e9; border-radius: 9px; font-size: 0.72rem; }
+.analysis-cancel .export-button { color: #8d351f; background: #fff; border-color: #d7a08f; }
 .comparison-scroll { margin-top: 18px; overflow-x: auto; }
 .comparison-table { width: 100%; min-width: 520px; border-collapse: collapse; color: #29434b; font-size: 0.74rem; }
 .comparison-table caption { padding-bottom: 10px; color: #6b7e83; text-align: left; }
