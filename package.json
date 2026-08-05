@@ -8,7 +8,7 @@
   "scripts": {
     "build:rust-wasm": "node scripts/build-rust-wasm.mjs",
     "dev": "vite",
-    "build": "pnpm build:rust-wasm && tsc --noEmit && vite build",
+    "build": "pnpm build:rust-wasm && tsc --noEmit && vite build && node scripts/check-initial-bundle.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "test": "pnpm build:rust-wasm && vitest run && node --test tests/metadata-check.mjs"

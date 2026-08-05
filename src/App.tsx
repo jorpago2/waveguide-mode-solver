@@ -1,12 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
-import { ModePlot, type DisplayInterpolation, type FieldPart } from "./ModePlot";
-import { GeometryPlot } from "./GeometryPlot";
-import { SweepPlot } from "./SweepPlot";
-import { GeometrySweepPlot } from "./GeometrySweepPlot";
-import { BlochSweepPlot } from "./BlochSweepPlot";
-import { MaterialExplorer } from "./MaterialExplorer";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { runSolverWorker } from "./workerClient";
-import { AdvancedAnalyses } from "./AdvancedAnalyses";
 import packageJson from "../package.json";
 import {
   MATERIALS, complexRefractiveIndex, evaluateMaterialAxes, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity,
@@ -33,6 +27,14 @@ import {
   type VerticalLayer,
   type WaveguideConfig,
 } from "./solver";
+
+const ModePlot = lazy(() => import("./ModePlot").then((module) => ({ default: module.ModePlot })));
+const GeometryPlot = lazy(() => import("./GeometryPlot").then((module) => ({ default: module.GeometryPlot })));
+const SweepPlot = lazy(() => import("./SweepPlot").then((module) => ({ default: module.SweepPlot })));
+const GeometrySweepPlot = lazy(() => import("./GeometrySweepPlot").then((module) => ({ default: module.GeometrySweepPlot })));
+const BlochSweepPlot = lazy(() => import("./BlochSweepPlot").then((module) => ({ default: module.BlochSweepPlot })));
+const MaterialExplorer = lazy(() => import("./MaterialExplorer").then((module) => ({ default: module.MaterialExplorer })));
+const AdvancedAnalyses = lazy(() => import("./AdvancedAnalyses").then((module) => ({ default: module.AdvancedAnalyses })));
 
 const common = {
   geometry: "channel" as GeometryType,
@@ -669,7 +671,7 @@ export function App() {
           <div className="panel-heading results-heading"><div><span className="step">02</span><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
           {result ? <>
             <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} className={resultView === "mode" ? "active" : ""} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} className={resultView === "geometry" ? "active" : ""} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
-            {resultView === "geometry" ? <GeometryPlot config={config} result={result} mode={mode} /> : mode ? <>
+            {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
             <div className="mode-tabs" role="tablist" aria-label="Guided modes">{result.modes.map((item, index) => <button type="button" role="tab" aria-selected={selectedMode === index} className={selectedMode === index ? "active" : ""} key={`${item.id}-${index}`} onClick={() => setSelectedMode(index)}><span>{item.label} · {item.polarization}</span><small><i>n</i><sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</small></button>)}</div>
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
@@ -696,7 +698,7 @@ export function App() {
             </details>
             <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
             <div className="field-toolbar field-part-toolbar" aria-label="Field display settings">{component !== "intensity" && component !== "poynting" && <><span>View</span>{(["real", "imaginary", "magnitude", "phase"] as FieldPart[]).map((part) => <button type="button" className={fieldPart === part ? "active" : ""} aria-pressed={fieldPart === part} key={part} onClick={() => setFieldPart(part)}>{part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "|·|" : "Phase"}</button>)}</>}<label className="display-mesh">Display mesh<select value={displayInterpolation} onChange={(event) => setDisplayInterpolation(Number(event.target.value) as DisplayInterpolation)}><option value={1}>Solver grid</option><option value={2}>2× interpolated</option><option value={4}>4× interpolated</option></select></label></div>
-            <ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} />
+            {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
             </> : <div className="empty-state">No guided mode was found. Inspect the structure and mesh, then increase the core size or index contrast.</div>}
           </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
         </section>
@@ -705,7 +707,7 @@ export function App() {
 
       <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title">
         <ViewHeading eyebrow="Optical material library" title="Material Explorer" id="materials-title">Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
-        <MaterialExplorer />
+        {activeView === "materials" && <Suspense fallback={<VisualizationFallback />}><MaterialExplorer /></Suspense>}
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
@@ -724,7 +726,7 @@ export function App() {
           <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{sweepMessage}</p>
-        {sweepResult && <><SweepPlot result={sweepResult} />{sweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+        {activeView === "sweeps" && sweepResult && <><Suspense fallback={<VisualizationFallback />}><SweepPlot result={sweepResult} /></Suspense>{sweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
@@ -741,7 +743,7 @@ export function App() {
           <button className="solve-button" type="submit" disabled={busy || !mode}>Run sweep <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{geometrySweepMessage}</p>
-        {geometrySweepResult && <><GeometrySweepPlot result={geometrySweepResult} />{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+        {activeView === "sweeps" && geometrySweepResult && <><Suspense fallback={<VisualizationFallback />}><GeometrySweepPlot result={geometrySweepResult} /></Suspense>{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
@@ -755,13 +757,13 @@ export function App() {
           <button className="solve-button" type="submit" disabled={busy || !mode || (!config.periodicX && !config.periodicY)}>Run Bloch sweep <span aria-hidden="true">→</span></button>
         </form>
         <p className="status" aria-live="polite">{blochSweepMessage}</p>
-        {blochSweepResult && <><div className="analysis-metrics"><div><span>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</span><strong>{blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)}</strong></div><div><span>Tracked subspace</span><strong>{Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)</strong></div></div><BlochSweepPlot result={blochSweepResult} />{blochSweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+        {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><div><span>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</span><strong>{blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)}</strong></div><div><span>Tracked subspace</span><strong>{Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)</strong></div></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense>{blochSweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
       </section>
       </section>
 
       <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title">
       <ViewHeading eyebrow="Research tools" title="Analysis" id="analysis-title">Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
-      <AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} />
+      {activeView === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
 
       <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title">
@@ -796,6 +798,10 @@ export function App() {
 
 function ViewHeading({ eyebrow, title, id, children }: { eyebrow: string; title: string; id: string; children: ReactNode }) {
   return <header className="view-heading"><p className="eyebrow">{eyebrow}</p><h1 id={id}>{title}</h1><p>{children}</p></header>;
+}
+
+function VisualizationFallback() {
+  return <p className="status" role="status">Loading visualization…</p>;
 }
 
 function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
