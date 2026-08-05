@@ -4,7 +4,7 @@ import type { ConvergenceResult, ModeMapResult, ToleranceResult } from "./analys
 import { PLOT_CONFIG } from "./plotConfig";
 import type { TopologySweepResult } from "./solver";
 
-const axis = { color: "#53636a", gridcolor: "rgba(23,48,58,0.08)", ticks: "outside" as const };
+const axis = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
 
 export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
@@ -12,16 +12,16 @@ export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
     if (!plotRef.current) return;
     const resolutions = result.levels.map((level) => level.resolution);
     const data: Plotly.Data[] = [
-      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: resolutions, y: result.levels.map((level) => level.effectiveIndex), line: { color: "#087f8c", width: 2.5 }, marker: { size: 8 } },
-      { type: "scatter", mode: "lines+markers", name: "Loss", x: resolutions, y: result.levels.map((level) => level.lossDbPerCm), yaxis: "y2", line: { color: "#ed6a3a", width: 2, dash: "dash" }, marker: { size: 7 } },
+      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: resolutions, y: result.levels.map((level) => level.effectiveIndex), line: { color: "#0072b2", width: 2.5 }, marker: { size: 8 } },
+      { type: "scatter", mode: "lines+markers", name: "Loss", x: resolutions, y: result.levels.map((level) => level.lossDbPerCm), yaxis: "y2", line: { color: "#d55e00", width: 2, dash: "dash" }, marker: { size: 7 } },
     ];
     if (result.richardsonEffectiveIndex !== undefined) data.push({
       type: "scatter", mode: "lines", name: "Richardson n<sub>eff</sub>", x: [resolutions[0], resolutions[2]],
-      y: [result.richardsonEffectiveIndex, result.richardsonEffectiveIndex], line: { color: "#7156a5", width: 1.5, dash: "dot" },
+      y: [result.richardsonEffectiveIndex, result.richardsonEffectiveIndex], line: { color: "#009e73", width: 1.5, dash: "dot" },
     });
     void Plotly.react(plotRef.current, data, {
       margin: { l: 68, r: 76, t: 38, b: 58 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       legend: { orientation: "h", x: 0, y: 1.12 },
       xaxis: { ...axis, title: { text: "Nominal grid resolution (cells)" } },
       yaxis: { ...axis, title: { text: "Effective index" }, tickformat: ".7f" },
@@ -38,11 +38,11 @@ export function TolerancePlot({ result }: { result: ToleranceResult }) {
     if (!plotRef.current) return;
     const narrow = window.matchMedia("(max-width: 600px)").matches;
     void Plotly.react(plotRef.current, [
-      { type: "histogram", name: "n<sub>eff</sub>", x: result.samples.map((sample) => sample.effectiveIndex), marker: { color: "#087f8c" }, opacity: 0.82 },
+      { type: "histogram", name: "n<sub>eff</sub>", x: result.samples.map((sample) => sample.effectiveIndex), marker: { color: "#0072b2" }, opacity: 0.82 },
       { type: "scatter", mode: "markers", name: "Width response", x: result.samples.map((sample) => sample.widthUm), y: result.samples.map((sample) => sample.effectiveIndex), xaxis: "x2", yaxis: "y2", marker: { color: result.samples.map((sample) => sample.heightUm), colorscale: "Viridis", size: 7, colorbar: { title: { text: "Height (µm)" }, thickness: 11, ...(narrow ? { y: 0.19, len: 0.38 } : {}) } } },
     ] as Plotly.Data[], {
       margin: { l: 58, r: 70, t: 30, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       showlegend: false,
       xaxis: { ...axis, domain: narrow ? [0, 1] : [0, 0.43], anchor: "y", title: { text: "Effective index" } },
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Samples" } },
@@ -65,7 +65,7 @@ export function ModeMapPlot({ result }: { result: ModeMapResult }) {
       { type: "heatmap", name: "Effective index", x: result.valuesUm, y: result.wavelengthsUm, z: result.effectiveIndex, xaxis: "x2", yaxis: "y2", colorscale: "Cividis", colorbar: { title: { text: "n<sub>eff</sub>" }, thickness: 11, ...(narrow ? { y: 0.19, len: 0.38 } : {}) }, hovertemplate: "value = %{x:.3f} µm<br>λ = %{y:.3f} µm<br>n<sub>eff</sub> = %{z:.5f}<extra></extra>" },
     ] as Plotly.Data[], {
       margin: { l: 62, r: 72, t: 30, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       xaxis: { ...axis, domain: narrow ? [0, 1] : [0, 0.4], anchor: "y", title: { text: `${parameterLabels[result.parameter]} (µm)` } },
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Wavelength (µm)" } },
       xaxis2: { ...axis, domain: narrow ? [0, 1] : [0.58, 1], anchor: "y2", title: { text: `${parameterLabels[result.parameter]} (µm)` } },
@@ -84,7 +84,7 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
     const branches = [...new Set(result.points.flatMap((point) => point.modes.map((mode) => mode.branch)))];
     const maximumLogK = Math.max(1e-9, ...result.points.flatMap((point) => point.modes
       .map((mode) => Math.log10(Math.max(1, mode.petermannFactorEstimate)))));
-    const colors = ["#087f8c", "#ed6a3a", "#7156a5", "#b69b22", "#2f6f4e", "#a54268", "#5c7280", "#9a5c2e"];
+    const colors = ["#0072b2", "#d55e00", "#009e73", "#b69b22", "#2f6f4e", "#a54268", "#5c7280", "#9a5c2e"];
     const data: Plotly.Data[] = [];
     branches.forEach((branch, branchIndex) => {
       const samples = result.points.flatMap((point) => {
@@ -121,7 +121,7 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
     const label = result.parameter === "wavelengthUm" ? "Wavelength (µm)" : result.parameter === "coreExtinction" ? "Core extinction κ" : `${result.parameter.replace("Um", "")} (µm)`;
     void Plotly.react(plotRef.current, data, {
       margin: { l: 68, r: 72, t: 42, b: 58 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       legend: { orientation: "h", x: 0, y: 1.12 },
       xaxis: { ...axis, domain: narrow ? [0, 1] : [0, 0.44], anchor: "y", title: { text: label } },
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Re(neff)" }, tickformat: ".7f" },

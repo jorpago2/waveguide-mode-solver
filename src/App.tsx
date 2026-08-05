@@ -223,13 +223,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    let resizeFrame = 0;
     const frame = window.requestAnimationFrame(() => {
-      window.dispatchEvent(new Event("resize"));
       if (window.matchMedia("(max-width: 900px)").matches) {
         document.querySelector(".app-nav a.active")?.scrollIntoView({ block: "nearest", inline: "center" });
       }
+      resizeFrame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => { window.cancelAnimationFrame(frame); window.cancelAnimationFrame(resizeFrame); };
   }, [activeView, solverPane, sweepPane]);
 
   useEffect(() => {

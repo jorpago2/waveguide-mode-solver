@@ -47,6 +47,8 @@ export const PLOT_CONFIG: Partial<Plotly.Config> = {
   displaylogo: false,
   responsive: true,
   scrollZoom: false,
+  modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  toImageButtonOptions: { format: "svg", filename: "scientific-plot", width: 1200, height: 650, scale: 1 },
   modeBarButtonsToAdd: [{
     name: "fullscreen",
     title: "Toggle fullscreen",

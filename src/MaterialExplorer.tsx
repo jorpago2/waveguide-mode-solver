@@ -25,19 +25,19 @@ export function MaterialExplorer() {
 
   useEffect(() => {
     if (!plotRef.current) return;
-    const axis = { color: "#53636a", gridcolor: "rgba(23,48,58,0.08)", ticks: "outside" as const };
+    const axis = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
     const traces: Plotly.Data[] = [
-      { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#087f8c", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
-      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#7156a5", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
-      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#b6472d", width: 2 }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
-      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, xaxis: "x2", yaxis: "y3", line: { color: "#087f8c", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
-      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, xaxis: "x2", yaxis: "y3", line: { color: "#ed6a3a", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
-      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, xaxis: "x3", yaxis: "y4", line: { color: "#7156a5", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" },
-      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, xaxis: "x3", yaxis: "y4", line: { color: "#ed6a3a", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#009e73", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#cc79a7", width: 2 }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, xaxis: "x2", yaxis: "y3", line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, xaxis: "x2", yaxis: "y3", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, xaxis: "x3", yaxis: "y4", line: { color: "#009e73", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, xaxis: "x3", yaxis: "y4", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm⁻¹<extra></extra>" } as Plotly.Data] : []),
     ];
     void Plotly.react(plotRef.current, traces, {
       margin: { l: 64, r: 64, t: 38, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       legend: { orientation: "h", x: 0, y: 1.08 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.7, 1], title: { text: "Refractive index" } },

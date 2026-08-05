@@ -10,7 +10,7 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
     const phase = result.points.map((point) => point.phaseRad / Math.PI);
     const candidatePhase = result.points.flatMap((point) => point.candidates.map(() => point.phaseRad / Math.PI));
     const candidates = result.points.flatMap((point) => point.candidates);
-    const axis = { color: "#53636a", gridcolor: "rgba(23,48,58,0.08)", ticks: "outside" as const };
+    const axis = { color: "#40555c", gridcolor: "#e7edef", ticks: "outside" as const };
     void Plotly.react(plotRef.current, [
       {
         type: "scatter", mode: "markers", name: "Calculated modes", x: candidatePhase,
@@ -20,19 +20,19 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
       },
       {
         type: "scatter", mode: "lines+markers", name: "Tracked branch", x: phase,
-        y: result.points.map((point) => point.effectiveIndex), line: { color: "#087f8c", width: 2.5 },
-        marker: { size: result.points.map((point) => point.degenerateSubspaceSize > 1 ? 9 : 5), color: "#087f8c" },
+        y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: 2.5 },
+        marker: { size: result.points.map((point) => point.degenerateSubspaceSize > 1 ? 9 : 5), color: "#0072b2" },
         text: result.points.map((point) => `${point.modeLabel}${point.degenerateSubspaceSize > 1 ? ` · ${point.degenerateSubspaceSize}D subspace` : ""}`),
         hovertemplate: "%{text}<br>θ/π = %{x:.3f}<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>",
       },
       {
         type: "scatter", mode: "lines+markers", name: "Loss", x: phase, xaxis: "x2", yaxis: "y2",
-        y: result.points.map((point) => point.lossDbPerCm), line: { color: "#b6472d", width: 2, dash: "dot" }, marker: { size: 5 },
+        y: result.points.map((point) => point.lossDbPerCm), line: { color: "#cc79a7", width: 2, dash: "dot" }, marker: { size: 5 },
         hovertemplate: "θ/π = %{x:.3f}<br>loss = %{y:.4g} dB/cm<extra></extra>",
       },
     ] as Plotly.Data[], {
       margin: { l: 62, r: 24, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.4, 1], title: { text: "Effective index" } },

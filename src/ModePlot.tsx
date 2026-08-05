@@ -65,9 +65,9 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
     let maximum = Number.EPSILON;
     for (const row of z) for (const value of row) maximum = Math.max(maximum, Math.abs(value));
     const axisStyle = {
-      color: "#53636a",
-      gridcolor: "rgba(23, 48, 58, 0.08)",
-      zerolinecolor: "rgba(23, 48, 58, 0.16)",
+      color: "#40555c",
+      gridcolor: "#e7edef",
+      zerolinecolor: "#b7c6ca",
       ticks: "outside" as const,
     };
 
@@ -91,7 +91,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       margin: { l: 58, r: 36, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       xaxis: { ...axisStyle, title: { text: "x (µm)" }, constrain: "domain" },
       yaxis: { ...axisStyle, title: { text: "y (µm)" }, scaleanchor: "x", scaleratio: 1 },
       shapes: geometryShapes(config),
@@ -106,7 +106,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
         name: "Horizontal cut",
         x: plotXUm,
         y: z[centerRow],
-        line: { color: "#087f8c", width: 2.5 },
+        line: { color: "#0072b2", width: 2.5 },
         hovertemplate: `x = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>horizontal</extra>`,
       },
       {
@@ -115,14 +115,14 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
         name: "Vertical cut",
         x: plotYUm,
         y: z.map((row) => row[centerColumn]),
-        line: { color: "#ed6a3a", width: 2.5, dash: "dash" },
+        line: { color: "#d55e00", width: 2.5, dash: "dash" },
         hovertemplate: `y = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>vertical</extra>`,
       },
     ], {
       margin: { l: 56, r: 20, t: 18, b: 50 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
       yaxis: { ...axisStyle, title: { text: componentLabel }, range: phaseField ? [-180, 180] : signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },

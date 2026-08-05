@@ -95,9 +95,9 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       margin: { l: 58, r: 42, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#19313a", size: 12 },
-      xaxis: { title: { text: "x (µm)" }, color: "#53636a", ticks: "outside", constrain: "domain" },
-      yaxis: { title: { text: "y (µm)" }, color: "#53636a", ticks: "outside", scaleanchor: "x", scaleratio: 1 },
+      font: { family: "Inter, ui-sans-serif, system-ui, sans-serif", color: "#40555c", size: 11 },
+      xaxis: { title: { text: "x (µm)" }, color: "#40555c", ticks: "outside", constrain: "domain" },
+      yaxis: { title: { text: "y (µm)" }, color: "#40555c", ticks: "outside", scaleanchor: "x", scaleratio: 1 },
       shapes: [...meshShapes, ...pmlShapes, ...periodicShapes],
     }, PLOT_CONFIG);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
