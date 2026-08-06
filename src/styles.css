@@ -112,7 +112,7 @@ a { color: inherit; }
 
 .header-tools { display: flex; align-items: center; gap: var(--space-2xs); }
 .header-tools > a,
-.app-help > summary { min-height: 38px; padding: 0 var(--space-xs); display: inline-flex; align-items: center; border: var(--rule-hairline) solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-surface); color: var(--color-ink); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.app-help > summary { min-height: 44px; padding: 0 var(--space-xs); display: inline-flex; align-items: center; border: var(--rule-hairline) solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-surface); color: var(--color-ink); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .header-tools > a:hover,
 .app-help > summary:hover { border-color: var(--color-rule-strong); color: var(--color-accent-strong); }
 .header-tools > a:active,
@@ -213,7 +213,7 @@ input[aria-invalid="true"]:focus-visible { outline-color: var(--color-danger); }
 .number-field small { position: absolute; right: 10px; top: 50%; translate: 0 -50%; color: var(--color-ink-2); font-size: var(--text-xs); font-weight: 500; pointer-events: none; }
 
 .configuration-tabs { margin: var(--space-sm) 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--color-rule); }
-.configuration-tabs button { min-width: 0; min-height: 38px; padding: 0 var(--space-3xs); color: var(--color-ink-2); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; font-size: var(--text-xs); font-weight: 600; }
+.configuration-tabs button { min-width: 0; min-height: 44px; padding: 0 var(--space-3xs); color: var(--color-ink-2); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; font-size: var(--text-xs); font-weight: 600; }
 .configuration-tabs button:hover { color: var(--color-accent-strong); }
 .configuration-tabs button.active { color: var(--color-accent-strong); border-bottom-color: var(--color-accent); }
 .configuration-tabs button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 1px; }
@@ -226,7 +226,7 @@ input[aria-invalid="true"]:focus-visible { outline-color: var(--color-danger); }
 
 .solve-button {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   margin-top: 16px;
   padding: 0 16px;
   display: flex;
@@ -252,6 +252,7 @@ input[aria-invalid="true"]:focus-visible { outline-color: var(--color-danger); }
 .warning { border-color: var(--color-warning); color: var(--warn); background: var(--warn-soft); }
 
 .export-button {
+  min-height: 44px;
   padding: 8px 12px;
   color: var(--color-ink-2);
   background: transparent;
@@ -319,7 +320,7 @@ input[aria-invalid="true"]:focus-visible { outline-color: var(--color-danger); }
 .empty-state { min-height: 300px; padding: var(--space-md); display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--radius-card); color: var(--muted); background: var(--color-paper); text-align: center; }
 
 .advanced-controls { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--color-rule); }
-.advanced-controls summary { color: var(--color-ink); cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
+.advanced-controls summary { min-height: 44px; display: flex; align-items: center; color: var(--color-ink); cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
 .advanced-controls > p { margin: var(--space-xs) 0 0; color: var(--color-ink-2); font-size: var(--text-xs); line-height: 1.5; }
 .material-selectors { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
 .material-selectors .select-field { margin-top: 0; }
