@@ -9,13 +9,13 @@ test("publishes complete social and browser metadata", async () => {
   }
 });
 
-test("builds the shared Tailwind UI contract without Preflight", async () => {
+test("builds the Carbon UI contract", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
-  assert.match(styles, /tailwindcss\/utilities\.css/);
-  assert.match(styles, /@theme inline/);
-  assert.doesNotMatch(styles, /tailwindcss\/preflight|@import\s+["']tailwindcss["']/);
-  assert.match(app, /bg-ui-canvas/);
+  const carbon = await readFile(new URL("../src/carbon.scss", import.meta.url), "utf8");
+  assert.match(carbon, /@use ["']@carbon\/react["']/);
+  assert.doesNotMatch(styles, /tailwindcss|@theme inline/);
+  assert.match(app, /<Grid fullWidth/);
 });
 
 test("waits for explicit user action before solving modes", async () => {

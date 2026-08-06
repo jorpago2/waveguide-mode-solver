@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Column, Grid } from "@carbon/react";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import { nextTabIndex } from "./tabNavigation";
@@ -519,15 +520,16 @@ export function App() {
     }
   }
 
-  return <div className="app-shell min-h-dvh bg-ui-canvas font-ui-body text-ui-ink">
+  return <Grid fullWidth condensed className="app-shell">
+    <Column sm={4} md={8} lg={16} className="app-shell-column">
     <a className="skip-link" href="#mode-solver-workspace">Skip to mode solver workspace</a>
-    <header className="site-header flex min-h-16 items-center justify-between border-b border-ui-border bg-ui-surface px-[clamp(1rem,4vw,4rem)] py-2">
+    <header className="site-header">
       <a className="brand" href="./" aria-label="Waveguide Mode Solver home">
         <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-copy"><strong>Waveguide Mode Solver</strong><small>Full-vector FDM · v{packageJson.version}</small></span>
       </a>
       <div className="header-tools"><a href="https://jorpago2.github.io/" aria-label="Online Simulators & Tools">All tools</a><details className="app-help" ref={helpRef}><summary aria-keyshortcuts="?">Help</summary><div className="app-help-panel"><strong>Quick workflow</strong><p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p><dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl><p className="help-links"><a href="https://jorpago2.github.io/">All tools</a><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</a></p></div></details></div>
     </header>
-    <nav className="app-nav sticky top-0 z-20 border-b border-ui-border bg-ui-canvas text-ui-muted" aria-label="Solver sections">
+    <nav className="app-nav" aria-label="Solver sections">
       <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
     </nav>
     {resultIsStale && <div className="stale-banner" role="status" aria-live="polite">Configuration changed. Results, sweeps, validation and exports still use the last solved configuration.</div>}
@@ -543,8 +545,8 @@ export function App() {
         <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" tabIndex={solverPane === "configure" ? 0 : -1} className={solverPane === "configure" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setSolverPane("configure")}>Configure</button>
         <button type="button" role="tab" aria-selected={solverPane === "results"} aria-controls="results-panel" tabIndex={solverPane === "results" ? 0 : -1} className={solverPane === "results" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setSolverPane("results")}>Results</button>
       </div>
-      <div id="mode-solver-workspace" className="workspace grid grid-cols-[minmax(290px,328px)_minmax(0,1fr)] items-start gap-4" data-mobile-pane={solverPane} tabIndex={-1}>
-        <aside className="control-panel rounded-ui-panel border border-ui-border bg-ui-surface" id="configuration-panel">
+      <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
+        <aside className="control-panel" id="configuration-panel">
           <div className="panel-heading"><div><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
@@ -708,7 +710,7 @@ export function App() {
           </form>
         </aside>
 
-        <section className="results-panel rounded-ui-panel border border-ui-border bg-ui-surface" id="results-panel" aria-labelledby="results-title">
+        <section className="results-panel" id="results-panel" aria-labelledby="results-title">
           <div className="panel-heading results-heading"><div><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
           {result ? <>
             <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} tabIndex={resultView === "mode" ? 0 : -1} className={resultView === "mode" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} tabIndex={resultView === "geometry" ? 0 : -1} className={resultView === "geometry" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
@@ -834,7 +836,8 @@ export function App() {
       </section>
     </main>
     <footer><span>Waveguide Mode Solver</span><span>Built for photonics education · Check mesh, boundary and sweep convergence before design use.</span></footer>
-  </div>;
+    </Column>
+  </Grid>;
 }
 
 function ViewHeading({ title, id, children }: { title: string; id: string; children: ReactNode }) {
