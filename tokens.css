@@ -49,8 +49,8 @@
   --dur-short: 160ms;
   --dur-medium: 240ms;
 
-  --radius-input: 6px;
-  --radius-card: 8px;
+  --radius-input: 0.5rem;
+  --radius-card: 0.875rem;
   --radius-status: 999px;
   --rule-hairline: 1px;
   --shadow-raised: 0 12px 30px oklch(22% 0.025 205 / 7%);

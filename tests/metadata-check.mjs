@@ -9,6 +9,15 @@ test("publishes complete social and browser metadata", async () => {
   }
 });
 
+test("builds the shared Tailwind UI contract without Preflight", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../src/styles.css", import.meta.url), "utf8");
+  assert.match(styles, /tailwindcss\/utilities\.css/);
+  assert.match(styles, /@theme inline/);
+  assert.doesNotMatch(styles, /tailwindcss\/preflight|@import\s+["']tailwindcss["']/);
+  assert.match(app, /bg-ui-canvas/);
+});
+
 test("waits for explicit user action before solving modes", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /Configure the cross-section, then select Solve modes\./);
