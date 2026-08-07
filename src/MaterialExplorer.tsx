@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, Tile } from "@carbon/react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { CarbonNumberField, CarbonSelectField } from "./CarbonControls";
 import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import {
   MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
@@ -63,20 +65,20 @@ export function MaterialExplorer() {
 
   return <section className="sweep-section material-explorer">
     <aside className="material-explorer-controls">
-      <label className="select-field">Material<select value={materialId} onChange={(event) => selectMaterial(event.target.value as BuiltInMaterialId)}>{explorableMaterials.map((material) => <option value={material.id} key={material.id}>{material.name}</option>)}</select></label>
-      <label className="number-field"><span>Probe wavelength</span><div><input type="number" value={wavelengthUm} min={definition.minimumWavelengthUm} max={definition.maximumWavelengthUm} step="any" onChange={(event) => Number.isFinite(event.target.valueAsNumber) && setWavelengthUm(Math.min(definition.maximumWavelengthUm, Math.max(definition.minimumWavelengthUm, event.target.valueAsNumber)))} /><small>µm</small></div></label>
+      <CarbonSelectField label="Material" value={materialId} options={explorableMaterials.map((material) => ({ value: material.id, label: material.name }))} onChange={(value) => selectMaterial(value as BuiltInMaterialId)} />
+      <CarbonNumberField label="Probe wavelength" unit="µm" value={wavelengthUm} min={definition.minimumWavelengthUm} max={definition.maximumWavelengthUm} step={0.001} onChange={(value) => Number.isFinite(value) && setWavelengthUm(Math.min(definition.maximumWavelengthUm, Math.max(definition.minimumWavelengthUm, value)))} />
       <dl className="material-readouts">
         <div><dt>n<sub>o</sub></dt><dd>{format(current.ordinary)}</dd></div>
         {definition.anisotropic && <div><dt>n<sub>e</sub></dt><dd>{format(current.extraordinary)}</dd></div>}
         <div><dt>k</dt><dd>{current.k === undefined ? "not modelled" : format(current.k)}</dd></div>
         <div><dt>ε</dt><dd>{format(current.epsilonReal)}{current.epsilonImaginary === undefined ? "" : ` + ${format(current.epsilonImaginary)}i`}</dd></div>
       </dl>
-      <div className="material-model-note">
+      <Tile className="material-model-note">
         <strong>{definition.formula}</strong>
         <span>Validity: {definition.minimumWavelengthUm}–{definition.maximumWavelengthUm} µm</span>
         <span>{definition.lossModel ? `${definition.lossModel}: ${definition.lossRanges?.map(([minimum, maximum]) => `${minimum}–${maximum} µm`).join(", ")}` : "No built-in extinction model; use measured n,k data for loss."}</span>
-        <span className="material-source-links">{definition.sourceUrl && <a href={definition.sourceUrl} target="_blank" rel="noreferrer">{definition.sourceLabel ?? "Primary source"} ↗</a>}{definition.lossSources?.map((source) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.label} ↗</a>)}</span>
-      </div>
+        <span className="material-source-links">{definition.sourceUrl && <Link href={definition.sourceUrl} target="_blank" rel="noreferrer">{definition.sourceLabel ?? "Primary source"} ↗</Link>}{definition.lossSources?.map((source) => <Link href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.label} ↗</Link>)}</span>
+      </Tile>
     </aside>
     <div ref={plotRef} className="material-plot" aria-label="Material refractive index, extinction, permittivity and dispersion plots" />
   </section>;

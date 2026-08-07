@@ -1,8 +1,32 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type ReactNode } from "react";
-import { Column, Grid } from "@carbon/react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import {
+  Accordion,
+  AccordionItem,
+  Button,
+  Column,
+  Content,
+  FileUploaderButton,
+  Grid,
+  Header,
+  HeaderMenuItem,
+  HeaderMenuButton,
+  HeaderName,
+  HeaderNavigation,
+  InlineLoading,
+  InlineNotification,
+  Link,
+  Modal,
+  SideNav,
+  SideNavItems,
+  SideNavLink,
+  SkipToContent,
+  Tag,
+  TextInput,
+  Tile,
+} from "@carbon/react";
+import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
-import { nextTabIndex } from "./tabNavigation";
 import packageJson from "../package.json";
 import {
   MATERIALS, complexRefractiveIndex, evaluateMaterialAxes, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, evaluateMetalPermittivity,
@@ -133,10 +157,6 @@ const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm:
 const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
 const initialBlochSweep: BlochSweepSettings = { axis: "x", startPhaseRad: -Math.PI, stopPhaseRad: Math.PI, points: 9, modeIndex: 0 };
 const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity", "poynting"];
-const fieldLabels: Record<FieldComponent, ReactNode> = {
-  Ex: <>E<sub>x</sub></>, Ey: <>E<sub>y</sub></>, Ez: <>E<sub>z</sub></>,
-  Hx: <>H<sub>x</sub></>, Hy: <>H<sub>y</sub></>, Hz: <>H<sub>z</sub></>, intensity: "|E|²", poynting: <>S<sub>z</sub></>,
-};
 type AppView = "solver" | "materials" | "sweeps" | "analysis" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
 const appViews: Array<{ id: AppView; label: string; hint: string }> = [
@@ -157,6 +177,7 @@ export function App() {
   const [solverPane, setSolverPane] = useState<"configure" | "results">("configure");
   const [sweepPane, setSweepPane] = useState<"wavelength" | "geometry" | "bloch">("wavelength");
   const [configurationTab, setConfigurationTab] = useState<ConfigurationTab>("geometry");
+  const [presetName, setPresetName] = useState("SiN · channel");
   const [draft, setDraft] = useState<WaveguideConfig>(initialConfig);
   const [config, setConfig] = useState<WaveguideConfig>(initialConfig);
   const [result, setResult] = useState<SolverResult>();
@@ -177,7 +198,8 @@ export function App() {
   const [blochSweepMessage, setBlochSweepMessage] = useState("Enable a periodic boundary to calculate transverse-array dispersion.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const helpRef = useRef<HTMLDetailsElement>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
   const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
@@ -212,9 +234,6 @@ export function App() {
   useEffect(() => {
     let resizeFrame = 0;
     const frame = window.requestAnimationFrame(() => {
-      if (window.matchMedia("(max-width: 900px)").matches) {
-        document.querySelector(".app-nav a.active")?.scrollIntoView({ block: "nearest", inline: "center" });
-      }
       resizeFrame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     });
     return () => { window.cancelAnimationFrame(frame); window.cancelAnimationFrame(resizeFrame); };
@@ -227,11 +246,11 @@ export function App() {
         event.preventDefault();
         if (!busy) document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit();
       } else if (event.key === "Escape") {
-        if (helpRef.current) helpRef.current.open = false;
+        setHelpOpen(false);
         if (busy) cancelSolverWorker();
       } else if (event.key === "?" && !isEditableTarget(event.target)) {
         event.preventDefault();
-        if (helpRef.current) helpRef.current.open = !helpRef.current.open;
+        setHelpOpen((open) => !open);
       }
     };
     document.addEventListener("keydown", handleShortcut);
@@ -241,6 +260,7 @@ export function App() {
   function navigateToView(view: AppView) {
     window.history.pushState(null, "", `#${view}`);
     setActiveView(view);
+    setNavigationOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -250,7 +270,7 @@ export function App() {
 
   function applyPreset(name: string) {
     const preset = presets[name];
-    if (preset) setDraft({ ...preset });
+    if (preset) { setPresetName(name); setDraft({ ...preset }); }
   }
 
   function updateMaterial(materialKey: "coreMaterial" | "claddingMaterial" | "substrateMaterial", indexKey: "coreIndex" | "claddingIndex" | "substrateIndex", materialId: MaterialId) {
@@ -520,50 +540,56 @@ export function App() {
     }
   }
 
-  return <Grid fullWidth condensed className="app-shell">
+  return <>
+    <Header aria-label="Waveguide Mode Solver" className="site-header">
+      <SkipToContent href="#mode-solver-workspace" />
+      <HeaderMenuButton aria-label={navigationOpen ? "Close navigation" : "Open navigation"} isActive={navigationOpen} onClick={() => setNavigationOpen((open) => !open)} />
+      <HeaderName href="./" prefix="">Waveguide Mode Solver · v{packageJson.version}</HeaderName>
+      <HeaderNavigation aria-label="Solver sections">
+        {appViews.map((view) => <HeaderMenuItem href={`#${view.id}`} isActive={activeView === view.id} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}>{view.label}</HeaderMenuItem>)}
+        <HeaderMenuItem href="https://jorpago2.github.io/">All tools</HeaderMenuItem>
+        <HeaderMenuItem href="#help" onClick={(event) => { event.preventDefault(); setHelpOpen(true); }}>Help</HeaderMenuItem>
+      </HeaderNavigation>
+    </Header>
+    <SideNav aria-label="Solver sections" expanded={navigationOpen} isPersistent={false} onOverlayClick={() => setNavigationOpen(false)}>
+      <SideNavItems>
+        {appViews.map((view) => <SideNavLink href={`#${view.id}`} isActive={activeView === view.id} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}>{view.label}</SideNavLink>)}
+        <SideNavLink href="https://jorpago2.github.io/">All tools</SideNavLink>
+        <Button kind="ghost" size="sm" onClick={() => { setNavigationOpen(false); setHelpOpen(true); }}>Help</Button>
+      </SideNavItems>
+    </SideNav>
+    <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
+      <p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p>
+      <dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl>
+      <p><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></p>
+    </Modal>
+    <Grid fullWidth condensed className="app-shell">
     <Column sm={4} md={8} lg={16} className="app-shell-column">
-    <a className="skip-link" href="#mode-solver-workspace">Skip to mode solver workspace</a>
-    <header className="site-header">
-      <a className="brand" href="./" aria-label="Waveguide Mode Solver home">
-        <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span><span className="brand-copy"><strong>Waveguide Mode Solver</strong><small>Full-vector FDM · v{packageJson.version}</small></span>
-      </a>
-      <div className="header-tools"><a href="https://jorpago2.github.io/" aria-label="Online Simulators & Tools">All tools</a><details className="app-help" ref={helpRef}><summary aria-keyshortcuts="?">Help</summary><div className="app-help-panel"><strong>Quick workflow</strong><p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p><dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl><p className="help-links"><a href="https://jorpago2.github.io/">All tools</a><a href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</a></p></div></details></div>
-    </header>
-    <nav className="app-nav" aria-label="Solver sections">
-      <div>{appViews.map((view) => <a href={`#${view.id}`} aria-current={activeView === view.id ? "page" : undefined} className={activeView === view.id ? "active" : ""} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}><span>{view.label}</span><small>{view.hint}</small></a>)}</div>
-    </nav>
-    {resultIsStale && <div className="stale-banner" role="status" aria-live="polite">Configuration changed. Results, sweeps, validation and exports still use the last solved configuration.</div>}
+    {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
 
-    <main>
+    <Content>
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
       <header className="workspace-header">
         <div><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
-        <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><output className={`solve-state solve-state-${solveState}`} aria-live="polite">{solveStateLabel}</output><span>{config.geometry ?? "channel"}</span><span>{config.wavelengthUm.toFixed(3)} µm</span>{result && <span>{result.nx} × {result.ny} grid</span>}</div><div className="project-actions"><button type="button" className="export-button" onClick={exportProject}>Export project</button><label className="export-button">Import configuration<input type="file" accept="application/json,.json" onChange={importProject} /></label></div></div>
+        <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><Tag type={solveState === "solved" ? "green" : solveState === "stale" ? "warm-gray" : solveState === "solving" ? "teal" : "gray"}>{solveStateLabel}</Tag><Tag type="outline">{config.geometry ?? "channel"}</Tag><Tag type="outline">{config.wavelengthUm.toFixed(3)} µm</Tag>{result && <Tag type="outline">{result.nx} × {result.ny} grid</Tag>}</div><div className="project-actions"><Button type="button" kind="tertiary" size="sm" onClick={exportProject}>Export project</Button><FileUploaderButton id="import-project" accept={[".json", "application/json"]} buttonKind="tertiary" size="sm" labelText="Import configuration" onChange={importProject} /></div></div>
       </header>
 
-      <div className="mobile-pane-tabs" role="tablist" aria-label="Mode solver workspace">
-        <button type="button" role="tab" aria-selected={solverPane === "configure"} aria-controls="configuration-panel" tabIndex={solverPane === "configure" ? 0 : -1} className={solverPane === "configure" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setSolverPane("configure")}>Configure</button>
-        <button type="button" role="tab" aria-selected={solverPane === "results"} aria-controls="results-panel" tabIndex={solverPane === "results" ? 0 : -1} className={solverPane === "results" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setSolverPane("results")}>Results</button>
-      </div>
+      <div className="mobile-pane-tabs"><CarbonSwitcher label="Mode solver workspace" value={solverPane} options={[{ value: "configure", label: "Configure" }, { value: "results", label: "Results" }]} onChange={(value) => setSolverPane(value as "configure" | "results")} /></div>
       <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel">
           <div className="panel-heading"><div><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
-            <label>Platform preset<select defaultValue="SiN · channel" onChange={(event) => applyPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
-            <div className="configuration-tabs" role="tablist" aria-label="Configuration sections">
-              {(["geometry", "materials", "solver"] as ConfigurationTab[]).map((tab) => <button type="button" role="tab" aria-selected={configurationTab === tab} aria-controls={`configuration-${tab}`} tabIndex={configurationTab === tab ? 0 : -1} className={configurationTab === tab ? "active" : ""} key={tab} onKeyDown={handleTabKeyDown} onClick={() => setConfigurationTab(tab)}>{tab === "geometry" ? "Geometry" : tab === "materials" ? "Materials" : "Solver"}</button>)}
-            </div>
+            <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
+            <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3><p>Define the physical structure and propagation path.</p></div>
-              <label className="select-field">Geometry<select value={draft.geometry ?? "channel"} onChange={(event) => setDraft((current) => {
-                const geometry = event.target.value as GeometryType;
+              <CarbonSelectField id="geometry" label="Geometry" value={draft.geometry ?? "channel"} options={[{ value: "channel", label: "Channel" }, { value: "rib", label: "Rib" }, { value: "slot", label: "Slot" }, { value: "coupler", label: "Two-guide coupler" }, { value: "multilayer", label: "Multilayer ridge" }, { value: "polygon", label: "Polygon regions" }]} onChange={(value) => setDraft((current) => {
+                const geometry = value as GeometryType;
                 return geometry === "polygon" ? { ...current, geometry, stackLayers: [], symmetryX: "none", symmetryY: "none", polygonRegions: current.polygonRegions?.length ? current.polygonRegions : [{
                   name: "Core", material: current.coreMaterial ?? "custom", index: current.coreIndex, extinction: current.coreExtinction ?? 0,
                   vertices: [{ xUm: -current.widthUm / 2, yUm: -current.heightUm / 2 }, { xUm: current.widthUm / 2, yUm: -current.heightUm / 2 }, { xUm: current.widthUm / 2, yUm: current.heightUm / 2 }, { xUm: -current.widthUm / 2, yUm: current.heightUm / 2 }],
                 }] } : { ...current, geometry };
-              })}>
-                <option value="channel">Channel</option><option value="rib">Rib</option><option value="slot">Slot</option><option value="coupler">Two-guide coupler</option><option value="multilayer">Multilayer ridge</option><option value="polygon">Polygon regions</option>
-              </select></label>
+              })} />
               <div className="form-grid">
                 <NumberField label={(draft.geometry ?? "channel") === "polygon" ? "Geometry span x" : (draft.geometry ?? "channel") === "coupler" ? "Guide width" : "Core width"} unit="µm" value={draft.widthUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("widthUm", v)} />
                 <NumberField label={(draft.geometry ?? "channel") === "polygon" ? "Geometry span y" : "Core height"} unit="µm" value={draft.heightUm} min={0.05} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("heightUm", v)} />
@@ -571,53 +597,51 @@ export function App() {
                 {(draft.geometry ?? "channel") === "slot" && <NumberField label="Slot gap" unit="µm" value={draft.slotGapUm ?? 0.12} min={0.01} max={Number.isFinite(draft.widthUm) ? draft.widthUm : PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("slotGapUm", v)} />}
                 {(draft.geometry ?? "channel") === "coupler" && <NumberField label="Coupler gap" unit="µm" value={draft.couplerGapUm ?? 0.2} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.01} onChange={(v) => updateNumber("couplerGapUm", v)} />}
                 {!(["slot", "polygon"] as GeometryType[]).includes(draft.geometry ?? "channel") && <NumberField label="Sidewall angle" unit="°" value={draft.sidewallAngleDeg ?? 90} min={20} max={90} step={1} onChange={(v) => updateNumber("sidewallAngleDeg", v)} />}
-                <label className="select-field">Propagation path<select value={(draft.bendRadiusUm ?? 0) > 0 ? "bend" : "straight"} onChange={(event) => setDraft((current) => event.target.value === "bend" ? { ...current, bendRadiusUm: current.bendRadiusUm && current.bendRadiusUm > 0 ? current.bendRadiusUm : 10, boundary: "pml" } : { ...current, bendRadiusUm: 0 })}><option value="straight">Straight</option><option value="bend">Constant-radius bend</option></select></label>
+                <CarbonSelectField id="propagation-path" label="Propagation path" value={(draft.bendRadiusUm ?? 0) > 0 ? "bend" : "straight"} options={[{ value: "straight", label: "Straight" }, { value: "bend", label: "Constant-radius bend" }]} onChange={(value) => setDraft((current) => value === "bend" ? { ...current, bendRadiusUm: current.bendRadiusUm && current.bendRadiusUm > 0 ? current.bendRadiusUm : 10, boundary: "pml" } : { ...current, bendRadiusUm: 0 })} />
                 {(draft.bendRadiusUm ?? 0) > 0 && <>
                   <NumberField label="Bend radius" unit="µm" value={draft.bendRadiusUm ?? 10} min={0.1} max={PARAMETER_MAXIMUMS.bendRadiusUm} step={0.5} onChange={(v) => updateNumber("bendRadiusUm", v)} />
-                  <label className="select-field">Bend direction<select value={draft.bendDirection ?? "positive-x"} onChange={(event) => setDraft((current) => ({ ...current, bendDirection: event.target.value as "positive-x" | "negative-x" }))}><option value="positive-x">Outer side at +x</option><option value="negative-x">Outer side at −x</option></select></label>
+                  <CarbonSelectField id="bend-direction" label="Bend direction" value={draft.bendDirection ?? "positive-x"} options={[{ value: "positive-x", label: "Outer side at +x" }, { value: "negative-x", label: "Outer side at −x" }]} onChange={(value) => setDraft((current) => ({ ...current, bendDirection: value as "positive-x" | "negative-x" }))} />
                 </>}
               </div>
-              {(draft.geometry ?? "channel") === "polygon" && <details className="advanced-controls" open>
-                <summary>Polygon regions ({draft.polygonRegions?.length ?? 0})</summary>
+              {(draft.geometry ?? "channel") === "polygon" && <Accordion className="advanced-controls"><AccordionItem title={`Polygon regions (${draft.polygonRegions?.length ?? 0})`} open>
                 <p>Build arbitrary cross-sections from non-overlapping convex regions. Coordinates are relative to the cross-section centre.</p>
                 <div className="stack-editor polygon-editor">
                   {(draft.polygonRegions ?? []).map((region, regionIndex) => <div className="stack-layer polygon-region" key={regionIndex}>
-                    <label>Region name<input value={region.name} onChange={(event) => updatePolygonRegion(regionIndex, { name: event.target.value })} /></label>
+                    <TextInput id={`polygon-region-${regionIndex}-name`} labelText="Region name" size="sm" value={region.name} onChange={(event) => updatePolygonRegion(regionIndex, { name: event.target.value })} />
                     <MaterialSelect label="Material" value={region.material} allowTabulated={false} onChange={(material) => updatePolygonRegion(regionIndex, { material, index: displayMaterialIndex(material, draft.wavelengthUm, region.index, draft.materialTemperatureC) })} />
                     <NumberField label="Index" unit="n" value={displayPolygonIndex(region, draft)} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={region.material !== "custom"} onChange={(index) => updatePolygonRegion(regionIndex, { index })} />
                     <NumberField label="Extinction" unit="Im(n)" value={displayPolygonExtinction(region, draft)} min={0} max={PARAMETER_MAXIMUMS.extinction} step={0.000001} disabled={materialExtinctionIsReadOnly(region.material, draft.wavelengthUm)} onChange={(extinction) => updatePolygonRegion(regionIndex, { extinction })} />
                     <div className="polygon-vertices">
                       <strong>Vertices (x, y) in µm</strong>
                       {region.vertices.map((vertex, vertexIndex) => <div key={vertexIndex}>
-                        <input type="number" aria-label={`${region.name} vertex ${vertexIndex + 1} x`} value={Number.isFinite(vertex.xUm) ? vertex.xUm : ""} step="0.01" onChange={(event) => updatePolygonVertex(regionIndex, vertexIndex, "xUm", event.target.valueAsNumber)} />
-                        <input type="number" aria-label={`${region.name} vertex ${vertexIndex + 1} y`} value={Number.isFinite(vertex.yUm) ? vertex.yUm : ""} step="0.01" onChange={(event) => updatePolygonVertex(regionIndex, vertexIndex, "yUm", event.target.valueAsNumber)} />
-                        <button type="button" className="remove-layer" disabled={region.vertices.length <= 3} onClick={() => updatePolygonRegion(regionIndex, { vertices: region.vertices.filter((_, index) => index !== vertexIndex) })} aria-label={`Remove vertex ${vertexIndex + 1}`}>−</button>
+                        <CarbonNumberField id={`polygon-${regionIndex}-vertex-${vertexIndex}-x`} label={`Vertex ${vertexIndex + 1} x`} unit="µm" value={vertex.xUm} min={-draft.widthUm / 2} max={draft.widthUm / 2} step={0.01} onChange={(value) => updatePolygonVertex(regionIndex, vertexIndex, "xUm", value)} />
+                        <CarbonNumberField id={`polygon-${regionIndex}-vertex-${vertexIndex}-y`} label={`Vertex ${vertexIndex + 1} y`} unit="µm" value={vertex.yUm} min={-draft.heightUm / 2} max={draft.heightUm / 2} step={0.01} onChange={(value) => updatePolygonVertex(regionIndex, vertexIndex, "yUm", value)} />
+                        <Button type="button" kind="danger--ghost" size="sm" disabled={region.vertices.length <= 3} onClick={() => updatePolygonRegion(regionIndex, { vertices: region.vertices.filter((_, index) => index !== vertexIndex) })}>Remove vertex {vertexIndex + 1}</Button>
                       </div>)}
-                      <button type="button" className="export-button" disabled={region.vertices.length >= 32} onClick={() => {
+                      <Button type="button" kind="tertiary" size="sm" disabled={region.vertices.length >= 32} onClick={() => {
                         const first = region.vertices[0]; const last = region.vertices[region.vertices.length - 1];
                         updatePolygonRegion(regionIndex, { vertices: [...region.vertices, { xUm: (first.xUm + last.xUm) / 2, yUm: (first.yUm + last.yUm) / 2 }] });
-                      }}>Add vertex</button>
+                      }}>Add vertex</Button>
                     </div>
-                    <button type="button" className="remove-layer" onClick={() => setDraft((current) => ({ ...current, polygonRegions: (current.polygonRegions ?? []).filter((_, index) => index !== regionIndex) }))} aria-label={`Remove ${region.name}`}>Remove region</button>
+                    <Button type="button" kind="danger--ghost" size="sm" onClick={() => setDraft((current) => ({ ...current, polygonRegions: (current.polygonRegions ?? []).filter((_, index) => index !== regionIndex) }))}>Remove {region.name}</Button>
                   </div>)}
                 </div>
-                <div className="polygon-actions"><button type="button" className="export-button" onClick={addPolygonRegion} disabled={(draft.polygonRegions?.length ?? 0) >= 12}>Add region</button><button type="button" className="export-button" onClick={() => download(JSON.stringify({ polygonRegions: draft.polygonRegions ?? [] }, null, 2), "waveguide-polygons.json", "application/json;charset=utf-8")}>Export JSON</button><label className="export-button">Import JSON<input type="file" accept="application/json,.json" onChange={(event) => void importPolygons(event)} /></label></div>
-              </details>}
+                <div className="polygon-actions"><Button type="button" kind="tertiary" size="sm" onClick={addPolygonRegion} disabled={(draft.polygonRegions?.length ?? 0) >= 12}>Add region</Button><Button type="button" kind="tertiary" size="sm" onClick={() => download(JSON.stringify({ polygonRegions: draft.polygonRegions ?? [] }, null, 2), "waveguide-polygons.json", "application/json;charset=utf-8")}>Export JSON</Button><FileUploaderButton id="import-polygons" accept={[".json", "application/json"]} buttonKind="tertiary" size="sm" labelText="Import JSON" onChange={(event) => void importPolygons(event)} /></div>
+              </AccordionItem></Accordion>}
               {(draft.geometry ?? "channel") !== "polygon" &&
-              <details className="advanced-controls">
-                <summary>Vertical stack ({draft.stackLayers?.length ?? 0} layers)</summary>
+              <Accordion className="advanced-controls"><AccordionItem title={`Vertical stack (${draft.stackLayers?.length ?? 0} layers)`}>
                 <p>Finite layers are listed from the core downward; the base substrate continues below the final layer.</p>
                 <div className="stack-editor">
                   {(draft.stackLayers ?? []).map((layer, index) => <div className="stack-layer" key={`${index}-${layer.name}`}>
-                    <label>Layer name<input value={layer.name} onChange={(event) => updateStackLayer(index, { name: event.target.value })} /></label>
+                    <TextInput id={`stack-layer-${index}-name`} labelText="Layer name" size="sm" value={layer.name} onChange={(event) => updateStackLayer(index, { name: event.target.value })} />
                     <MaterialSelect label="Material" value={layer.material} allowTabulated={false} onChange={(material) => updateStackLayer(index, { material, index: displayMaterialIndex(material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis) })} />
                     <NumberField label="Thickness" unit="µm" value={layer.thicknessUm} min={0.01} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.05} onChange={(value) => updateStackLayer(index, { thicknessUm: value })} />
                     <NumberField label="Index" unit="n" value={displayMaterialIndex(layer.material, draft.wavelengthUm, layer.index, draft.materialTemperatureC, layer.opticAxis)} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={layer.material !== "custom"} onChange={(value) => updateStackLayer(index, { index: value })} />
-                    <button type="button" className="remove-layer" onClick={() => removeStackLayer(index)} aria-label={`Remove ${layer.name}`}>Remove</button>
+                    <Button type="button" kind="danger--ghost" size="sm" onClick={() => removeStackLayer(index)}>Remove {layer.name}</Button>
                   </div>)}
                 </div>
-                <button type="button" className="export-button add-layer" onClick={addStackLayer} disabled={(draft.stackLayers?.length ?? 0) >= 6}>Add layer</button>
-              </details>}
+                <Button type="button" kind="tertiary" size="sm" onClick={addStackLayer} disabled={(draft.stackLayers?.length ?? 0) >= 6}>Add layer</Button>
+              </AccordionItem></Accordion>}
             </section>
 
             <section id="configuration-materials" className="configuration-section" role="tabpanel" hidden={configurationTab !== "materials"}>
@@ -632,8 +656,7 @@ export function App() {
                 <NumberField label="Cladding nₓ" unit="n" value={displayMaterialAxis(draft, "cladding", "x")} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.claddingMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("claddingIndex", v)} />
                 {((draft.geometry ?? "channel") === "multilayer" || (draft.stackLayers?.length ?? 0) > 0) && <NumberField label="Base substrate n" unit="n" value={displayMaterialIndex(draft.substrateMaterial, draft.wavelengthUm, draft.substrateIndex ?? draft.claddingIndex, draft.materialTemperatureC, draft.substrateOpticAxis, 0, draft.substrateMaterialTable)} min={0} max={PARAMETER_MAXIMUMS.refractiveIndex} step={0.001} disabled={(draft.substrateMaterial ?? "custom") !== "custom"} onChange={(v) => updateNumber("substrateIndex", v)} />}
               </div>
-              <details className="advanced-controls">
-                <summary>{(draft.geometry ?? "channel") === "polygon" ? "Cladding loss & dispersion" : "Anisotropy, loss & dispersion"}</summary>
+              <Accordion className="advanced-controls"><AccordionItem title={(draft.geometry ?? "channel") === "polygon" ? "Cladding loss & dispersion" : "Anisotropy, loss & dispersion"}>
               <div className="material-table-imports">
                 {(draft.geometry ?? "channel") !== "polygon" && (draft.coreMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Core" table={draft.coreMaterialTable} onChange={(event) => void importMaterialCsv("core", event)} />}
                 {(draft.claddingMaterial ?? "custom") === "tabulated" && <MaterialCsvInput region="Cladding" table={draft.claddingMaterialTable} onChange={(event) => void importMaterialCsv("cladding", event)} />}
@@ -663,7 +686,7 @@ export function App() {
               </div>
               <MaterialSources config={draft} />
               <p>Fields use exp(iβz − iωt), so passive media have κ ≥ 0 and Im(ε) ≥ 0. Metal presets use a dispersive local bulk model; imported wavelength_um,n,k tables support measured thin-film data. Off-diagonal tensors are limited to straight, lossless guides with hard boundaries.</p>
-              </details>
+              </AccordionItem></Accordion>
             </section>
 
             <section id="configuration-solver" className="configuration-section" role="tabpanel" hidden={configurationTab !== "solver"}>
@@ -674,10 +697,10 @@ export function App() {
                 <NumberField label="Resolution" unit="cells" value={draft.gridResolution} min={24} max={PARAMETER_MAXIMUMS.gridResolution} step={1} onChange={(v) => updateNumber("gridResolution", v)} />
                 <NumberField label="Mesh bias" unit={draft.autoMeshBias ? "automatic" : `0–${PARAMETER_MAXIMUMS.meshBias}`} value={draft.meshBias ?? 0} min={0} max={PARAMETER_MAXIMUMS.meshBias} step={0.1} disabled={draft.autoMeshBias} onChange={(v) => updateNumber("meshBias", v)} />
                 <NumberField label="Padding" unit="µm" value={draft.paddingUm} min={0.2} max={PARAMETER_MAXIMUMS.dimensionUm} step={0.1} onChange={(v) => updateNumber("paddingUm", v)} />
-                <label className="checkbox-field"><input type="checkbox" checked={draft.autoMeshBias ?? false} onChange={(event) => setDraft((current) => ({ ...current, autoMeshBias: event.target.checked }))} /><span>Automatic mesh grading</span></label>
-                <label className="select-field">Outer boundary<select value={draft.boundary ?? "hard"} onChange={(event) => setDraft((current) => ({ ...current, boundary: event.target.value as "hard" | "pml" }))}><option value="hard">Hard wall</option><option value="pml">PML (open)</option></select></label>
-                <label className="select-field">x symmetry plane<select value={draft.symmetryX ?? "none"} onChange={(event) => setDraft((current) => ({ ...current, symmetryX: event.target.value as SymmetryBoundary, ...(event.target.value !== "none" ? { periodicX: false, periodicY: false, blochPhaseXRad: 0, blochPhaseYRad: 0 } : {}) }))}><option value="none">None</option><option value="pec">PEC · tangential E = 0</option><option value="pmc">PMC · tangential H = 0</option></select></label>
-                <label className="select-field">y symmetry plane<select value={draft.symmetryY ?? "none"} onChange={(event) => setDraft((current) => ({ ...current, symmetryY: event.target.value as SymmetryBoundary, ...(event.target.value !== "none" ? { periodicX: false, periodicY: false, blochPhaseXRad: 0, blochPhaseYRad: 0 } : {}) }))}><option value="none">None</option><option value="pec">PEC · tangential E = 0</option><option value="pmc">PMC · tangential H = 0</option></select></label>
+                <CarbonCheckboxField id="automatic-mesh-grading" label="Automatic mesh grading" checked={draft.autoMeshBias ?? false} onChange={(checked) => setDraft((current) => ({ ...current, autoMeshBias: checked }))} />
+                <CarbonSelectField id="outer-boundary" label="Outer boundary" value={draft.boundary ?? "hard"} options={[{ value: "hard", label: "Hard wall" }, { value: "pml", label: "PML (open)" }]} onChange={(value) => setDraft((current) => ({ ...current, boundary: value as "hard" | "pml" }))} />
+                <CarbonSelectField id="symmetry-x" label="x symmetry plane" value={draft.symmetryX ?? "none"} options={[{ value: "none", label: "None" }, { value: "pec", label: "PEC · tangential E = 0" }, { value: "pmc", label: "PMC · tangential H = 0" }]} onChange={(value) => setDraft((current) => ({ ...current, symmetryX: value as SymmetryBoundary, ...(value !== "none" ? { periodicX: false, periodicY: false, blochPhaseXRad: 0, blochPhaseYRad: 0 } : {}) }))} />
+                <CarbonSelectField id="symmetry-y" label="y symmetry plane" value={draft.symmetryY ?? "none"} options={[{ value: "none", label: "None" }, { value: "pec", label: "PEC · tangential E = 0" }, { value: "pmc", label: "PMC · tangential H = 0" }]} onChange={(value) => setDraft((current) => ({ ...current, symmetryY: value as SymmetryBoundary, ...(value !== "none" ? { periodicX: false, periodicY: false, blochPhaseXRad: 0, blochPhaseYRad: 0 } : {}) }))} />
                 {(draft.boundary ?? "hard") === "pml" && <>
                   <NumberField label="PML thickness" unit="µm" value={draft.pmlThicknessUm ?? draft.paddingUm * 0.6} min={0.01} max={Math.max(0.02, draft.paddingUm - 0.01)} step={0.05} onChange={(v) => updateNumber("pmlThicknessUm", v)} />
                   <NumberField label="PML strength" unit="σ" value={draft.pmlStrength ?? 4} min={0.1} max={50} step={0.5} onChange={(v) => updateNumber("pmlStrength", v)} />
@@ -685,37 +708,35 @@ export function App() {
               </div>
               {draft.autoMeshBias && <p className="configuration-note">Automatic grading selects independent x/y center refinement from the core-to-domain span; geometry interfaces remain aligned explicitly.</p>}
               {((draft.symmetryX ?? "none") !== "none" || (draft.symmetryY ?? "none") !== "none") && <p className="configuration-note">Symmetry projects the full Yee operator onto the selected parity subspace. Use it only when the geometry and material tensor are mirror-symmetric.</p>}
-              <details className="advanced-controls">
-                <summary>Mode targeting</summary>
+              <Accordion className="advanced-controls"><AccordionItem title="Mode targeting">
                 <div className="form-grid">
                   <NumberField label={<>Target Re(<i>n</i><sub>eff</sub>)</>} unit="0 = auto" value={draft.targetEffectiveIndex ?? 0} min={0} max={100} step={0.01} onChange={(value) => setDraft((current) => ({ ...current, targetEffectiveIndex: value > 0 ? value : undefined }))} />
                   <NumberField label={<>Target Im(<i>n</i><sub>eff</sub>)</>} unit="optional" value={draft.targetEffectiveIndexImaginary ?? 0} min={0} max={100} step={0.000001} disabled={draft.targetEffectiveIndex === undefined} onChange={(value) => setDraft((current) => ({ ...current, targetEffectiveIndexImaginary: value > 0 ? value : undefined }))} />
                 </div>
                 <p>The real target sets the shift used by the eigensolver. The imaginary target ranks complex candidates; it does not widen the physically admissible index window.</p>
-              </details>
-              <details className="advanced-controls">
-                <summary>Bloch-periodic boundaries</summary>
+              </AccordionItem></Accordion>
+              <Accordion className="advanced-controls"><AccordionItem title="Bloch-periodic boundaries">
                 <div className="form-grid">
-                  <label className="checkbox-field"><input type="checkbox" checked={draft.periodicX ?? false} onChange={(event) => setDraft((current) => ({ ...current, periodicX: event.target.checked, ...(!event.target.checked ? { blochPhaseXRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((event.target.checked && current.periodicY && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} /><span>Periodic x pair</span></label>
-                  <label className="checkbox-field"><input type="checkbox" checked={draft.periodicY ?? false} onChange={(event) => setDraft((current) => ({ ...current, periodicY: event.target.checked, ...(!event.target.checked ? { blochPhaseYRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((event.target.checked && current.periodicX && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} /><span>Periodic y pair</span></label>
+                  <CarbonCheckboxField id="periodic-x" label="Periodic x pair" checked={draft.periodicX ?? false} onChange={(checked) => setDraft((current) => ({ ...current, periodicX: checked, ...(!checked ? { blochPhaseXRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((checked && current.periodicY && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} />
+                  <CarbonCheckboxField id="periodic-y" label="Periodic y pair" checked={draft.periodicY ?? false} onChange={(checked) => setDraft((current) => ({ ...current, periodicY: checked, ...(!checked ? { blochPhaseYRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((checked && current.periodicX && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} />
                   {draft.periodicX && <NumberField label="Bloch phase x" unit="rad" value={draft.blochPhaseXRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => updateNumber("blochPhaseXRad", value)} />}
                   {draft.periodicY && <NumberField label="Bloch phase y" unit="rad" value={draft.blochPhaseYRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => updateNumber("blochPhaseYRad", value)} />}
                 </div>
                 <p>Opposite faces satisfy F(r + L) = F(r)e<sup>iθ</sup>. A zero phase is ordinary periodicity; PML remains active only along non-periodic axes. The full computational span is the lattice period, so Padding controls the separation between neighboring copies.</p>
-              </details>
+              </AccordionItem></Accordion>
               <p className="configuration-note">Use the Analysis view for mesh and boundary convergence before interpreting quantitative results.</p>
             </section>
-            <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"} <span aria-hidden="true">→</span></button>
-            <p className="status" aria-live="polite">{message}</p>{error && <p className="error" role="alert">{error}</p>}
+            <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"}</Button>
+            <InlineNotification className="status" kind="info" title="Solver status" subtitle={message} hideCloseButton lowContrast />{error && <InlineNotification kind="error" title="Solver error" subtitle={error} hideCloseButton lowContrast />}
           </form>
         </aside>
 
         <section className="results-panel" id="results-panel" aria-labelledby="results-title">
-          <div className="panel-heading results-heading"><div><h2 id="results-title">Results explorer</h2></div><button className="export-button" type="button" onClick={exportField} disabled={!mode}>Export CSV</button></div>
+          <div className="panel-heading results-heading"><div><h2 id="results-title">Results explorer</h2></div><Button kind="tertiary" size="sm" type="button" onClick={exportField} disabled={!mode}>Export CSV</Button></div>
           {result ? <>
-            <div className="field-toolbar result-view-tabs" role="tablist" aria-label="Result view"><button type="button" role="tab" aria-selected={resultView === "mode"} tabIndex={resultView === "mode" ? 0 : -1} className={resultView === "mode" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("mode")}>Mode fields</button><button type="button" role="tab" aria-selected={resultView === "geometry"} tabIndex={resultView === "geometry" ? 0 : -1} className={resultView === "geometry" ? "active" : ""} onKeyDown={handleTabKeyDown} onClick={() => setResultView("geometry")}>Structure & mesh</button></div>
+            <div className="field-toolbar result-view-tabs"><CarbonSwitcher label="Result view" value={resultView} options={[{ value: "mode", label: "Mode fields" }, { value: "geometry", label: "Structure & mesh" }]} onChange={(value) => setResultView(value as "mode" | "geometry")} /></div>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
-            <div className="mode-tabs" role="tablist" aria-label="Guided modes">{result.modes.map((item, index) => <button type="button" role="tab" aria-selected={selectedMode === index} tabIndex={selectedMode === index ? 0 : -1} className={selectedMode === index ? "active" : ""} key={`${item.id}-${index}`} onKeyDown={handleTabKeyDown} onClick={() => setSelectedMode(index)}><span>{item.label} · {item.polarization}</span><small><i>n</i><sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</small></button>)}</div>
+            <div className="mode-tabs"><CarbonSwitcher label="Guided modes" value={String(selectedMode)} options={result.modes.map((item, index) => ({ value: String(index), label: `${item.label} · ${item.polarization} · neff ${item.effectiveIndex.toFixed(5)}${item.nearCutoff ? " · near cutoff" : ""}` }))} onChange={(value) => setSelectedMode(Number(value))} /></div>
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
@@ -725,8 +746,7 @@ export function App() {
               <Metric label={<>Energy effective area <i>A</i><sub>eff</sub></>} value={`${mode.energyEffectiveAreaUm2.toFixed(3)} µm²`} />
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
             </div>
-            <details className="result-details">
-              <summary>Additional modal quantities</summary>
+            <Accordion className="result-details"><AccordionItem title="Additional modal quantities">
               <div className="metrics secondary-metrics">
               <Metric label="Energy group index" value={`${mode.energyGroupIndex.toFixed(4)} · ${mode.energyMetricValidity}`} />
               <Metric label="Longitudinal E fraction" value={`${(mode.longitudinalElectricFraction * 100).toFixed(1)}%`} />
@@ -738,9 +758,9 @@ export function App() {
               {mode.bendRadiusUm && <Metric label="Bend radius" value={`${mode.bendRadiusUm.toFixed(3)} µm`} />}
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
               </div>
-            </details>
-            <div className="field-toolbar" aria-label="Field component"><span>Field</span>{fieldComponents.map((field) => <button type="button" className={component === field ? "active" : ""} aria-pressed={component === field} key={field} onClick={() => setComponent(field)}>{(config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? <>E<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? <>H<sub>θ</sub></> : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? <>S<sub>θ</sub></> : fieldLabels[field]}</button>)}</div>
-            <div className="field-toolbar field-part-toolbar" aria-label="Field display settings">{component !== "intensity" && component !== "poynting" && <><span>View</span>{(["real", "imaginary", "magnitude", "phase"] as FieldPart[]).map((part) => <button type="button" className={fieldPart === part ? "active" : ""} aria-pressed={fieldPart === part} key={part} onClick={() => setFieldPart(part)}>{part === "real" ? "Re" : part === "imaginary" ? "Im" : part === "magnitude" ? "|·|" : "Phase"}</button>)}</>}<label className="display-mesh">Display mesh<select value={displayInterpolation} onChange={(event) => setDisplayInterpolation(Number(event.target.value) as DisplayInterpolation)}><option value={1}>Solver grid</option><option value={2}>2× interpolated</option><option value={4}>4× interpolated</option></select></label></div>
+            </AccordionItem></Accordion>
+            <div className="field-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? "Sθ" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
+            <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Display mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
             {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
             </> : <div className="empty-state">No guided mode was found. Inspect the structure and mesh, then increase the core size or index contrast.</div>}
           </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
@@ -755,52 +775,44 @@ export function App() {
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
       <ViewHeading title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
-      <nav className="section-tabs" aria-label="Sweep type">
-        <button type="button" className={sweepPane === "wavelength" ? "active" : ""} aria-pressed={sweepPane === "wavelength"} onClick={() => setSweepPane("wavelength")}><span>Wavelength</span><small>Dispersion & loss</small></button>
-        <button type="button" className={sweepPane === "geometry" ? "active" : ""} aria-pressed={sweepPane === "geometry"} onClick={() => setSweepPane("geometry")}><span>Geometry</span><small>Dimensions & bends</small></button>
-        <button type="button" className={sweepPane === "bloch" ? "active" : ""} aria-pressed={sweepPane === "bloch"} onClick={() => setSweepPane("bloch")}><span>Bloch phase</span><small>Periodic arrays</small></button>
-      </nav>
+      <div className="section-tabs"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
-        <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><button className="export-button" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</button></div>
+        <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
           <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
           <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
-          <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"} <span aria-hidden="true">→</span></button>
+          <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
         </form>
-        <p className="status" aria-live="polite">{sweepMessage}</p>
-        {activeView === "sweeps" && sweepResult && <><Suspense fallback={<VisualizationFallback />}><SweepPlot result={sweepResult} /></Suspense>{sweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+        <InlineNotification className="status" kind="info" title="Wavelength sweep" subtitle={sweepMessage} hideCloseButton lowContrast />
+        {activeView === "sweeps" && sweepResult && <><Suspense fallback={<VisualizationFallback />}><SweepPlot result={sweepResult} /></Suspense><WarningMessages warnings={sweepResult.warnings} /></>}
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
-        <div className="panel-heading"><div><h2>Geometry sweep</h2></div><button className="export-button" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</button></div>
+        <div className="panel-heading"><div><h2>Geometry sweep</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runGeometrySweep} aria-busy={busy}>
-          <label className="select-field">Parameter<select value={geometrySweep.parameter} onChange={(event) => setGeometrySweep((current) => event.target.value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: event.target.value as GeometrySweepParameter })}>
-            <option value="widthUm">Core width</option><option value="heightUm">Core height</option>{(config.geometry ?? "channel") === "slot" && <option value="slotGapUm">Slot gap</option>}
-            {(config.geometry ?? "channel") === "coupler" && <option value="couplerGapUm">Coupler gap</option>}
-            {(config.bendRadiusUm ?? 0) > 0 && <option value="bendRadiusUm">Bend radius</option>}
-          </select></label>
+          <CarbonSelectField id="geometry-sweep-parameter" label="Parameter" value={geometrySweep.parameter} options={[{ value: "widthUm", label: "Core width" }, { value: "heightUm", label: "Core height" }, ...((config.geometry ?? "channel") === "slot" ? [{ value: "slotGapUm", label: "Slot gap" }] : []), ...((config.geometry ?? "channel") === "coupler" ? [{ value: "couplerGapUm", label: "Coupler gap" }] : []), ...((config.bendRadiusUm ?? 0) > 0 ? [{ value: "bendRadiusUm", label: "Bend radius" }] : [])]} onChange={(value) => setGeometrySweep((current) => value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: value as GeometrySweepParameter })} />
           <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
           <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
           <NumberField label="Samples" unit="points" value={geometrySweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={1} onChange={(value) => setGeometrySweep((current) => ({ ...current, points: value }))} />
-          <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"} <span aria-hidden="true">→</span></button>
+          <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
         </form>
-        <p className="status" aria-live="polite">{geometrySweepMessage}</p>
-        {activeView === "sweeps" && geometrySweepResult && <><Suspense fallback={<VisualizationFallback />}><GeometrySweepPlot result={geometrySweepResult} /></Suspense>{geometrySweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+        <InlineNotification className="status" kind="info" title="Geometry sweep" subtitle={geometrySweepMessage} hideCloseButton lowContrast />
+        {activeView === "sweeps" && geometrySweepResult && <><Suspense fallback={<VisualizationFallback />}><GeometrySweepPlot result={geometrySweepResult} /></Suspense><WarningMessages warnings={geometrySweepResult.warnings} /></>}
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
-        <div className="panel-heading"><div><h2>Transverse Bloch dispersion</h2></div><button className="export-button" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</button></div>
+        <div className="panel-heading"><div><h2>Transverse Bloch dispersion</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</Button></div>
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
         <form className="sweep-controls" onSubmit={runBlochSweep} aria-busy={busy}>
-          <label className="select-field">Periodic axis<select value={blochSweep.axis} onChange={(event) => setBlochSweep((current) => ({ ...current, axis: event.target.value as BlochSweepAxis }))}><option value="x" disabled={!config.periodicX}>x boundary pair</option><option value="y" disabled={!config.periodicY}>y boundary pair</option></select></label>
+          <CarbonSelectField id="bloch-axis" label="Periodic axis" value={blochSweep.axis} options={[{ value: "x", label: "x boundary pair", disabled: !config.periodicX }, { value: "y", label: "y boundary pair", disabled: !config.periodicY }]} onChange={(value) => setBlochSweep((current) => ({ ...current, axis: value as BlochSweepAxis }))} />
           <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
           <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
           <NumberField label="Samples" unit="points" value={blochSweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setBlochSweep((current) => ({ ...current, points: value }))} />
-          <button className="solve-button" data-action={busy ? "cancel" : undefined} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"} <span aria-hidden="true">→</span></button>
+          <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"}</Button>
         </form>
-        <p className="status" aria-live="polite">{blochSweepMessage}</p>
-        {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><div><span>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</span><strong>{blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)}</strong></div><div><span>Tracked subspace</span><strong>{Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)</strong></div></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense>{blochSweepResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+        <InlineNotification className="status" kind="info" title="Bloch sweep" subtitle={blochSweepMessage} hideCloseButton lowContrast />
+        {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><Metric label={<>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</>} value={blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)} /><Metric label="Tracked subspace" value={`${Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)`} /></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense><WarningMessages warnings={blochSweepResult.warnings} /></>}
       </section>
       </section>
 
@@ -813,10 +825,10 @@ export function App() {
       <ViewHeading title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
       <section className={`validation-section${result ? "" : " validation-section-single"}`}>
         <div className="method-card"><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b><var>Ψ</var></b><span>=</span><var>β</var><b><var>Ψ</var></b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
-        {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><span className={check.pass ? "pass" : "warn"}>{check.pass ? "Pass" : "Review"}</span><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}{result.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</div>}
+        {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><Tag type={check.pass ? "green" : "warm-gray"}>{check.pass ? "Pass" : "Review"}</Tag><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
       </section>
       {mode && result && <section className="sweep-section validation-diagnostics">
-        <div className="panel-heading"><div><h2>Complex-mode diagnostics</h2></div><a className="export-button" href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</a></div>
+        <div className="panel-heading"><div><h2>Complex-mode diagnostics</h2></div><Link href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</Link></div>
         <div className="analysis-metrics">
           <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(4)} dB/cm`} />
           <Metric label="Material absorption" value={`${mode.absorptionLossDbPerCm.toPrecision(4)} dB/cm`} />
@@ -829,15 +841,16 @@ export function App() {
           <Metric label="Stored energy per length" value={`${mode.storedEnergyPerM.toExponential(3)} J/m`} />
           <Metric label="Energy metric validity" value={mode.energyMetricValidity} />
         </div>
-        {mode.materialAbsorption.length > 0 && <div className="comparison-scroll"><table className="comparison-table"><caption>Material absorption decomposition</caption><thead><tr><th>Region</th><th>Absorbed power per length</th><th>Fraction</th></tr></thead><tbody>{mode.materialAbsorption.map((entry) => <tr key={entry.region}><th>{entry.region}</th><td>{entry.powerPerM.toExponential(4)} W/m</td><td>{(100 * entry.fraction).toFixed(2)}%</td></tr>)}</tbody></table></div>}
+        {mode.materialAbsorption.length > 0 && <div className="comparison-scroll"><CarbonTable title="Material absorption decomposition" headers={["Region", "Absorbed power per length", "Fraction"]} rows={mode.materialAbsorption.map((entry) => ({ id: entry.region, cells: [entry.region, `${entry.powerPerM.toExponential(4)} W/m`, `${(100 * entry.fraction).toFixed(2)}%`] }))} /></div>}
         <p className="limitation">Material absorption is obtained from the local Im(ε) field integral. Stored energy uses d(ω Re ε)/dω and is exact for lossless dispersion, a narrow-band approximation for weak loss, and diagnostic only for strongly absorptive media. PML classification is participation-based; establish leaky-mode loss with boundary and mesh convergence.</p>
-        <div className="comparison-scroll"><table className="comparison-table candidate-table"><caption>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</caption><thead><tr><th>Candidate</th><th>Re(neff)</th><th>Im(neff)</th><th>Residual</th><th>Status</th><th>Reason</th></tr></thead><tbody>{result.candidates.map((candidate, index) => <tr key={`${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`}><th>{candidate.label ?? `Ritz ${index + 1}`}</th><td>{candidate.effectiveIndex.toFixed(7)}</td><td>{candidate.effectiveIndexImaginary.toExponential(3)}</td><td>{candidate.residual.toExponential(2)}</td><td><span className={candidate.status === "selected" || candidate.status === "available" ? "pass" : "warn"}>{candidate.status}</span></td><td>{candidate.reason}</td></tr>)}</tbody></table></div>
+        <div className="comparison-scroll"><CarbonTable className="candidate-table" title={<>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</>} headers={["Candidate", "Re(neff)", "Im(neff)", "Residual", "Status", "Reason"]} rows={result.candidates.map((candidate, index) => ({ id: `${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`, cells: [candidate.label ?? `Ritz ${index + 1}`, candidate.effectiveIndex.toFixed(7), candidate.effectiveIndexImaginary.toExponential(3), candidate.residual.toExponential(2), <Tag type={candidate.status === "selected" || candidate.status === "available" ? "green" : "warm-gray"}>{candidate.status}</Tag>, candidate.reason] }))} /></div>
       </section>}
       </section>
-    </main>
+    </Content>
     <footer><span>Waveguide Mode Solver</span><span>Built for photonics education · Check mesh, boundary and sweep convergence before design use.</span></footer>
     </Column>
-  </Grid>;
+  </Grid>
+  </>;
 }
 
 function ViewHeading({ title, id, children }: { title: string; id: string; children: ReactNode }) {
@@ -845,20 +858,20 @@ function ViewHeading({ title, id, children }: { title: string; id: string; child
 }
 
 function VisualizationFallback() {
-  return <p className="status" role="status">Loading visualization…</p>;
+  return <InlineLoading description="Loading visualization…" />;
 }
 
 function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} disabled={disabled} aria-invalid={!Number.isFinite(value) || value < min || value > max} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
+  return <CarbonNumberField label={label} unit={unit} value={value} min={min} max={max} step={step} disabled={disabled} onChange={onChange} />;
 }
 
 function MaterialSelect({ label, value, allowTabulated = true, onChange }: { label: string; value: MaterialId; allowTabulated?: boolean; onChange: (value: MaterialId) => void }) {
-  return <label className="select-field">{label}<select value={value} onChange={(event) => onChange(event.target.value as MaterialId)}>{MATERIALS.filter((material) => allowTabulated || material.id !== "tabulated").map((material) => <option value={material.id} key={material.id}>{material.name}</option>)}</select></label>;
+  return <CarbonSelectField label={label} value={value} options={MATERIALS.filter((material) => allowTabulated || material.id !== "tabulated").map((material) => ({ value: material.id, label: material.name }))} onChange={(material) => onChange(material as MaterialId)} />;
 }
 
 function MaterialCsvInput({ region, table, onChange }: { region: string; table?: TabulatedMaterialData; onChange: (event: ChangeEvent<HTMLInputElement>) => void }) {
   const range = table ? `${table.wavelengthUm[0]}–${table.wavelengthUm[table.wavelengthUm.length - 1]} µm · ${table.wavelengthUm.length} rows` : "wavelength_um,n,k";
-  return <label className="material-csv-input"><span>{region} CSV</span><strong>{table?.name ?? "Choose file"}</strong><small>{range}</small><input type="file" accept=".csv,text/csv" onChange={onChange} /></label>;
+  return <div className="material-csv-input"><FileUploaderButton id={`material-${region.toLowerCase()}-csv`} accept={[".csv", "text/csv"]} buttonKind="tertiary" size="sm" labelText={`${region} CSV · ${table?.name ?? "Choose file"}`} onChange={onChange} /><small>{range}</small></div>;
 }
 
 function MaterialSources({ config }: { config: WaveguideConfig }) {
@@ -872,7 +885,7 @@ function MaterialSources({ config }: { config: WaveguideConfig }) {
     ...(substrateActive && config.substrateMaterial === "tabulated" ? [config.substrateMaterialTable] : [])]
     .filter((table): table is TabulatedMaterialData => Boolean(table));
   if (selected.length === 0 && imported.length === 0) return null;
-  return <p className="material-sources">Models: {selected.map((material, index) => <span key={material.id}>{index > 0 && " · "}{material.sourceUrl ? <a href={material.sourceUrl} target="_blank" rel="noreferrer">{material.sourceLabel}</a> : material.name} ({material.minimumWavelengthUm}–{material.maximumWavelengthUm} µm)</span>)}{imported.map((table) => <span key={table.name}> · {table.name} ({table.wavelengthUm[0]}–{table.wavelengthUm[table.wavelengthUm.length - 1]} µm)</span>)}</p>;
+  return <p className="material-sources">Models: {selected.map((material, index) => <span key={material.id}>{index > 0 && " · "}{material.sourceUrl ? <Link href={material.sourceUrl} target="_blank" rel="noreferrer">{material.sourceLabel}</Link> : material.name} ({material.minimumWavelengthUm}–{material.maximumWavelengthUm} µm)</span>)}{imported.map((table) => <span key={table.name}> · {table.name} ({table.wavelengthUm[0]}–{table.wavelengthUm[table.wavelengthUm.length - 1]} µm)</span>)}</p>;
 }
 
 function displayPolygonIndex(region: PolygonRegion, config: WaveguideConfig): number {
@@ -958,15 +971,10 @@ function legacyOpticAxisAzimuth(axis: OpticAxis = "y"): number {
   return axis === "x" ? 90 : 0;
 }
 
-function Metric({ label, value }: { label: ReactNode; value: string }) { return <div className="metric"><span>{label}</span><strong>{value}</strong></div>; }
+function Metric({ label, value }: { label: ReactNode; value: string }) { return <Tile className="metric"><span>{label}</span><strong>{value}</strong></Tile>; }
 
-function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-  const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)') ?? []);
-  const nextIndex = nextTabIndex(event.key, tabs.indexOf(event.currentTarget), tabs.length);
-  if (nextIndex === undefined) return;
-  event.preventDefault();
-  tabs[nextIndex]?.focus();
-  tabs[nextIndex]?.click();
+function WarningMessages({ warnings }: { warnings: string[] }) {
+  return <>{warnings.map((warning) => <InlineNotification kind="warning" title="Review" subtitle={warning} hideCloseButton lowContrast key={warning} />)}</>;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

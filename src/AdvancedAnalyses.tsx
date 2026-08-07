@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Button, InlineLoading, InlineNotification, Tile } from "@carbon/react";
 import packageJson from "../package.json";
+import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import { ConvergencePlot, ModeMapPlot, ModeTopologyPlot, TolerancePlot } from "./AnalysisPlots";
 import type {
@@ -122,16 +124,14 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
   const maximumRightOverlap = result && result.modes.length > 1
     ? Math.max(0, ...(result.ritzNonOrthogonality[selectedMode] ?? []).filter((_, index) => index !== selectedMode)) : 0;
   return <>
-    <nav className="section-tabs" aria-label="Analysis category">
-      <button type="button" className={analysisPane === "numerics" ? "active" : ""} aria-pressed={analysisPane === "numerics"} onClick={() => setAnalysisPane("numerics")}><span>Numerics</span><small>Convergence & sensitivity</small></button>
-      <button type="button" className={analysisPane === "robustness" ? "active" : ""} aria-pressed={analysisPane === "robustness"} onClick={() => setAnalysisPane("robustness")}><span>Robustness</span><small>Tolerances & mode maps</small></button>
-      <button type="button" className={analysisPane === "coupling" ? "active" : ""} aria-pressed={analysisPane === "coupling"} onClick={() => setAnalysisPane("coupling")}><span>Coupling</span><small>Interfaces & supermodes</small></button>
-    </nav>
-    {active && <div className="analysis-cancel"><output aria-live="polite">Analysis running…</output><button className="export-button" type="button" onClick={cancelSolverWorker}>Cancel analysis</button></div>}
-    {runMessage && <output className="status" aria-live="polite">{runMessage}</output>}
+    <div className="section-tabs">
+      <CarbonSwitcher label="Analysis category" value={analysisPane} options={[{ value: "numerics", label: "Numerics" }, { value: "robustness", label: "Robustness" }, { value: "coupling", label: "Coupling" }]} onChange={(value) => setAnalysisPane(value as typeof analysisPane)} />
+    </div>
+    {active && <div className="analysis-cancel"><InlineLoading description="Analysis running…" /><Button kind="danger--tertiary" type="button" onClick={cancelSolverWorker}>Cancel analysis</Button></div>}
+    {runMessage && <InlineNotification lowContrast hideCloseButton kind="info" title="Analysis status" subtitle={runMessage} />}
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="topology-title">
-      <div className="panel-heading"><div><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <button type="button" className="export-button" onClick={downloadTopology}>Export CSV</button>}</div>
-      {exportMessage && <output className="status" aria-live="polite">{exportMessage}</output>}
+      <div className="panel-heading"><div><h2 id="topology-title">Mode interactions &amp; sensitivity</h2></div>{topologyResult && <Button kind="tertiary" type="button" onClick={downloadTopology}>Export CSV</Button>}</div>
+      {exportMessage && <InlineNotification lowContrast hideCloseButton kind="success" title="Export complete" subtitle={exportMessage} />}
       <p className="section-intro">Inspect mode mixing and numerical sensitivity in lossy, leaky or strongly coupled structures. Complex-index trajectories can flag interactions for closer study; exceptional-point labels remain provisional until verified with a converged two-parameter loop.</p>
       {selected && <div className="analysis-metrics">
         <AnalysisMetric label="Projected condition κ" value={formatCondition(selected.eigenvalueConditionEstimate)} />
@@ -139,20 +139,16 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
         <AnalysisMetric label="Largest right-mode overlap" value={maximumRightOverlap.toFixed(4)} />
         <AnalysisMetric label="Eigenpair residual" value={selected.residual.toExponential(2)} />
       </div>}
-      {result && result.modes.length > 1 && <div className="comparison-scroll"><table className="comparison-table"><caption>Absolute overlaps between normalized right Ritz vectors</caption><thead><tr><th>Mode</th>{result.modes.map((mode) => <th key={mode.id}>{mode.label}</th>)}</tr></thead><tbody>{result.modes.map((mode, row) => <tr key={mode.id}><th>{mode.label}</th>{result.ritzNonOrthogonality[row].map((overlap, column) => <td key={result.modes[column].id}>{overlap.toFixed(4)}</td>)}</tr>)}</tbody></table></div>}
+      {result && result.modes.length > 1 && <CarbonTable title="Absolute overlaps between normalized right Ritz vectors" headers={["Mode", ...result.modes.map((mode) => mode.label)]} rows={result.modes.map((mode, row) => ({ id: mode.id, cells: [mode.label, ...result.ritzNonOrthogonality[row].map((overlap) => overlap.toFixed(4))] }))} />}
       <form className="analysis-controls" onSubmit={runTopology}>
-        <label className="select-field">Sweep parameter<select value={topology.parameter} onChange={(event) => selectTopologyParameter(event.target.value as TopologySweepParameter)}>
-          {geometry !== "polygon" && <><option value="widthUm">Core width</option><option value="heightUm">Core height</option></>}
-          {geometry === "slot" && <option value="slotGapUm">Slot gap</option>}{geometry === "coupler" && <option value="couplerGapUm">Coupler gap</option>}
-          <option value="wavelengthUm">Wavelength</option>{geometry !== "polygon" && <option value="coreExtinction">Core extinction</option>}
-        </select></label>
+        <CarbonSelectField label="Sweep parameter" value={topology.parameter} options={[...(geometry === "polygon" ? [] : [{ value: "widthUm", label: "Core width" }, { value: "heightUm", label: "Core height" }]), ...(geometry === "slot" ? [{ value: "slotGapUm", label: "Slot gap" }] : []), ...(geometry === "coupler" ? [{ value: "couplerGapUm", label: "Coupler gap" }] : []), { value: "wavelengthUm", label: "Wavelength" }, ...(geometry === "polygon" ? [] : [{ value: "coreExtinction", label: "Core extinction" }])]} onChange={(value) => selectTopologyParameter(value as TopologySweepParameter)} />
         <AnalysisNumber label="Start" unit={topology.parameter === "coreExtinction" ? "κ" : "µm"} value={topology.startValue} min={topology.parameter === "wavelengthUm" ? 0.2 : 0} max={1_000} step={topology.parameter === "coreExtinction" ? 0.001 : 0.01} onChange={(value) => setTopology((current) => ({ ...current, startValue: value }))} />
         <AnalysisNumber label="Stop" unit={topology.parameter === "coreExtinction" ? "κ" : "µm"} value={topology.stopValue} min={topology.parameter === "wavelengthUm" ? 0.2 : 0} max={1_000} step={topology.parameter === "coreExtinction" ? 0.001 : 0.01} onChange={(value) => setTopology((current) => ({ ...current, stopValue: value }))} />
         <AnalysisNumber label="Points" unit="solves" value={topology.points} min={5} max={31} step={1} onChange={(value) => setTopology((current) => ({ ...current, points: value }))} />
-        <button className="solve-button" type="submit" disabled={Boolean(active) || !result || config.modeCount < 2}>{active === "topology" ? "Tracking…" : "Analyze branches"}<span aria-hidden="true">→</span></button>
+        <Button className="solve-button" type="submit" disabled={Boolean(active) || !result || config.modeCount < 2}>{active === "topology" ? "Tracking…" : "Analyze branches"}</Button>
       </form>
-      {config.modeCount < 2 && <p className="warning">Request at least two modes in the solver configuration before running topology analysis.</p>}
-      {topologyResult && <><ModeTopologyPlot result={topologyResult} />{topologyResult.interactions.length > 0 && <div className="comparison-scroll"><table className="comparison-table"><caption>Local minima of the complex modal separation</caption><thead><tr><th>Parameter</th><th>Branches</th><th>Classification</th><th>|Δneff|</th><th>Right overlap</th><th>κproj</th></tr></thead><tbody>{topologyResult.interactions.map((interaction) => <tr key={`${interaction.value}-${interaction.branches.join("-")}`}><td>{interaction.value.toPrecision(5)}</td><td>{interaction.branches.map((branch) => branch + 1).join(" / ")}</td><td>{interaction.classification}</td><td>{interaction.complexIndexGap.toExponential(3)}</td><td>{interaction.rightModeOverlap.toFixed(4)}</td><td>{formatCondition(interaction.maximumConditionEstimate)}</td></tr>)}</tbody></table></div>}{topologyResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+      {config.modeCount < 2 && <InlineNotification lowContrast hideCloseButton kind="warning" title="More modes required" subtitle="Request at least two modes in the solver configuration before running topology analysis." />}
+      {topologyResult && <><ModeTopologyPlot result={topologyResult} />{topologyResult.interactions.length > 0 && <CarbonTable title="Local minima of the complex modal separation" headers={["Parameter", "Branches", "Classification", "|Δneff|", "Right overlap", "κproj"]} rows={topologyResult.interactions.map((interaction) => ({ id: `${interaction.value}-${interaction.branches.join("-")}`, cells: [interaction.value.toPrecision(5), interaction.branches.map((branch) => branch + 1).join(" / "), interaction.classification, interaction.complexIndexGap.toExponential(3), interaction.rightModeOverlap.toFixed(4), formatCondition(interaction.maximumConditionEstimate)] }))} />}{topologyResult.warnings.map((warning) => <InlineNotification lowContrast hideCloseButton kind="warning" title="Topology warning" subtitle={warning} key={warning} />)}</>}
       <p className="limitation">K<sub>proj</sub> = κ<sub>proj</sub>² is obtained from left and right eigenvectors of the Arnoldi-projected operator. It is a convergence diagnostic, not yet the full Maxwell adjoint Petermann factor.</p>
     </section>
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "numerics"} aria-labelledby="convergence-title">
@@ -162,8 +158,8 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
         <AnalysisNumber label="Coarse resolution" unit="cells" value={convergence.coarseResolution} min={24} max={56} step={1} onChange={(value) => setConvergence((current) => ({ ...current, coarseResolution: value }))} />
         <AnalysisNumber label="Refinement ratio" unit="r" value={convergence.refinementRatio} min={1.3} max={2} step={0.05} onChange={(value) => setConvergence((current) => ({ ...current, refinementRatio: value }))} />
         <AnalysisNumber label="Loss tolerance" unit="%" value={convergence.lossTolerancePercent} min={0.1} max={100} step={0.5} onChange={(value) => setConvergence((current) => ({ ...current, lossTolerancePercent: value }))} />
-        {(config.boundary ?? "hard") === "pml" && <label className="checkbox-field"><input type="checkbox" checked={convergence.includePmlSensitivity} onChange={(event) => setConvergence((current) => ({ ...current, includePmlSensitivity: event.target.checked }))} /><span>Test PML sensitivity</span></label>}
-        <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "convergence" ? "Verifying…" : "Run convergence"}<span aria-hidden="true">→</span></button>
+        {(config.boundary ?? "hard") === "pml" && <CarbonCheckboxField label="Test PML sensitivity" checked={convergence.includePmlSensitivity} onChange={(checked) => setConvergence((current) => ({ ...current, includePmlSensitivity: checked }))} />}
+        <Button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "convergence" ? "Verifying…" : "Run convergence"}</Button>
       </form>
       {convergenceResult && <>
         <div className="analysis-metrics">
@@ -185,9 +181,9 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
             <AnalysisMetric label="PML loss status" value={convergenceResult.pmlSensitivity.stable ? "Pass" : "Review"} />
             <AnalysisMetric label="Failed PML checks" value={String(convergenceResult.pmlSensitivity.failedChecks)} />
           </div>
-          <div className="comparison-scroll"><table className="comparison-table"><caption>One-at-a-time boundary and PML robustness checks on the finest mesh</caption><thead><tr><th>Variation</th><th>Grid</th><th>Padding</th><th>PML thickness</th><th>Strength</th><th>n<sub>eff</sub></th><th>Loss</th><th>Δloss</th><th>Overlap</th></tr></thead><tbody>{convergenceResult.pmlSensitivity.points.map((point) => <tr key={point.name}><th>{point.name}</th><td>{point.resolution}</td><td>{point.paddingUm.toFixed(3)} µm</td><td>{point.thicknessUm.toFixed(3)} µm</td><td>{point.strength.toFixed(2)}</td>{point.error ? <td colSpan={4} className="failed-check">{point.error}</td> : <><td>{point.effectiveIndex!.toFixed(7)}</td><td>{point.lossDbPerCm!.toPrecision(4)} dB/cm</td><td>{point.lossChangePercent!.toPrecision(3)}%</td><td>{(100 * point.overlap!).toFixed(2)}%</td></>}</tr>)}</tbody></table></div>
+          <CarbonTable title="One-at-a-time boundary and PML robustness checks on the finest mesh" headers={["Variation", "Grid", "Padding", "PML thickness", "Strength", "neff", "Loss", "Δloss", "Overlap"]} rows={convergenceResult.pmlSensitivity.points.map((point) => ({ id: point.name, cells: point.error ? [point.name, point.resolution, `${point.paddingUm.toFixed(3)} µm`, `${point.thicknessUm.toFixed(3)} µm`, point.strength.toFixed(2), { content: point.error, colSpan: 4, className: "failed-check" }] : [point.name, point.resolution, `${point.paddingUm.toFixed(3)} µm`, `${point.thicknessUm.toFixed(3)} µm`, point.strength.toFixed(2), point.effectiveIndex!.toFixed(7), `${point.lossDbPerCm!.toPrecision(4)} dB/cm`, `${point.lossChangePercent!.toPrecision(3)}%`, `${(100 * point.overlap!).toFixed(2)}%`] }))} />
         </>}
-        {convergenceResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
+        {convergenceResult.warnings.map((warning) => <InlineNotification lowContrast hideCloseButton kind="warning" title="Convergence warning" subtitle={warning} key={warning} />)}
       </>}
       <p className="limitation">GCI quantifies mesh discretization uncertainty in effective index. PML checks are sensitivity tests, not proof that the computed attenuation is a physical leakage rate.</p>
     </section>
@@ -203,7 +199,7 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
         <AnalysisNumber label="Core-index σ" unit="n" value={tolerance.coreIndexStdDev} min={0} max={1} step={0.0001} onChange={(value) => setTolerance((current) => ({ ...current, coreIndexStdDev: value }))} />
         <AnalysisNumber label="Samples" unit="runs" value={tolerance.samples} min={6} max={100} step={1} onChange={(value) => setTolerance((current) => ({ ...current, samples: value }))} />
         <AnalysisNumber label="Seed" unit="integer" value={tolerance.seed} min={0} max={2_147_483_647} step={1} onChange={(value) => setTolerance((current) => ({ ...current, seed: value }))} />
-        <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "tolerance" ? "Sampling…" : "Run tolerances"}<span aria-hidden="true">→</span></button>
+        <Button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "tolerance" ? "Sampling…" : "Run tolerances"}</Button>
       </form>
       {toleranceResult && <><div className="analysis-metrics"><AnalysisMetric label="Mean neff" value={toleranceResult.effectiveIndex.mean.toFixed(6)} /><AnalysisMetric label="neff σ" value={toleranceResult.effectiveIndex.standardDeviation.toExponential(3)} /><AnalysisMetric label="90% interval" value={`${toleranceResult.effectiveIndex.p05.toFixed(5)}–${toleranceResult.effectiveIndex.p95.toFixed(5)}`} /><AnalysisMetric label="Strongest correlation" value={toleranceResult.effectiveIndexSensitivity[0] ? `${toleranceResult.effectiveIndexSensitivity[0].parameter} (${toleranceResult.effectiveIndexSensitivity[0].correlation.toFixed(2)})` : "—"} /><AnalysisMetric label="Valid samples" value={`${toleranceResult.samples.length}/${toleranceResult.samples.length + toleranceResult.failedSamples}`} /></div><TolerancePlot result={toleranceResult} /></>}
     </section>
@@ -214,13 +210,13 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
         <form className="analysis-card" onSubmit={runGaussian}>
           <h3>Gaussian-beam overlap</h3><p>Approximate butt-coupling overlap with a linearly polarized Gaussian field.</p>
           <div className="analysis-controls compact"><AnalysisNumber label="1/e field radius" unit="µm" value={gaussian.waistUm} min={0.05} max={100} step={0.05} onChange={(value) => setGaussian((current) => ({ ...current, waistUm: value }))} /><AnalysisNumber label="x offset" unit="µm" value={gaussian.offsetXUm} min={-100} max={100} step={0.05} onChange={(value) => setGaussian((current) => ({ ...current, offsetXUm: value }))} /><AnalysisNumber label="y offset" unit="µm" value={gaussian.offsetYUm} min={-100} max={100} step={0.05} onChange={(value) => setGaussian((current) => ({ ...current, offsetYUm: value }))} /><AnalysisNumber label="Polarization" unit="deg" value={gaussian.polarizationAngleDeg} min={-180} max={180} step={1} onChange={(value) => setGaussian((current) => ({ ...current, polarizationAngleDeg: value }))} /></div>
-          <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "gaussian" ? "Calculating…" : "Calculate overlap"}<span aria-hidden="true">→</span></button>
+          <Button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "gaussian" ? "Calculating…" : "Calculate overlap"}</Button>
           {gaussianResult && <div className="inline-result"><strong>{(100 * gaussianResult.efficiency).toFixed(2)}%</strong><span>{gaussianResult.couplingLossDb.toFixed(2)} dB coupling loss</span></div>}
         </form>
         <form className="analysis-card" onSubmit={runCoupler}>
           <h3>Directional coupler</h3><p>Solve even and odd supermodes of two identical guides and derive the full-transfer length.</p>
-          <div className="analysis-controls compact"><AnalysisNumber label="Guide gap" unit="µm" value={coupler.gapUm} min={0.01} max={100} step={0.01} onChange={(value) => setCoupler((current) => ({ ...current, gapUm: value }))} /><label className="select-field">Polarization<select value={coupler.polarization} onChange={(event) => setCoupler((current) => ({ ...current, polarization: event.target.value as DirectionalCouplerSettings["polarization"] }))}><option value="quasi-TE">quasi-TE</option><option value="quasi-TM">quasi-TM</option></select></label></div>
-          <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "coupler" ? "Solving…" : "Solve supermodes"}<span aria-hidden="true">→</span></button>
+          <div className="analysis-controls compact"><AnalysisNumber label="Guide gap" unit="µm" value={coupler.gapUm} min={0.01} max={100} step={0.01} onChange={(value) => setCoupler((current) => ({ ...current, gapUm: value }))} /><CarbonSelectField label="Polarization" value={coupler.polarization} options={[{ value: "quasi-TE", label: "quasi-TE" }, { value: "quasi-TM", label: "quasi-TM" }]} onChange={(value) => setCoupler((current) => ({ ...current, polarization: value as DirectionalCouplerSettings["polarization"] }))} /></div>
+          <Button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "coupler" ? "Solving…" : "Solve supermodes"}</Button>
           {couplerResult && <div className="inline-result"><strong>{couplerResult.couplingLengthUm.toFixed(2)} µm</strong><span>Δneff = {couplerResult.indexSplitting.toExponential(3)}</span></div>}
         </form>
       </div>
@@ -231,33 +227,33 @@ export function AdvancedAnalyses({ config, result, selectedMode, presets }: Prop
       <div className="panel-heading"><div><h2 id="comparison-title">Cross-section comparison</h2></div></div>
       <p className="section-intro">Compare modal power overlap between the current guide and a target platform at the current wavelength. This estimates an abrupt interface, not an optimized taper.</p>
       <form className="analysis-controls" onSubmit={runComparison}>
-        <label className="select-field">Target preset<select value={targetPreset} onChange={(event) => setTargetPreset(event.target.value)}>{Object.keys(presets).map((name) => <option key={name}>{name}</option>)}</select></label>
+        <CarbonSelectField label="Target preset" value={targetPreset} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={setTargetPreset} />
         <AnalysisNumber label="Modes per guide" unit="modes" value={comparisonModes} min={1} max={4} step={1} onChange={setComparisonModes} />
-        <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "comparison" ? "Comparing…" : "Compare modes"}<span aria-hidden="true">→</span></button>
+        <Button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "comparison" ? "Comparing…" : "Compare modes"}</Button>
       </form>
-      {comparisonResult && <div className="comparison-scroll"><table className="comparison-table"><caption>Power overlap at {comparisonResult.wavelengthUm.toFixed(3)} µm</caption><thead><tr><th>Source \ Target</th>{comparisonResult.targetLabels.map((label, index) => <th key={`${label}-${index}`}>{label}</th>)}</tr></thead><tbody>{comparisonResult.sourceLabels.map((sourceLabel, row) => <tr key={`${sourceLabel}-${row}`}><th>{sourceLabel}</th>{comparisonResult.targetLabels.map((targetLabel, column) => <td key={`${targetLabel}-${column}`}><strong>{(100 * comparisonResult.powerOverlap[row][column]).toFixed(2)}%</strong><small>Δn = {comparisonResult.effectiveIndexMismatch[row][column].toExponential(2)}</small></td>)}</tr>)}</tbody></table></div>}
+      {comparisonResult && <CarbonTable title={`Power overlap at ${comparisonResult.wavelengthUm.toFixed(3)} µm`} headers={["Source / Target", ...comparisonResult.targetLabels]} rows={comparisonResult.sourceLabels.map((sourceLabel, row) => ({ id: `${sourceLabel}-${row}`, cells: [sourceLabel, ...comparisonResult.targetLabels.map((_, column) => <><strong>{(100 * comparisonResult.powerOverlap[row][column]).toFixed(2)}%</strong><small>Δn = {comparisonResult.effectiveIndexMismatch[row][column].toExponential(2)}</small></>)] }))} />}
     </section>
 
     <section className="sweep-section tabbed-section" hidden={analysisPane !== "robustness"} aria-labelledby="map-title">
       <div className="panel-heading"><div><h2 id="map-title">Mode map</h2></div></div>
       <p className="section-intro">Map guided-mode count and the selected effective index versus wavelength and one geometry parameter.</p>
       <form className="analysis-controls" onSubmit={runModeMap}>
-        <label className="select-field">Parameter<select value={modeMap.parameter} onChange={(event) => setModeMap((current) => ({ ...current, parameter: event.target.value as ModeMapParameter }))}><option value="widthUm">Core width</option><option value="heightUm">Core height</option>{geometry === "slot" && <option value="slotGapUm">Slot gap</option>}{geometry === "coupler" && <option value="couplerGapUm">Coupler gap</option>}</select></label>
+        <CarbonSelectField label="Parameter" value={modeMap.parameter} options={[{ value: "widthUm", label: "Core width" }, { value: "heightUm", label: "Core height" }, ...(geometry === "slot" ? [{ value: "slotGapUm", label: "Slot gap" }] : []), ...(geometry === "coupler" ? [{ value: "couplerGapUm", label: "Coupler gap" }] : [])]} onChange={(value) => setModeMap((current) => ({ ...current, parameter: value as ModeMapParameter }))} />
         <AnalysisNumber label="Geometry start" unit="µm" value={modeMap.startValueUm} min={0.01} max={1_000} step={0.01} onChange={(value) => setModeMap((current) => ({ ...current, startValueUm: value }))} /><AnalysisNumber label="Geometry stop" unit="µm" value={modeMap.stopValueUm} min={0.01} max={1_000} step={0.01} onChange={(value) => setModeMap((current) => ({ ...current, stopValueUm: value }))} /><AnalysisNumber label="Geometry points" unit="points" value={modeMap.geometryPoints} min={3} max={15} step={1} onChange={(value) => setModeMap((current) => ({ ...current, geometryPoints: value }))} />
         <AnalysisNumber label="λ start" unit="µm" value={modeMap.startWavelengthUm} min={0.2} max={1_000} step={0.01} onChange={(value) => setModeMap((current) => ({ ...current, startWavelengthUm: value }))} /><AnalysisNumber label="λ stop" unit="µm" value={modeMap.stopWavelengthUm} min={0.2} max={1_000} step={0.01} onChange={(value) => setModeMap((current) => ({ ...current, stopWavelengthUm: value }))} /><AnalysisNumber label="λ points" unit="points" value={modeMap.wavelengthPoints} min={3} max={15} step={1} onChange={(value) => setModeMap((current) => ({ ...current, wavelengthPoints: value }))} /><AnalysisNumber label="Maximum modes" unit="modes" value={modeMap.maximumModes} min={1} max={8} step={1} onChange={(value) => setModeMap((current) => ({ ...current, maximumModes: value }))} /><AnalysisNumber label="Map resolution" unit="cells" value={modeMap.gridResolution} min={24} max={64} step={1} onChange={(value) => setModeMap((current) => ({ ...current, gridResolution: value }))} />
-        <button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "map" ? "Mapping…" : "Calculate map"}<span aria-hidden="true">→</span></button>
+        <Button className="solve-button" type="submit" disabled={Boolean(active) || !result}>{active === "map" ? "Mapping…" : "Calculate map"}</Button>
       </form>
-      {modeMapResult && <><ModeMapPlot result={modeMapResult} />{modeMapResult.warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}</>}
+      {modeMapResult && <><ModeMapPlot result={modeMapResult} />{modeMapResult.warnings.map((warning) => <InlineNotification lowContrast hideCloseButton kind="warning" title="Mode-map warning" subtitle={warning} key={warning} />)}</>}
     </section>
-    {error && <p className="error analysis-error" role="alert">{error}</p>}
+    {error && <InlineNotification lowContrast hideCloseButton kind="error" title="Analysis failed" subtitle={error} />}
   </>;
 }
 
 function AnalysisNumber({ label, unit, value, min, max, step, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; onChange: (value: number) => void }) {
-  return <label className="number-field"><span>{label}</span><div><input type="number" value={Number.isFinite(value) ? value : ""} min={min} max={max} step={step} aria-invalid={!Number.isFinite(value) || value < min || value > max} onChange={(event) => onChange(event.target.valueAsNumber)} /><small>{unit}</small></div></label>;
+  return <CarbonNumberField label={label} unit={unit} value={value} min={min} max={max} step={step} onChange={onChange} />;
 }
 
-function AnalysisMetric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
+function AnalysisMetric({ label, value }: { label: string; value: string }) { return <Tile><span>{label}</span><strong>{value}</strong></Tile>; }
 function formatOptional(value: number | undefined, digits: number): string { return value === undefined ? "—" : value.toFixed(digits); }
 function formatPercent(value: number | undefined): string { return value === undefined ? "—" : `${value.toPrecision(3)}%`; }
 function formatCondition(value: number): string { return Number.isFinite(value) ? value.toPrecision(5) : "unresolved"; }

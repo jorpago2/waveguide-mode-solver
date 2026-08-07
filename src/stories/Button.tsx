@@ -1,4 +1,4 @@
-import './button.css';
+import { Button as CarbonButton } from '@carbon/react';
 
 export interface ButtonProps {
   /** Is this the principal call to action on the page? */
@@ -21,15 +21,15 @@ export const Button = ({
   label,
   ...props
 }: ButtonProps) => {
-  const mode = primary ? 'storybook-button--primary' : 'storybook-button--secondary';
   return (
-    <button
+    <CarbonButton
       type="button"
-      className={['storybook-button', `storybook-button--${size}`, mode].join(' ')}
+      kind={primary ? 'primary' : 'secondary'}
+      size={size === 'small' ? 'sm' : size === 'large' ? 'lg' : 'md'}
       style={{ backgroundColor }}
       {...props}
     >
       {label}
-    </button>
+    </CarbonButton>
   );
 };

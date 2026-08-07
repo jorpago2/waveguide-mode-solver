@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { CarbonCheckboxField, CarbonSwitcher } from "./CarbonControls";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
 import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
@@ -105,12 +106,10 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
 
   return <>
     <div className="field-toolbar geometry-toolbar" aria-label="Material quantity and tensor component">
-      <span>Quantity</span>
-      {quantities.map((option) => <button type="button" className={quantity === option.id ? "active" : ""} aria-pressed={quantity === option.id} key={option.id} onClick={() => setQuantity(option.id)}>{option.label}</button>)}
-      <span>Component</span>
-      {(["x", "y", "z"] as const).map((component) => <button type="button" className={axis === component ? "active" : ""} aria-pressed={axis === component} aria-label={`${component}${component} component`} key={component} onClick={() => setAxis(component)}>{component}{component}</button>)}
-      <label className="checkbox-field"><input type="checkbox" checked={showMesh} onChange={(event) => setShowMesh(event.target.checked)} />Show mesh</label>
-      <label className="checkbox-field"><input type="checkbox" checked={showMode} disabled={!mode} onChange={(event) => setShowMode(event.target.checked)} />Mode |E|²</label>
+      <CarbonSwitcher label="Material quantity" value={quantity} options={quantities.map((option) => ({ value: option.id, label: option.label }))} onChange={(value) => setQuantity(value as MaterialQuantity)} />
+      <CarbonSwitcher label="Tensor component" value={axis} options={(["x", "y", "z"] as const).map((component) => ({ value: component, label: `${component}${component}` }))} onChange={(value) => setAxis(value as PrincipalAxis)} />
+      <CarbonCheckboxField label="Show mesh" checked={showMesh} onChange={setShowMesh} />
+      <CarbonCheckboxField label="Mode |E|²" checked={showMode} disabled={!mode} onChange={setShowMode} />
       <small>{result.nx} × {result.ny} cells</small>
     </div>
     <div ref={plotRef} className="geometry-plot" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} />

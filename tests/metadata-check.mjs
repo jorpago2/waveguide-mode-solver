@@ -28,5 +28,5 @@ test("reveals results and reports solver state after an explicit solve", async (
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /setResult\(next\);[\s\S]*setSolverPane\("results"\);/);
   for (const label of ["Not solved", "Solving", "Solved", "Stale"]) assert.match(app, new RegExp(label));
-  assert.match(app, /<output className=\{`solve-state/);
+  assert.match(app, /<Tag type=\{solveState/);
 });
