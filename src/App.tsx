@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
   Accordion,
   AccordionItem,
@@ -9,20 +9,20 @@ import {
   Grid,
   Header,
   HeaderMenuItem,
-  HeaderMenuButton,
   HeaderName,
   HeaderNavigation,
   InlineLoading,
   InlineNotification,
   Link,
   Modal,
-  SideNav,
-  SideNavItems,
-  SideNavLink,
   SkipToContent,
+  Tab,
+  TabList,
+  Tabs,
   Tag,
   TextInput,
   Tile,
+  preview__IconIndicator as IconIndicator,
 } from "@carbon/react";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
@@ -160,7 +160,7 @@ const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "
 type AppView = "solver" | "materials" | "sweeps" | "analysis" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
 const appViews: Array<{ id: AppView; label: string; hint: string }> = [
-  { id: "solver", label: "Mode Solver", hint: "Build & inspect" },
+  { id: "solver", label: "Configure", hint: "Geometry, materials and solver" },
   { id: "materials", label: "Materials", hint: "Inspect optical data" },
   { id: "sweeps", label: "Sweeps", hint: "Track parameters" },
   { id: "analysis", label: "Analysis", hint: "Design studies" },
@@ -174,7 +174,6 @@ function viewFromHash(): AppView {
 
 export function App() {
   const [activeView, setActiveView] = useState<AppView>(() => typeof window === "undefined" ? "solver" : viewFromHash());
-  const [solverPane, setSolverPane] = useState<"configure" | "results">("configure");
   const [sweepPane, setSweepPane] = useState<"wavelength" | "geometry" | "bloch">("wavelength");
   const [configurationTab, setConfigurationTab] = useState<ConfigurationTab>("geometry");
   const [presetName, setPresetName] = useState("SiN · channel");
@@ -200,6 +199,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const configureTriggerRef = useRef<HTMLButtonElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
   const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
@@ -237,7 +237,7 @@ export function App() {
       resizeFrame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
     });
     return () => { window.cancelAnimationFrame(frame); window.cancelAnimationFrame(resizeFrame); };
-  }, [activeView, solverPane, sweepPane]);
+  }, [activeView, navigationOpen, sweepPane]);
 
   useEffect(() => {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
@@ -247,7 +247,10 @@ export function App() {
         if (!busy) document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit();
       } else if (event.key === "Escape") {
         setHelpOpen(false);
-        if (busy) cancelSolverWorker();
+        if (navigationOpen) {
+          setNavigationOpen(false);
+          window.requestAnimationFrame(() => configureTriggerRef.current?.focus());
+        } else if (busy) cancelSolverWorker();
       } else if (event.key === "?" && !isEditableTarget(event.target)) {
         event.preventDefault();
         setHelpOpen((open) => !open);
@@ -255,13 +258,22 @@ export function App() {
     };
     document.addEventListener("keydown", handleShortcut);
     return () => document.removeEventListener("keydown", handleShortcut);
-  }, [busy]);
+  }, [activeView, busy, navigationOpen]);
 
   function navigateToView(view: AppView) {
     window.history.pushState(null, "", `#${view}`);
-    setActiveView(view);
-    setNavigationOpen(false);
+    if (view === "solver" && activeView === "solver") setNavigationOpen((open) => !open);
+    else {
+      setActiveView(view);
+      setNavigationOpen(view === "solver");
+      window.requestAnimationFrame(() => document.getElementById(view)?.focus());
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function closeConfiguration() {
+    setNavigationOpen(false);
+    window.requestAnimationFrame(() => configureTriggerRef.current?.focus());
   }
 
   function updateNumber(key: keyof WaveguideConfig, value: number) {
@@ -378,7 +390,7 @@ export function App() {
         setSweepResult(undefined);
         setGeometrySweepResult(undefined);
         setBlochSweepResult(undefined);
-        setSolverPane("results");
+        closeConfiguration();
         setGeometrySweep((current) => (
           (current.parameter === "slotGapUm" && (draft.geometry ?? "channel") !== "slot")
           || (current.parameter === "couplerGapUm" && (draft.geometry ?? "channel") !== "coupler")
@@ -533,6 +545,7 @@ export function App() {
       const errors = validateWaveguide(project.config);
       if (errors.length > 0) throw new Error(errors.join(" "));
       setDraft(project.config);
+      setPresetName("Imported configuration");
       setError("");
       setMessage("Configuration imported. Solve to regenerate trusted results.");
     } catch (caught) {
@@ -542,22 +555,21 @@ export function App() {
 
   return <>
     <Header aria-label="Waveguide Mode Solver" className="site-header">
-      <SkipToContent href="#mode-solver-workspace" />
-      <HeaderMenuButton aria-label={navigationOpen ? "Close navigation" : "Open navigation"} isActive={navigationOpen} onClick={() => setNavigationOpen((open) => !open)} />
-      <HeaderName href="./" prefix="">Waveguide Mode Solver · v{packageJson.version}</HeaderName>
-      <HeaderNavigation aria-label="Solver sections">
-        {appViews.map((view) => <HeaderMenuItem href={`#${view.id}`} isActive={activeView === view.id} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}>{view.label}</HeaderMenuItem>)}
+      <SkipToContent href="#scientific-workspace" />
+      <HeaderName className="product-name" href="./" prefix="Photonics">Mode Solver · v{packageJson.version}</HeaderName>
+      <div className="header-document-context" title={presetName}>
+        <span>{presetName}</span>
+        <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
+      </div>
+      <div className="header-project-actions">
+        <Button type="button" kind="ghost" size="sm" onClick={exportProject}>Export</Button>
+        <FileUploaderButton id="import-project" accept={[".json", "application/json"]} buttonKind="ghost" size="sm" labelText="Import" onChange={importProject} />
+        <Button type="button" kind="ghost" size="sm" onClick={() => setHelpOpen(true)}>Help</Button>
+      </div>
+      <HeaderNavigation aria-label="Global actions">
         <HeaderMenuItem href="https://jorpago2.github.io/">All tools</HeaderMenuItem>
-        <HeaderMenuItem href="#help" onClick={(event) => { event.preventDefault(); setHelpOpen(true); }}>Help</HeaderMenuItem>
       </HeaderNavigation>
     </Header>
-    <SideNav aria-label="Solver sections" expanded={navigationOpen} isPersistent={false} onOverlayClick={() => setNavigationOpen(false)}>
-      <SideNavItems>
-        {appViews.map((view) => <SideNavLink href={`#${view.id}`} isActive={activeView === view.id} key={view.id} onClick={(event) => { event.preventDefault(); navigateToView(view.id); }}>{view.label}</SideNavLink>)}
-        <SideNavLink href="https://jorpago2.github.io/">All tools</SideNavLink>
-        <Button kind="ghost" size="sm" onClick={() => { setNavigationOpen(false); setHelpOpen(true); }}>Help</Button>
-      </SideNavItems>
-    </SideNav>
     <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
       <p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p>
       <dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl>
@@ -567,17 +579,33 @@ export function App() {
     <Column sm={4} md={8} lg={16} className="app-shell-column">
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
 
-    <Content>
-      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title">
+    <Content id="scientific-workspace" className="scientific-content" tabIndex={-1}>
+      <Grid fullWidth condensed className="workbench-grid">
+        <Column sm={4} md={1} lg={1} className="tool-rail-column">
+          <nav className="tool-rail" aria-label="Scientific workflow">
+            {appViews.map((view) => <Button
+              ref={view.id === "solver" ? configureTriggerRef : undefined}
+              type="button"
+              kind={activeView === view.id ? "primary" : "ghost"}
+              size="sm"
+              aria-current={activeView === view.id ? "page" : undefined}
+              aria-expanded={view.id === "solver" ? activeView === "solver" && navigationOpen : undefined}
+              aria-controls={view.id === "solver" ? "configuration-panel" : view.id}
+              key={view.id}
+              onClick={() => navigateToView(view.id)}
+            >{view.label}</Button>)}
+          </nav>
+        </Column>
+        <Column sm={4} md={7} lg={15} className="workbench-main">
+      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title" tabIndex={-1}>
       <header className="workspace-header">
         <div><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
-        <div className="workspace-actions"><div className="workspace-context" aria-label="Current model"><Tag type={solveState === "solved" ? "green" : solveState === "stale" ? "warm-gray" : solveState === "solving" ? "teal" : "gray"}>{solveStateLabel}</Tag><Tag type="outline">{config.geometry ?? "channel"}</Tag><Tag type="outline">{config.wavelengthUm.toFixed(3)} µm</Tag>{result && <Tag type="outline">{result.nx} × {result.ny} grid</Tag>}</div><div className="project-actions"><Button type="button" kind="tertiary" size="sm" onClick={exportProject}>Export project</Button><FileUploaderButton id="import-project" accept={[".json", "application/json"]} buttonKind="tertiary" size="sm" labelText="Import configuration" onChange={importProject} /></div></div>
+        <div className="workspace-context" aria-label="Current model"><Tag type="outline">{config.geometry ?? "channel"}</Tag><Tag type="outline">{config.wavelengthUm.toFixed(3)} µm</Tag>{result && <Tag type="outline">{result.nx} × {result.ny} grid</Tag>}</div>
       </header>
 
-      <div className="mobile-pane-tabs"><CarbonSwitcher label="Mode solver workspace" value={solverPane} options={[{ value: "configure", label: "Configure" }, { value: "results", label: "Results" }]} onChange={(value) => setSolverPane(value as "configure" | "results")} /></div>
-      <div id="mode-solver-workspace" className="workspace" data-mobile-pane={solverPane} tabIndex={-1}>
-        <aside className="control-panel" id="configuration-panel">
-          <div className="panel-heading"><div><h2>Configuration</h2></div><span className="method-chip">FDM</span></div>
+      <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
+        <aside className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
+          <div className="panel-heading"><div><h2>Configuration</h2><span className="method-chip">FDM</span></div><Button type="button" kind="ghost" size="sm" onClick={closeConfiguration}>Close</Button></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
@@ -734,9 +762,13 @@ export function App() {
         <section className="results-panel" id="results-panel" aria-labelledby="results-title">
           <div className="panel-heading results-heading"><div><h2 id="results-title">Results explorer</h2></div><Button kind="tertiary" size="sm" type="button" onClick={exportField} disabled={!mode}>Export CSV</Button></div>
           {result ? <>
-            <div className="field-toolbar result-view-tabs"><CarbonSwitcher label="Result view" value={resultView} options={[{ value: "mode", label: "Mode fields" }, { value: "geometry", label: "Structure & mesh" }]} onChange={(value) => setResultView(value as "mode" | "geometry")} /></div>
+            <Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
+              <TabList contained fullWidth aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
+            </Tabs>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
-            <div className="mode-tabs"><CarbonSwitcher label="Guided modes" value={String(selectedMode)} options={result.modes.map((item, index) => ({ value: String(index), label: `${item.label} · ${item.polarization} · neff ${item.effectiveIndex.toFixed(5)}${item.nearCutoff ? " · near cutoff" : ""}` }))} onChange={(value) => setSelectedMode(Number(value))} /></div>
+            <Tabs selectedIndex={selectedMode} onChange={({ selectedIndex }) => setSelectedMode(selectedIndex)}>
+              <TabList className="mode-tabs" aria-label="Guided modes">{result.modes.map((item) => <Tab key={item.id}>{item.label} · {item.polarization} · n<sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</Tab>)}</TabList>
+            </Tabs>
             <div className="metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
@@ -768,12 +800,12 @@ export function App() {
       </div>
       </section>
 
-      <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title">
+      <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title" tabIndex={-1}>
         <ViewHeading title="Material Explorer" id="materials-title">Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
         {activeView === "materials" && <Suspense fallback={<VisualizationFallback />}><MaterialExplorer /></Suspense>}
       </section>
 
-      <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title">
+      <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
       <ViewHeading title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
       <div className="section-tabs"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
@@ -816,16 +848,16 @@ export function App() {
       </section>
       </section>
 
-      <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title">
+      <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title" tabIndex={-1}>
       <ViewHeading title="Analysis" id="analysis-title">Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
       {activeView === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
 
-      <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title">
+      <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title" tabIndex={-1}>
       <ViewHeading title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
       <section className={`validation-section${result ? "" : " validation-section-single"}`}>
         <div className="method-card"><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b><var>Ψ</var></b><span>=</span><var>β</var><b><var>Ψ</var></b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
-        {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><Tag type={check.pass ? "green" : "warm-gray"}>{check.pass ? "Pass" : "Review"}</Tag><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
+        {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><IconIndicator kind={check.pass ? "succeeded" : "caution-minor"} label={check.pass ? "Pass" : "Review"} /><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
       </section>
       {mode && result && <section className="sweep-section validation-diagnostics">
         <div className="panel-heading"><div><h2>Complex-mode diagnostics</h2></div><Link href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</Link></div>
@@ -843,11 +875,18 @@ export function App() {
         </div>
         {mode.materialAbsorption.length > 0 && <div className="comparison-scroll"><CarbonTable title="Material absorption decomposition" headers={["Region", "Absorbed power per length", "Fraction"]} rows={mode.materialAbsorption.map((entry) => ({ id: entry.region, cells: [entry.region, `${entry.powerPerM.toExponential(4)} W/m`, `${(100 * entry.fraction).toFixed(2)}%`] }))} /></div>}
         <p className="limitation">Material absorption is obtained from the local Im(ε) field integral. Stored energy uses d(ω Re ε)/dω and is exact for lossless dispersion, a narrow-band approximation for weak loss, and diagnostic only for strongly absorptive media. PML classification is participation-based; establish leaky-mode loss with boundary and mesh convergence.</p>
-        <div className="comparison-scroll"><CarbonTable className="candidate-table" title={<>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</>} headers={["Candidate", "Re(neff)", "Im(neff)", "Residual", "Status", "Reason"]} rows={result.candidates.map((candidate, index) => ({ id: `${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`, cells: [candidate.label ?? `Ritz ${index + 1}`, candidate.effectiveIndex.toFixed(7), candidate.effectiveIndexImaginary.toExponential(3), candidate.residual.toExponential(2), <Tag type={candidate.status === "selected" || candidate.status === "available" ? "green" : "warm-gray"}>{candidate.status}</Tag>, candidate.reason] }))} /></div>
+        <div className="comparison-scroll"><CarbonTable className="candidate-table" title={<>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</>} headers={["Candidate", "Re(neff)", "Im(neff)", "Residual", "Status", "Reason"]} rows={result.candidates.map((candidate, index) => ({ id: `${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`, cells: [candidate.label ?? `Ritz ${index + 1}`, candidate.effectiveIndex.toFixed(7), candidate.effectiveIndexImaginary.toExponential(3), candidate.residual.toExponential(2), <IconIndicator kind={candidate.status === "selected" || candidate.status === "available" ? "succeeded" : "incomplete"} label={candidate.status} />, candidate.reason] }))} /></div>
       </section>}
       </section>
+        </Column>
+      </Grid>
     </Content>
-    <footer><span>Waveguide Mode Solver</span><span>Built for photonics education · Check mesh, boundary and sweep convergence before design use.</span></footer>
+    <footer className="status-strip" aria-label="Scientific status">
+      <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
+      <span>{config.geometry ?? "channel"}</span>
+      <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
+      {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{validation.filter((check) => !check.pass).length} validation issue(s)</span></>}
+    </footer>
     </Column>
   </Grid>
   </>;
