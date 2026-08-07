@@ -73,14 +73,14 @@ export function MaterialExplorer() {
         <div><dt>k</dt><dd>{current.k === undefined ? "not modelled" : format(current.k)}</dd></div>
         <div><dt>ε</dt><dd>{format(current.epsilonReal)}{current.epsilonImaginary === undefined ? "" : ` + ${format(current.epsilonImaginary)}i`}</dd></div>
       </dl>
-      <Tile className="material-model-note">
-        <strong>{definition.formula}</strong>
-        <span>Validity: {definition.minimumWavelengthUm}–{definition.maximumWavelengthUm} µm</span>
-        <span>{definition.lossModel ? `${definition.lossModel}: ${definition.lossRanges?.map(([minimum, maximum]) => `${minimum}–${maximum} µm`).join(", ")}` : "No built-in extinction model; use measured n,k data for loss."}</span>
-        <span className="material-source-links">{definition.sourceUrl && <Link href={definition.sourceUrl} target="_blank" rel="noreferrer">{definition.sourceLabel ?? "Primary source"} ↗</Link>}{definition.lossSources?.map((source) => <Link href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.label} ↗</Link>)}</span>
-      </Tile>
     </aside>
     <div ref={plotRef} className="material-plot" aria-label="Material refractive index, extinction, permittivity and dispersion plots" />
+    <Tile className="material-model-note">
+      <strong>{definition.formula}</strong>
+      <span>Validity: {definition.minimumWavelengthUm}–{definition.maximumWavelengthUm} µm</span>
+      <span>{definition.lossModel ? `${definition.lossModel}: ${definition.lossRanges?.map(([minimum, maximum]) => `${minimum}–${maximum} µm`).join(", ")}` : "No built-in extinction model; use measured n,k data for loss."}</span>
+      <span className="material-source-links">{definition.sourceUrl && <Link href={definition.sourceUrl} target="_blank" rel="noreferrer">{definition.sourceLabel ?? "Primary source"} ↗</Link>}{definition.lossSources?.map((source) => <Link href={source.url} target="_blank" rel="noreferrer" key={source.url}>{source.label} ↗</Link>)}</span>
+    </Tile>
   </section>;
 }
 

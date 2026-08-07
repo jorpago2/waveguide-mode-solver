@@ -19,7 +19,6 @@ import {
   Tab,
   TabList,
   Tabs,
-  Tag,
   TextInput,
   Tile,
   preview__IconIndicator as IconIndicator,
@@ -215,6 +214,7 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
+  const configurationPanelRef = useRef<HTMLElement>(null);
   const projectImportRef = useRef<HTMLInputElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
@@ -254,6 +254,10 @@ export function App() {
     });
     return () => { window.cancelAnimationFrame(frame); window.cancelAnimationFrame(resizeFrame); };
   }, [activeView, navigationOpen, sweepPane]);
+
+  useEffect(() => {
+    if (navigationOpen) configurationPanelRef.current?.scrollTo({ top: 0 });
+  }, [configurationTab, navigationOpen]);
 
   useEffect(() => {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
@@ -617,20 +621,15 @@ export function App() {
           </nav>
         </Column>
         <Column sm={4} md={7} lg={15} className="workbench-main">
-      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-labelledby="page-title" tabIndex={-1}>
-      <header className="workspace-header">
-        <div><h1 id="page-title">Mode solver</h1><p>Configure the cross-section and inspect the solved electromagnetic modes.</p></div>
-        <div className="workspace-context" aria-label="Current model"><Tag type="outline">{config.geometry ?? "channel"}</Tag><Tag type="outline">{config.wavelengthUm.toFixed(3)} µm</Tag>{result && <Tag type="outline">{result.nx} × {result.ny} grid</Tag>}</div>
-      </header>
-
+      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
-        <aside className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
+        <aside ref={configurationPanelRef} className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
           <div className="panel-heading"><div><h2>Configuration</h2><span className="method-chip">FDM</span></div><IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
-              <div className="configuration-heading"><h3>Cross-section</h3><p>Define the physical structure and propagation path.</p></div>
+              <div className="configuration-heading"><h3>Cross-section</h3></div>
               <CarbonSelectField id="geometry" label="Geometry" value={draft.geometry ?? "channel"} options={[{ value: "channel", label: "Channel" }, { value: "rib", label: "Rib" }, { value: "slot", label: "Slot" }, { value: "coupler", label: "Two-guide coupler" }, { value: "multilayer", label: "Multilayer ridge" }, { value: "polygon", label: "Polygon regions" }]} onChange={(value) => setDraft((current) => {
                 const geometry = value as GeometryType;
                 return geometry === "polygon" ? { ...current, geometry, stackLayers: [], symmetryX: "none", symmetryY: "none", polygonRegions: current.polygonRegions?.length ? current.polygonRegions : [{
@@ -693,7 +692,7 @@ export function App() {
             </section>
 
             <section id="configuration-materials" className="configuration-section" role="tabpanel" hidden={configurationTab !== "materials"}>
-              <div className="configuration-heading"><h3>Optical materials</h3><p>Select models and edit custom tensor properties.</p></div>
+              <div className="configuration-heading"><h3>Optical materials</h3></div>
               <div className="material-selectors">
                 {(draft.geometry ?? "channel") !== "polygon" && <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />}
                 <MaterialSelect label="Cladding material" value={draft.claddingMaterial ?? "custom"} onChange={(value) => updateMaterial("claddingMaterial", "claddingIndex", value)} />
@@ -738,7 +737,7 @@ export function App() {
             </section>
 
             <section id="configuration-solver" className="configuration-section" role="tabpanel" hidden={configurationTab !== "solver"}>
-              <div className="configuration-heading"><h3>Numerical setup</h3><p>Control the mode search, mesh and outer boundary.</p></div>
+              <div className="configuration-heading"><h3>Numerical setup</h3></div>
               <div className="form-grid">
                 <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
                 <NumberField label="Modes" unit="modes" value={draft.modeCount} min={1} max={PARAMETER_MAXIMUMS.modeCount} step={1} onChange={(v) => updateNumber("modeCount", v)} />
@@ -821,12 +820,12 @@ export function App() {
       </section>
 
       <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title" tabIndex={-1}>
-        <ViewHeading title="Material Explorer" id="materials-title" icon={<Chemistry size={24} aria-hidden={true} />}>Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
+        <ViewHeading title="Material Explorer" id="materials-title" icon={<Chemistry size={20} aria-hidden={true} />} />
         {activeView === "materials" && <Suspense fallback={<VisualizationFallback />}><MaterialExplorer /></Suspense>}
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
-      <ViewHeading title="Sweeps" id="sweeps-title" icon={<ChartLine size={24} aria-hidden={true} />}>Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
+      <ViewHeading title="Sweeps" id="sweeps-title" icon={<ChartLine size={20} aria-hidden={true} />} />
       <div className="section-tabs section-tabs-scrollable"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
@@ -872,12 +871,12 @@ export function App() {
       </section>
 
       <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title" tabIndex={-1}>
-      <ViewHeading title="Analysis" id="analysis-title" icon={<Analytics size={24} aria-hidden={true} />}>Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
+      <ViewHeading title="Analysis" id="analysis-title" icon={<Analytics size={20} aria-hidden={true} />} />
       {activeView === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
 
       <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title" tabIndex={-1}>
-      <ViewHeading title="Validation" id="validation-title" icon={<CheckmarkOutline size={24} aria-hidden={true} />}>Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
+      <ViewHeading title="Validation" id="validation-title" icon={<CheckmarkOutline size={20} aria-hidden={true} />} />
       <section className={`validation-section${result ? "" : " validation-section-single"}`}>
         <div className="method-card"><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b><var>Ψ</var></b><span>=</span><var>β</var><b><var>Ψ</var></b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
         {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><IconIndicator kind={check.pass ? "succeeded" : "caution-minor"} label={check.pass ? "Pass" : "Review"} /><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
@@ -915,8 +914,8 @@ export function App() {
   </>;
 }
 
-function ViewHeading({ title, id, icon, children }: { title: string; id: string; icon: ReactNode; children: ReactNode }) {
-  return <header className="view-heading"><div className="view-title">{icon}<h1 id={id}>{title}</h1></div><p>{children}</p></header>;
+function ViewHeading({ title, id, icon }: { title: string; id: string; icon: ReactNode }) {
+  return <header className="view-heading"><div className="view-title">{icon}<h1 id={id}>{title}</h1></div></header>;
 }
 
 function VisualizationFallback() {

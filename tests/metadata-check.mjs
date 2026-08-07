@@ -30,3 +30,10 @@ test("reveals results and reports solver state after an explicit solve", async (
   for (const label of ["Not solved", "Solving", "Solved", "Stale"]) assert.match(app, new RegExp(label));
   assert.match(app, /<IconIndicator kind=\{solveState/);
 });
+
+test("keeps the scientific result ahead of introductory chrome", async () => {
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /className="workspace-header"/);
+  assert.match(app, /id="solver"[^>]+aria-label="Mode solver"/);
+  assert.doesNotMatch(app, /view-heading"><div className="view-title">\{icon\}<h1 id=\{id\}>\{title\}<\/h1><\/div><p>/);
+});
