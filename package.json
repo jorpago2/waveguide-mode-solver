@@ -13,7 +13,9 @@
     "build": "pnpm build:rust-wasm && tsc --noEmit && vite build && node scripts/check-initial-bundle.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "pnpm build:rust-wasm && vitest run && node --test tests/metadata-check.mjs"
+    "test": "pnpm build:rust-wasm && vitest run && node --test tests/metadata-check.mjs",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@carbon/react": "1.113.0",
@@ -32,6 +34,8 @@
     "sass": "1.102.0",
     "typescript": "6.0.2",
     "vite": "8.2.0",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "storybook": "^10.5.7",
+    "@storybook/react-vite": "^10.5.7"
   }
 }
