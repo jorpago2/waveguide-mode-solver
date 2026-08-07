@@ -60,24 +60,24 @@
 /* Carbon g10 governs UI surfaces, type, focus and shape. */
 :root,
 .cds--g10 {
-  --color-paper: var(--cds-background);
-  --color-paper-2: var(--cds-layer-01);
-  --color-paper-3: var(--cds-layer-02);
-  --color-surface: var(--cds-layer);
-  --color-surface-raised: var(--cds-field-01);
-  --color-ink: var(--cds-text-primary);
-  --color-ink-2: var(--cds-text-secondary);
-  --color-muted: var(--cds-text-secondary);
-  --color-rule: var(--cds-border-subtle);
-  --color-rule-strong: var(--cds-border-strong);
-  --color-accent: var(--cds-link-primary);
-  --color-accent-strong: var(--cds-link-primary-hover);
-  --color-accent-soft: var(--cds-layer-accent-01);
-  --color-accent-ink: var(--cds-text-on-color);
-  --color-focus: var(--cds-focus);
-  --color-danger: var(--cds-support-error);
-  --color-warning: var(--cds-support-warning);
-  --color-success: var(--cds-support-success);
+  --color-paper: var(--cds-background, #f4f4f4);
+  --color-paper-2: var(--cds-layer-01, #ffffff);
+  --color-paper-3: var(--cds-layer-02, #f4f4f4);
+  --color-surface: var(--cds-layer, #ffffff);
+  --color-surface-raised: var(--cds-field-01, #ffffff);
+  --color-ink: var(--cds-text-primary, #161616);
+  --color-ink-2: var(--cds-text-secondary, #525252);
+  --color-muted: var(--cds-text-secondary, #525252);
+  --color-rule: var(--cds-border-subtle, #e0e0e0);
+  --color-rule-strong: var(--cds-border-strong, #8d8d8d);
+  --color-accent: var(--cds-link-primary, #0f62fe);
+  --color-accent-strong: var(--cds-link-primary-hover, #0043ce);
+  --color-accent-soft: var(--cds-layer-accent-01, #e0e0e0);
+  --color-accent-ink: var(--cds-text-on-color, #ffffff);
+  --color-focus: var(--cds-focus, #0f62fe);
+  --color-danger: var(--cds-support-error, #da1e28);
+  --color-warning: var(--cds-support-warning, #f1c21b);
+  --color-success: var(--cds-support-success, #24a148);
   --font-display: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
   --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;

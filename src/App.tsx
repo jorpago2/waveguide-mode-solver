@@ -8,9 +8,9 @@ import {
   FileUploaderButton,
   Grid,
   Header,
-  HeaderMenuItem,
+  HeaderGlobalBar,
   HeaderName,
-  HeaderNavigation,
+  IconButton,
   InlineLoading,
   InlineNotification,
   Link,
@@ -24,6 +24,21 @@ import {
   Tile,
   preview__IconIndicator as IconIndicator,
 } from "@carbon/react";
+import {
+  Analytics,
+  ChartLine,
+  CheckmarkOutline,
+  Chemistry,
+  Close,
+  DocumentExport,
+  DocumentImport,
+  Download,
+  Help,
+  Play,
+  Result,
+  SettingsAdjust,
+  StopOutline,
+} from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
@@ -159,13 +174,13 @@ const initialBlochSweep: BlochSweepSettings = { axis: "x", startPhaseRad: -Math.
 const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity", "poynting"];
 type AppView = "solver" | "materials" | "sweeps" | "analysis" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
-const appViews: Array<{ id: AppView; label: string; hint: string }> = [
-  { id: "solver", label: "Configure", hint: "Geometry, materials and solver" },
-  { id: "materials", label: "Materials", hint: "Inspect optical data" },
-  { id: "sweeps", label: "Sweeps", hint: "Track parameters" },
-  { id: "analysis", label: "Analysis", hint: "Design studies" },
-  { id: "validation", label: "Validation", hint: "Numerical confidence" },
-];
+const appViews = [
+  { id: "solver", label: "Configure", hint: "Geometry, materials and solver", icon: SettingsAdjust },
+  { id: "materials", label: "Materials", hint: "Inspect optical data", icon: Chemistry },
+  { id: "sweeps", label: "Sweeps", hint: "Track parameters", icon: ChartLine },
+  { id: "analysis", label: "Analysis", hint: "Design studies", icon: Analytics },
+  { id: "validation", label: "Validation", hint: "Numerical confidence", icon: CheckmarkOutline },
+] as const;
 
 function viewFromHash(): AppView {
   const hash = window.location.hash.slice(1);
@@ -200,6 +215,7 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
+  const projectImportRef = useRef<HTMLInputElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const resultIsStale = Boolean(result && draft !== config);
   const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
@@ -556,19 +572,20 @@ export function App() {
   return <>
     <Header aria-label="Waveguide Mode Solver" className="site-header">
       <SkipToContent href="#scientific-workspace" />
-      <HeaderName className="product-name" href="./" prefix="Photonics">Mode Solver · v{packageJson.version}</HeaderName>
-      <div className="header-document-context" title={presetName}>
+      <HeaderName className="product-name" href="./" prefix="">
+        <span className="product-mark" aria-hidden="true">W</span>
+        <span className="product-copy"><strong>Mode Solver</strong><small>Photonics · v{packageJson.version}</small></span>
+      </HeaderName>
+      <div className="header-document-context" title={presetName} aria-label="Current project status">
         <span>{presetName}</span>
         <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
       </div>
-      <div className="header-project-actions">
-        <Button type="button" kind="ghost" size="sm" onClick={exportProject}>Export</Button>
-        <FileUploaderButton id="import-project" accept={[".json", "application/json"]} buttonKind="ghost" size="sm" labelText="Import" onChange={importProject} />
-        <Button type="button" kind="ghost" size="sm" onClick={() => setHelpOpen(true)}>Help</Button>
-      </div>
-      <HeaderNavigation aria-label="Global actions">
-        <HeaderMenuItem href="https://jorpago2.github.io/">All tools</HeaderMenuItem>
-      </HeaderNavigation>
+      <HeaderGlobalBar className="header-project-actions" aria-label="Project actions">
+        <IconButton type="button" kind="ghost" size="sm" label="Export project" onClick={exportProject}><DocumentExport size={16} aria-hidden={true} /></IconButton>
+        <IconButton type="button" kind="ghost" size="sm" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={16} aria-hidden={true} /></IconButton>
+        <IconButton type="button" kind="ghost" size="sm" label="Help" onClick={() => setHelpOpen(true)}><Help size={16} aria-hidden={true} /></IconButton>
+        <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
+      </HeaderGlobalBar>
     </Header>
     <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
       <div className="help-workflow">
@@ -588,14 +605,15 @@ export function App() {
             {appViews.map((view) => <Button
               ref={view.id === "solver" ? configureTriggerRef : undefined}
               type="button"
-              kind={activeView === view.id ? "primary" : "ghost"}
+              kind="ghost"
               size="sm"
+              className={activeView === view.id ? "active" : ""}
               aria-current={activeView === view.id ? "page" : undefined}
               aria-expanded={view.id === "solver" ? activeView === "solver" && navigationOpen : undefined}
               aria-controls={view.id === "solver" ? "configuration-panel" : view.id}
               key={view.id}
               onClick={() => navigateToView(view.id)}
-            >{view.label}</Button>)}
+            ><view.icon size={18} aria-hidden={true} /><span>{view.label}</span></Button>)}
           </nav>
         </Column>
         <Column sm={4} md={7} lg={15} className="workbench-main">
@@ -607,7 +625,7 @@ export function App() {
 
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
         <aside className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
-          <div className="panel-heading"><div><h2>Configuration</h2><span className="method-chip">FDM</span></div><Button type="button" kind="ghost" size="sm" onClick={closeConfiguration}>Close</Button></div>
+          <div className="panel-heading"><div><h2>Configuration</h2><span className="method-chip">FDM</span></div><IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
@@ -756,13 +774,13 @@ export function App() {
               </AccordionItem></Accordion>
               <p className="configuration-note">Use the Analysis view for mesh and boundary convergence before interpreting quantitative results.</p>
             </section>
-            <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"}</Button>
+            <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"}</Button>
             <InlineNotification className="status" kind="info" title="Solver status" subtitle={message} hideCloseButton lowContrast />{error && <InlineNotification kind="error" title="Solver error" subtitle={error} hideCloseButton lowContrast />}
           </form>
         </aside>
 
         <section className="results-panel" id="results-panel" aria-labelledby="results-title">
-          <div className="panel-heading results-heading"><div><h2 id="results-title">Results explorer</h2></div><Button kind="tertiary" size="sm" type="button" onClick={exportField} disabled={!mode}>Export CSV</Button></div>
+          <div className="panel-heading results-heading"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2 id="results-title">Mode result</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} onClick={exportField} disabled={!mode}>Export CSV</Button></div>
           {result ? <>
             <Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
               <TabList contained fullWidth aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
@@ -771,7 +789,7 @@ export function App() {
             <Tabs selectedIndex={selectedMode} onChange={({ selectedIndex }) => setSelectedMode(selectedIndex)}>
               <TabList className="mode-tabs" aria-label="Guided modes">{result.modes.map((item) => <Tab key={item.id}>{item.label} · {item.polarization} · n<sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</Tab>)}</TabList>
             </Tabs>
-            <div className="metrics">
+            <div className="metrics primary-metrics">
               <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
               <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
               <Metric label="Mode class" value={mode.physicalClass} />
@@ -796,27 +814,27 @@ export function App() {
             <div className="field-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : (config.bendRadiusUm ?? 0) > 0 && field === "poynting" ? "Sθ" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
             <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Display mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
             {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
-            </> : <div className="empty-state">No guided mode was found. Inspect the structure and mesh, then increase the core size or index contrast.</div>}
-          </> : <div className="empty-state">The solved structure and modes will appear here.</div>}
+            </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span></div></div>}
+          </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span></div></div>}
         </section>
       </div>
       </section>
 
       <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title" tabIndex={-1}>
-        <ViewHeading title="Material Explorer" id="materials-title">Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
+        <ViewHeading title="Material Explorer" id="materials-title" icon={<Chemistry size={24} aria-hidden={true} />}>Inspect refractive index, extinction, complex permittivity and local material dispersion before solving.</ViewHeading>
         {activeView === "materials" && <Suspense fallback={<VisualizationFallback />}><MaterialExplorer /></Suspense>}
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
-      <ViewHeading title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
+      <ViewHeading title="Sweeps" id="sweeps-title" icon={<ChartLine size={24} aria-hidden={true} />}>Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
       <div className="section-tabs section-tabs-scrollable"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
-        <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
+        <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
           <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
           <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
-          <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
+          <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
         </form>
         <InlineNotification className="status" kind="info" title="Wavelength sweep" subtitle={sweepMessage} hideCloseButton lowContrast />
         {!sweepResult && <div className="tool-empty-state">The dispersion, group-index and loss traces will appear here after the sweep.</div>}
@@ -824,13 +842,13 @@ export function App() {
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
-        <div className="panel-heading"><div><h2>Geometry sweep</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</Button></div>
+        <div className="panel-heading"><div><h2>Geometry sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runGeometrySweep} aria-busy={busy}>
           <CarbonSelectField id="geometry-sweep-parameter" label="Parameter" value={geometrySweep.parameter} options={[{ value: "widthUm", label: "Core width" }, { value: "heightUm", label: "Core height" }, ...((config.geometry ?? "channel") === "slot" ? [{ value: "slotGapUm", label: "Slot gap" }] : []), ...((config.geometry ?? "channel") === "coupler" ? [{ value: "couplerGapUm", label: "Coupler gap" }] : []), ...((config.bendRadiusUm ?? 0) > 0 ? [{ value: "bendRadiusUm", label: "Bend radius" }] : [])]} onChange={(value) => setGeometrySweep((current) => value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: value as GeometrySweepParameter })} />
           <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
           <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
           <NumberField label="Samples" unit="points" value={geometrySweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={1} onChange={(value) => setGeometrySweep((current) => ({ ...current, points: value }))} />
-          <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
+          <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
         </form>
         <InlineNotification className="status" kind="info" title="Geometry sweep" subtitle={geometrySweepMessage} hideCloseButton lowContrast />
         {!geometrySweepResult && <div className="tool-empty-state">Tracked effective index and modal metrics will appear here after the sweep.</div>}
@@ -838,14 +856,14 @@ export function App() {
       </section>
 
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
-        <div className="panel-heading"><div><h2>Transverse Bloch dispersion</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</Button></div>
+        <div className="panel-heading"><div><h2>Transverse Bloch dispersion</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</Button></div>
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
         <form className="sweep-controls" onSubmit={runBlochSweep} aria-busy={busy}>
           <CarbonSelectField id="bloch-axis" label="Periodic axis" value={blochSweep.axis} options={[{ value: "x", label: "x boundary pair", disabled: !config.periodicX }, { value: "y", label: "y boundary pair", disabled: !config.periodicY }]} onChange={(value) => setBlochSweep((current) => ({ ...current, axis: value as BlochSweepAxis }))} />
           <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
           <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
           <NumberField label="Samples" unit="points" value={blochSweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setBlochSweep((current) => ({ ...current, points: value }))} />
-          <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"}</Button>
+          <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"}</Button>
         </form>
         <InlineNotification className="status" kind="info" title="Bloch sweep" subtitle={blochSweepMessage} hideCloseButton lowContrast />
         {!blochSweepResult && <div className="tool-empty-state">Enable a periodic boundary to inspect the tracked Bloch branches.</div>}
@@ -854,12 +872,12 @@ export function App() {
       </section>
 
       <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title" tabIndex={-1}>
-      <ViewHeading title="Analysis" id="analysis-title">Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
+      <ViewHeading title="Analysis" id="analysis-title" icon={<Analytics size={24} aria-hidden={true} />}>Verify convergence, quantify fabrication sensitivity, calculate coupling and compare cross-sections.</ViewHeading>
       {activeView === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
 
       <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title" tabIndex={-1}>
-      <ViewHeading title="Validation" id="validation-title">Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
+      <ViewHeading title="Validation" id="validation-title" icon={<CheckmarkOutline size={24} aria-hidden={true} />}>Inspect the current modal checks, numerical formulation, assumptions and validity limits.</ViewHeading>
       <section className={`validation-section${result ? "" : " validation-section-single"}`}>
         <div className="method-card"><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b><var>Ψ</var></b><span>=</span><var>β</var><b><var>Ψ</var></b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
         {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><IconIndicator kind={check.pass ? "succeeded" : "caution-minor"} label={check.pass ? "Pass" : "Review"} /><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
@@ -897,8 +915,8 @@ export function App() {
   </>;
 }
 
-function ViewHeading({ title, id, children }: { title: string; id: string; children: ReactNode }) {
-  return <header className="view-heading"><h1 id={id}>{title}</h1><p>{children}</p></header>;
+function ViewHeading({ title, id, icon, children }: { title: string; id: string; icon: ReactNode; children: ReactNode }) {
+  return <header className="view-heading"><div className="view-title">{icon}<h1 id={id}>{title}</h1></div><p>{children}</p></header>;
 }
 
 function VisualizationFallback() {
