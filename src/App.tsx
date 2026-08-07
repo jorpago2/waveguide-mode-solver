@@ -576,9 +576,8 @@ export function App() {
   return <>
     <Header aria-label="Waveguide Mode Solver" className="site-header">
       <SkipToContent href="#scientific-workspace" />
-      <HeaderName className="product-name" href="./" prefix="">
-        <span className="product-mark" aria-hidden="true">W</span>
-        <span className="product-copy"><strong>Mode Solver</strong><small>Photonics · v{packageJson.version}</small></span>
+      <HeaderName className="product-name" href="./" prefix="" aria-label="W · Waveguide Mode Solver">
+        <span className="product-mark">W</span>
       </HeaderName>
       <div className="header-document-context" title={presetName} aria-label="Current project status">
         <span>{presetName}</span>

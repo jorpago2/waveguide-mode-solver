@@ -34,6 +34,7 @@ test("reveals results and reports solver state after an explicit solve", async (
 test("keeps the scientific result ahead of introductory chrome", async () => {
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(app, /className="workspace-header"/);
+  assert.doesNotMatch(app, /className="product-copy"/);
   assert.match(app, /id="solver"[^>]+aria-label="Mode solver"/);
   assert.doesNotMatch(app, /view-heading"><div className="view-title">\{icon\}<h1 id=\{id\}>\{title\}<\/h1><\/div><p>/);
 });
