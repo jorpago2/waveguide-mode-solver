@@ -256,8 +256,8 @@ export function App() {
         setHelpOpen((open) => !open);
       }
     };
-    document.addEventListener("keydown", handleShortcut);
-    return () => document.removeEventListener("keydown", handleShortcut);
+    document.addEventListener("keydown", handleShortcut, true);
+    return () => document.removeEventListener("keydown", handleShortcut, true);
   }, [activeView, busy, navigationOpen]);
 
   function navigateToView(view: AppView) {
@@ -571,9 +571,11 @@ export function App() {
       </HeaderNavigation>
     </Header>
     <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
-      <p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p>
-      <dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl>
-      <p><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></p>
+      <div className="help-workflow">
+        <p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p>
+        <dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Close the active panel or cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl>
+        <p><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></p>
+      </div>
     </Modal>
     <Grid fullWidth condensed className="app-shell">
     <Column sm={4} md={8} lg={16} className="app-shell-column">
@@ -747,8 +749,8 @@ export function App() {
                 <div className="form-grid">
                   <CarbonCheckboxField id="periodic-x" label="Periodic x pair" checked={draft.periodicX ?? false} onChange={(checked) => setDraft((current) => ({ ...current, periodicX: checked, ...(!checked ? { blochPhaseXRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((checked && current.periodicY && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} />
                   <CarbonCheckboxField id="periodic-y" label="Periodic y pair" checked={draft.periodicY ?? false} onChange={(checked) => setDraft((current) => ({ ...current, periodicY: checked, ...(!checked ? { blochPhaseYRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((checked && current.periodicX && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} />
-                  {draft.periodicX && <NumberField label="Bloch phase x" unit="rad" value={draft.blochPhaseXRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => updateNumber("blochPhaseXRad", value)} />}
-                  {draft.periodicY && <NumberField label="Bloch phase y" unit="rad" value={draft.blochPhaseYRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => updateNumber("blochPhaseYRad", value)} />}
+                  {draft.periodicX && <NumberField label="Bloch phase x" unit="rad" value={draft.blochPhaseXRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => updateNumber("blochPhaseXRad", value)} />}
+                  {draft.periodicY && <NumberField label="Bloch phase y" unit="rad" value={draft.blochPhaseYRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => updateNumber("blochPhaseYRad", value)} />}
                 </div>
                 <p>Opposite faces satisfy F(r + L) = F(r)e<sup>iθ</sup>. A zero phase is ordinary periodicity; PML remains active only along non-periodic axes. The full computational span is the lattice period, so Padding controls the separation between neighboring copies.</p>
               </AccordionItem></Accordion>
@@ -807,7 +809,7 @@ export function App() {
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
       <ViewHeading title="Sweeps" id="sweeps-title">Track the selected mode across wavelength and geometry using the reciprocal complex-field product.</ViewHeading>
-      <div className="section-tabs"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
+      <div className="section-tabs section-tabs-scrollable"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
@@ -817,6 +819,7 @@ export function App() {
           <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
         </form>
         <InlineNotification className="status" kind="info" title="Wavelength sweep" subtitle={sweepMessage} hideCloseButton lowContrast />
+        {!sweepResult && <div className="tool-empty-state">The dispersion, group-index and loss traces will appear here after the sweep.</div>}
         {activeView === "sweeps" && sweepResult && <><Suspense fallback={<VisualizationFallback />}><SweepPlot result={sweepResult} /></Suspense><WarningMessages warnings={sweepResult.warnings} /></>}
       </section>
 
@@ -830,6 +833,7 @@ export function App() {
           <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && !mode} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run sweep"}</Button>
         </form>
         <InlineNotification className="status" kind="info" title="Geometry sweep" subtitle={geometrySweepMessage} hideCloseButton lowContrast />
+        {!geometrySweepResult && <div className="tool-empty-state">Tracked effective index and modal metrics will appear here after the sweep.</div>}
         {activeView === "sweeps" && geometrySweepResult && <><Suspense fallback={<VisualizationFallback />}><GeometrySweepPlot result={geometrySweepResult} /></Suspense><WarningMessages warnings={geometrySweepResult.warnings} /></>}
       </section>
 
@@ -838,12 +842,13 @@ export function App() {
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
         <form className="sweep-controls" onSubmit={runBlochSweep} aria-busy={busy}>
           <CarbonSelectField id="bloch-axis" label="Periodic axis" value={blochSweep.axis} options={[{ value: "x", label: "x boundary pair", disabled: !config.periodicX }, { value: "y", label: "y boundary pair", disabled: !config.periodicY }]} onChange={(value) => setBlochSweep((current) => ({ ...current, axis: value as BlochSweepAxis }))} />
-          <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
-          <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
+          <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
+          <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
           <NumberField label="Samples" unit="points" value={blochSweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setBlochSweep((current) => ({ ...current, points: value }))} />
           <Button className="solve-button" kind={busy ? "danger" : "primary"} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"}</Button>
         </form>
         <InlineNotification className="status" kind="info" title="Bloch sweep" subtitle={blochSweepMessage} hideCloseButton lowContrast />
+        {!blochSweepResult && <div className="tool-empty-state">Enable a periodic boundary to inspect the tracked Bloch branches.</div>}
         {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><Metric label={<>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</>} value={blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)} /><Metric label="Tracked subspace" value={`${Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)`} /></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense><WarningMessages warnings={blochSweepResult.warnings} /></>}
       </section>
       </section>
@@ -900,8 +905,8 @@ function VisualizationFallback() {
   return <InlineLoading description="Loading visualization…" />;
 }
 
-function NumberField({ label, unit, value, min, max, step, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; disabled?: boolean; onChange: (value: number) => void }) {
-  return <CarbonNumberField label={label} unit={unit} value={value} min={min} max={max} step={step} disabled={disabled} onChange={onChange} />;
+function NumberField({ label, unit, value, min, max, step, displayDigits, disabled = false, onChange }: { label: ReactNode; unit: string; value: number; min: number; max: number; step: number; displayDigits?: number; disabled?: boolean; onChange: (value: number) => void }) {
+  return <CarbonNumberField label={label} unit={unit} value={value} min={min} max={max} step={step} displayDigits={displayDigits} disabled={disabled} onChange={onChange} />;
 }
 
 function MaterialSelect({ label, value, allowTabulated = true, onChange }: { label: string; value: MaterialId; allowTabulated?: boolean; onChange: (value: MaterialId) => void }) {

@@ -29,6 +29,7 @@ export function CarbonNumberField({
   min,
   max,
   step,
+  displayDigits,
   disabled = false,
   onChange,
 }: {
@@ -39,16 +40,19 @@ export function CarbonNumberField({
   min: number;
   max: number;
   step: number;
+  displayDigits?: number;
   disabled?: boolean;
   onChange: (value: number) => void;
 }) {
   const generatedId = useId();
   const invalid = !Number.isFinite(value) || value < min || value > max;
+  const visibleDigits = displayDigits ?? (disabled ? 5 : undefined);
+  const visibleValue = Number.isFinite(value) && visibleDigits !== undefined ? Number(value.toFixed(visibleDigits)) : value;
   return <NumberInput
     id={id ?? generatedId}
     className="carbon-field"
     label={<>{label ?? ""} <span className="field-unit">({unit})</span></>}
-    value={Number.isFinite(value) ? value : ""}
+    value={Number.isFinite(visibleValue) ? visibleValue : ""}
     min={min}
     max={max}
     step={step}
@@ -130,6 +134,7 @@ export function CarbonSwitcher({
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   return <ContentSwitcher
     className="carbon-switcher"
+    data-option-count={options.length}
     aria-label={label}
     selectedIndex={selectedIndex}
     size="sm"
@@ -157,7 +162,7 @@ export function CarbonTable({
       <TableHead><TableRow>{headers.map((header, index) => <TableHeader key={index}>{header}</TableHeader>)}</TableRow></TableHead>
       <TableBody>{rows.map((row) => <TableRow key={row.id}>{row.cells.map((cell, index) => {
         const value = typeof cell === "object" && cell !== null && "content" in cell ? cell : { content: cell };
-        return <TableCell key={index} colSpan={value.colSpan} className={value.className}>{value.content}</TableCell>;
+        return <TableCell key={index} colSpan={value.colSpan} className={value.className} data-label={typeof headers[index] === "string" ? headers[index] : undefined}>{value.content}</TableCell>;
       })}</TableRow>)}</TableBody>
     </Table>
   </TableContainer>;
