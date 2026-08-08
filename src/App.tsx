@@ -777,12 +777,15 @@ export function App() {
           </form>
         </aside>
 
-        <section className="results-panel" id="results-panel" aria-labelledby="results-title">
-          <div className="panel-heading results-heading"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2 id="results-title">Mode result</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} onClick={exportField} disabled={!mode}>Export CSV</Button></div>
+        <section className="results-panel" id="results-panel" aria-label="Mode result">
+          {!result && <div className="panel-heading results-heading"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
           {result ? <>
-            <Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
-              <TabList contained fullWidth aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
-            </Tabs>
+            <div className="result-command-bar">
+              <div className="result-view-switcher"><Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
+                <TabList contained aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
+              </Tabs></div>
+              <Button kind="tertiary" size="sm" type="button" renderIcon={Download} onClick={exportField} disabled={!mode}>Export CSV</Button>
+            </div>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
             <Tabs selectedIndex={selectedMode} onChange={({ selectedIndex }) => setSelectedMode(selectedIndex)}>
               <TabList className="mode-tabs" aria-label="Guided modes">{result.modes.map((item) => <Tab key={item.id}>{item.label} · {item.polarization} · n<sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</Tab>)}</TabList>
@@ -796,6 +799,11 @@ export function App() {
               <Metric label={<>Energy effective area <i>A</i><sub>eff</sub></>} value={`${mode.energyEffectiveAreaUm2.toFixed(3)} µm²`} />
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
             </div>
+            <div className="field-control-bar">
+              <div className="field-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
+              <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
+            </div>
+            {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
             <Accordion className="result-details"><AccordionItem title="Additional modal quantities">
               <div className="metrics secondary-metrics">
               <Metric label="Energy group index" value={`${mode.energyGroupIndex.toFixed(4)} · ${mode.energyMetricValidity}`} />
@@ -809,11 +817,6 @@ export function App() {
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
               </div>
             </AccordionItem></Accordion>
-            <div className="field-control-bar">
-              <div className="field-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
-              <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
-            </div>
-            {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
             </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span></div></div>}
           </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span></div></div>}
         </section>
