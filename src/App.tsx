@@ -296,6 +296,11 @@ export function App() {
     window.requestAnimationFrame(() => configureTriggerRef.current?.focus());
   }
 
+  function openConfiguration() {
+    setNavigationOpen(true);
+    window.requestAnimationFrame(() => document.getElementById("platform-preset")?.focus());
+  }
+
   function updateNumber(key: keyof WaveguideConfig, value: number) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
@@ -817,8 +822,8 @@ export function App() {
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
               </div>
             </AccordionItem></Accordion>
-            </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span></div></div>}
-          </div> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span></div></div>}
+            </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span><Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Review configuration</Button></div></div>}
+          </div> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span><Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Configure waveguide</Button></div></div>}
         </section>
       </div>
       </section>

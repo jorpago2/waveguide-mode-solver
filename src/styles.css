@@ -143,13 +143,14 @@ a { color: inherit; }
 .plot-note { margin: 0 var(--space-3xs); color: var(--color-ink-2); font-size: var(--text-xs); line-height: 1.5; }
 
 .plots { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr); gap: 8px; }
-.field-plot, .cut-plot { width: 100%; min-height: clamp(18rem, calc(100dvh - 31rem), 30rem); }
+.field-plot, .cut-plot { width: 100%; max-width: 100%; min-width: 0; min-height: clamp(18rem, calc(100dvh - 31rem), 30rem); }
 .empty-state { min-height: 300px; padding: var(--space-md); display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--radius-card); color: var(--muted); background: var(--color-paper); text-align: center; }
 .result-empty-state { align-content: center; gap: var(--space-sm); }
 .result-empty-state > svg { color: var(--color-accent-strong); }
 .result-empty-state > div { max-width: 30rem; display: grid; gap: var(--space-3xs); }
 .result-empty-state strong { color: var(--color-ink); font: 600 var(--text-md)/1.3 var(--font-display); }
 .result-empty-state span { color: var(--color-ink-2); font-size: var(--text-sm); }
+.result-empty-state .empty-state-action { justify-self: center; margin-top: var(--space-xs); }
 .tool-empty-state { min-height: 10rem; margin-top: var(--space-sm); padding: var(--space-md); display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--radius-card); color: var(--muted); background: var(--color-paper); text-align: center; }
 
 .advanced-controls { margin-top: 16px; }
@@ -230,7 +231,7 @@ body.plot-fullscreen-open { overflow: hidden; }
 
 .validation-section { margin: var(--space-sm) 0 var(--space-lg); display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.7fr); gap: var(--space-sm); }
 .validation-section-single { grid-template-columns: minmax(0, 1fr); }
-.result-stage, .section-tabs, .sweep-section, .validation-section { width: 100%; max-width: 90rem; min-width: 0; margin-inline: auto; }
+.result-stage, .result-empty-state, .section-tabs, .sweep-section, .validation-section { width: 100%; max-width: var(--content-max); min-width: 0; margin-inline: auto; }
 .method-card, .checks-card { padding: clamp(var(--space-sm), 2vw, var(--space-md)); }
 .validation-section h2 { margin: 0 0 var(--space-xs); color: var(--color-ink); font: 650 clamp(1.1rem, 1.6vw, 1.4rem)/1.2 var(--font-display); letter-spacing: -0.025em; }
 .method-card > p:not(.limitation) { max-width: 48rem; color: var(--color-ink-2); line-height: 1.65; }
@@ -351,7 +352,8 @@ body.plot-fullscreen-open { overflow: hidden; }
   .analysis-card { padding: var(--space-sm) 0 0; }
   .analysis-plot, .mode-map-plot { min-height: 460px; }
   .tool-rail > button { padding-inline: 2px; font-size: 0.67rem; }
-  .status-strip { padding-inline: var(--space-2xs); }
+  .status-strip { padding-inline: var(--space-2xs); overflow: hidden; }
+  .status-strip > span:nth-of-type(n + 3) { display: none; }
   .comparison-scroll:has(.candidate-table) { overflow-x: visible; }
   .candidate-table { min-width: 0; }
   .candidate-table table, .candidate-table tbody, .candidate-table tr, .candidate-table td { display: block; width: 100%; }
