@@ -116,7 +116,6 @@ a { color: inherit; }
 
 .mode-tabs { overflow-x: auto; margin-bottom: var(--space-xs); scrollbar-width: thin; }
 
-.result-stage { width: 100%; max-width: 90rem; min-width: 0; margin-inline: auto; }
 .result-command-bar { margin-bottom: var(--space-xs); display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .result-view-switcher { width: min(34rem, 100%); min-width: 0; }
 .result-command-bar > button { flex: 0 0 auto; }
@@ -231,6 +230,7 @@ body.plot-fullscreen-open { overflow: hidden; }
 
 .validation-section { margin: var(--space-sm) 0 var(--space-lg); display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.7fr); gap: var(--space-sm); }
 .validation-section-single { grid-template-columns: minmax(0, 1fr); }
+.result-stage, .section-tabs, .sweep-section, .validation-section { width: 100%; max-width: 90rem; min-width: 0; margin-inline: auto; }
 .method-card, .checks-card { padding: clamp(var(--space-sm), 2vw, var(--space-md)); }
 .validation-section h2 { margin: 0 0 var(--space-xs); color: var(--color-ink); font: 650 clamp(1.1rem, 1.6vw, 1.4rem)/1.2 var(--font-display); letter-spacing: -0.025em; }
 .method-card > p:not(.limitation) { max-width: 48rem; color: var(--color-ink-2); line-height: 1.65; }
