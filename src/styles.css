@@ -116,6 +116,7 @@ a { color: inherit; }
 
 .mode-tabs { overflow-x: auto; margin-bottom: var(--space-xs); scrollbar-width: thin; }
 
+.result-stage { width: 100%; max-width: 90rem; min-width: 0; margin-inline: auto; }
 .result-command-bar { margin-bottom: var(--space-xs); display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .result-view-switcher { width: min(34rem, 100%); min-width: 0; }
 .result-command-bar > button { flex: 0 0 auto; }
@@ -134,14 +135,16 @@ a { color: inherit; }
 .field-control-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2xs); }
 .field-toolbar { min-width: 0; margin: 0; padding: var(--space-3xs) var(--space-2xs); display: flex; align-items: center; gap: var(--space-2xs); flex-wrap: wrap; border-block: 1px solid var(--line); background: transparent; }
 .field-toolbar .carbon-switcher { width: auto; min-width: 0; flex: 1 1 auto; }
+.field-component-toolbar .carbon-switcher[data-option-count="8"] { height: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.field-component-toolbar .carbon-switcher[data-option-count="8"] > * { min-width: 0; }
 .field-part-toolbar .carbon-field { flex: 0 0 13rem; }
 .geometry-toolbar .carbon-switcher { flex: 1 1 18rem; }
 .geometry-toolbar > small { margin-left: auto; color: var(--color-ink-2); font-size: var(--text-xs); }
 .geometry-plot { width: 100%; min-height: clamp(24rem, calc(100dvh - 16rem), 42rem); }
 .plot-note { margin: 0 var(--space-3xs); color: var(--color-ink-2); font-size: var(--text-xs); line-height: 1.5; }
 
-.plots { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.8fr); gap: 8px; }
-.field-plot, .cut-plot { width: 100%; min-height: clamp(18rem, calc(100dvh - 30rem), 30rem); }
+.plots { margin-top: 8px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 1fr); gap: 8px; }
+.field-plot, .cut-plot { width: 100%; min-height: clamp(18rem, calc(100dvh - 31rem), 30rem); }
 .empty-state { min-height: 300px; padding: var(--space-md); display: grid; place-items: center; border: 1px dashed var(--line); border-radius: var(--radius-card); color: var(--muted); background: var(--color-paper); text-align: center; }
 .result-empty-state { align-content: center; gap: var(--space-sm); }
 .result-empty-state > svg { color: var(--color-accent-strong); }
@@ -270,7 +273,7 @@ body.plot-fullscreen-open { overflow: hidden; }
 .status-strip span { white-space: nowrap; }
 
 @media (min-width: 1056px) {
-  .field-control-bar { grid-template-columns: minmax(0, 3fr) minmax(28rem, 2fr); }
+  .field-control-bar { grid-template-columns: minmax(28rem, 40rem) minmax(28rem, 1fr); }
 }
 
 @media (min-width: 901px) and (max-width: 1055.98px) {
@@ -310,6 +313,7 @@ body.plot-fullscreen-open { overflow: hidden; }
   .field-toolbar:not(.field-part-toolbar) { display: block; overflow-x: auto; scrollbar-width: thin; }
   .field-toolbar .carbon-switcher[data-option-count="6"] { min-width: 30rem; }
   .field-toolbar .carbon-switcher[data-option-count="8"] { min-width: 36rem; }
+  .field-component-toolbar .carbon-switcher[data-option-count="8"] { min-width: 0; }
   .validation-section .checks-card { order: -1; }
   .status-strip { overflow-x: auto; gap: var(--space-sm); }
 }
@@ -323,7 +327,7 @@ body.plot-fullscreen-open { overflow: hidden; }
 }
 
 @media (min-width: 672px) and (max-width: 900px) {
-  .field-plot, .cut-plot { min-height: 25rem; }
+  .field-plot, .cut-plot { min-height: 22.5rem; }
 }
 
 @media (max-width: 460px) {

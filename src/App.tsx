@@ -170,7 +170,7 @@ const initialConfig = presets["SiN · channel"];
 const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm: 1.65, points: 9, modeIndex: 0 };
 const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
 const initialBlochSweep: BlochSweepSettings = { axis: "x", startPhaseRad: -Math.PI, stopPhaseRad: Math.PI, points: 9, modeIndex: 0 };
-const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "intensity", "poynting"];
+const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "intensity", "Hx", "Hy", "Hz", "poynting"];
 type AppView = "solver" | "materials" | "sweeps" | "analysis" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
 const appViews = [
@@ -779,7 +779,7 @@ export function App() {
 
         <section className="results-panel" id="results-panel" aria-label="Mode result">
           {!result && <div className="panel-heading results-heading"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
-          {result ? <>
+          {result ? <div className="result-stage">
             <div className="result-command-bar">
               <div className="result-view-switcher"><Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
                 <TabList contained aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
@@ -800,7 +800,7 @@ export function App() {
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
             </div>
             <div className="field-control-bar">
-              <div className="field-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
+              <div className="field-toolbar field-component-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
               <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
             </div>
             {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
@@ -818,7 +818,7 @@ export function App() {
               </div>
             </AccordionItem></Accordion>
             </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span></div></div>}
-          </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span></div></div>}
+          </div> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span></div></div>}
         </section>
       </div>
       </section>
