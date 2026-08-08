@@ -212,12 +212,16 @@ export function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [navigationOpen, setNavigationOpen] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(() => typeof window === "undefined" || viewFromHash() === "solver");
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
   const configurationPanelRef = useRef<HTMLElement>(null);
   const projectImportRef = useRef<HTMLInputElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
-  const resultIsStale = Boolean(result && draft !== config);
+  const draftFingerprint = useMemo(() => JSON.stringify(draft), [draft]);
+  const solvedFingerprint = useMemo(() => JSON.stringify(config), [config]);
+  const selectedPreset = presets[presetName];
+  const presetModified = Boolean(selectedPreset && draftFingerprint !== JSON.stringify(selectedPreset));
+  const resultIsStale = Boolean(result && draftFingerprint !== solvedFingerprint);
   const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
   const solveStateLabel = busy ? "Solving" : resultIsStale ? "Stale" : result ? "Solved" : "Not solved";
   const validation = useMemo(() => mode && result ? [
@@ -308,6 +312,13 @@ export function App() {
   function applyPreset(name: string) {
     const preset = presets[name];
     if (preset) { setPresetName(name); setDraft({ ...preset }); }
+  }
+
+  function resetPreset() {
+    const preset = presets[presetName];
+    if (!preset) return;
+    setDraft({ ...preset });
+    setMessage(`${presetName} values restored. Solve modes to apply them.`);
   }
 
   function updateMaterial(materialKey: "coreMaterial" | "claddingMaterial" | "substrateMaterial", indexKey: "coreIndex" | "claddingIndex" | "substrateIndex", materialId: MaterialId) {
@@ -584,14 +595,15 @@ export function App() {
       <HeaderName className="product-name" href="./" prefix="" aria-label="W · Waveguide Mode Solver">
         <span className="product-mark">W</span>
       </HeaderName>
-      <div className="header-document-context" title={presetName} aria-label="Current project status">
-        <span>{presetName}</span>
+      <div className="header-document-context" title={`${presetName}${presetModified ? " · Modified" : ""}`} aria-label="Current project status">
+        <span className="header-preset-name">{presetName}{presetModified ? " · Modified" : ""}</span>
+        <span className="header-config-summary">{draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · λ {draft.wavelengthUm.toFixed(3)} µm</span>
         <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
       </div>
       <HeaderGlobalBar className="header-project-actions" aria-label="Project actions">
-        <IconButton type="button" kind="ghost" size="sm" label="Export project" onClick={exportProject}><DocumentExport size={16} aria-hidden={true} /></IconButton>
-        <IconButton type="button" kind="ghost" size="sm" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={16} aria-hidden={true} /></IconButton>
-        <IconButton type="button" kind="ghost" size="sm" label="Help" onClick={() => setHelpOpen(true)}><Help size={16} aria-hidden={true} /></IconButton>
+        <IconButton type="button" kind="ghost" size="lg" label="Export project" onClick={exportProject}><DocumentExport size={20} aria-hidden={true} /></IconButton>
+        <IconButton type="button" kind="ghost" size="lg" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></IconButton>
+        <IconButton type="button" kind="ghost" size="lg" label="Help" onClick={() => setHelpOpen(true)}><Help size={20} aria-hidden={true} /></IconButton>
         <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
       </HeaderGlobalBar>
     </Header>
@@ -628,9 +640,13 @@ export function App() {
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
         <aside ref={configurationPanelRef} className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
-          <div className="panel-heading"><div><h2>Configuration</h2></div><IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
+          <div className="panel-heading">
+            <div><h2>Configuration</h2>{presetModified && <IconIndicator kind="caution-minor" label="Modified" />}</div>
+            <div className="panel-actions">{presetModified && <Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button>}<IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
+          </div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
+            <p className="configuration-summary">{draft.geometry ?? "channel"} · {draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · {materialDefinition(draft.coreMaterial ?? "custom").name} · λ {draft.wavelengthUm.toFixed(3)} µm · {draft.gridResolution} cells</p>
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3></div>
@@ -805,7 +821,7 @@ export function App() {
               <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
             </div>
             <div className="field-control-bar">
-              <div className="field-toolbar field-component-toolbar"><CarbonSwitcher label="Field component" value={component} options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
+              <div className="field-toolbar field-component-toolbar"><CarbonSelectField id="field-component" label="Field component" value={component} inline options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
               <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
             </div>
             {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
@@ -823,7 +839,7 @@ export function App() {
               </div>
             </AccordionItem></Accordion>
             </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span><Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Review configuration</Button></div></div>}
-          </div> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span><Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Configure waveguide</Button></div></div>}
+          </div> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span>{!navigationOpen && <Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Configure waveguide</Button>}</div></div>}
         </section>
       </div>
       </section>
@@ -835,7 +851,7 @@ export function App() {
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
       <ViewHeading title="Sweeps" id="sweeps-title" icon={<ChartLine size={20} aria-hidden={true} />} />
-      <div className="section-tabs section-tabs-scrollable"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength · dispersion & loss" }, { value: "geometry", label: "Geometry · dimensions & bends" }, { value: "bloch", label: "Bloch phase · periodic arrays" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
+      <div className="section-tabs"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength" }, { value: "geometry", label: "Geometry" }, { value: "bloch", label: "Bloch phase" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>

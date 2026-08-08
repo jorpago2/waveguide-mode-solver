@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { CarbonCheckboxField, CarbonSwitcher } from "./CarbonControls";
+import { CarbonCheckboxField, CarbonSelectField, CarbonSwitcher } from "./CarbonControls";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
 import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
@@ -106,7 +106,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
 
   return <>
     <div className="field-toolbar geometry-toolbar" aria-label="Material quantity and tensor component">
-      <CarbonSwitcher label="Material quantity" value={quantity} options={quantities.map((option) => ({ value: option.id, label: option.label }))} onChange={(value) => setQuantity(value as MaterialQuantity)} />
+      <CarbonSelectField id="material-quantity" label="Material quantity" value={quantity} inline options={quantities.map((option) => ({ value: option.id, label: option.label }))} onChange={(value) => setQuantity(value as MaterialQuantity)} />
       <CarbonSwitcher label="Tensor component" value={axis} options={(["x", "y", "z"] as const).map((component) => ({ value: component, label: `${component}${component}` }))} onChange={(value) => setAxis(value as PrincipalAxis)} />
       <CarbonCheckboxField label="Show mesh" checked={showMesh} onChange={setShowMesh} />
       <CarbonCheckboxField label="Mode |E|²" checked={showMode} disabled={!mode} onChange={setShowMode} />
