@@ -1,88 +1,36 @@
+/* Carbon g10 semantic aliases used by the scientific composition layer. */
 :root {
-  --color-paper: oklch(97.2% 0.008 155);
-  --color-paper-2: oklch(94.5% 0.012 175);
-  --color-surface: oklch(98.5% 0.006 155);
-  --color-surface-raised: oklch(99.2% 0.004 155);
-  --color-ink: oklch(22% 0.025 205);
-  --color-ink-2: oklch(43% 0.028 195);
-  --color-ink-3: oklch(52% 0.022 190);
-  --color-rule: oklch(86% 0.018 175);
-  --color-rule-strong: oklch(76% 0.026 180);
-  --color-accent: oklch(48% 0.095 190);
-  --color-accent-strong: oklch(39% 0.08 190);
-  --color-accent-soft: oklch(93% 0.03 175);
-  --color-accent-ink: oklch(98.5% 0.006 155);
-  --color-focus: oklch(50% 0.15 250);
-  --color-success: oklch(43% 0.1 155);
-  --color-success-soft: oklch(94% 0.035 155);
-  --color-warning: oklch(47% 0.105 70);
-  --color-warning-soft: oklch(95% 0.045 85);
-  --color-danger: oklch(45% 0.15 25);
-  --color-danger-soft: oklch(95% 0.035 25);
-  --color-footer: oklch(19% 0.035 210);
+  --color-paper: var(--cds-background, #f4f4f4);
+  --color-paper-2: var(--cds-layer-01, #ffffff);
+  --color-surface: var(--cds-layer, #ffffff);
+  --color-ink: var(--cds-text-primary, #161616);
+  --color-ink-2: var(--cds-text-secondary, #525252);
+  --color-rule: var(--cds-border-subtle, #e0e0e0);
+  --color-rule-strong: var(--cds-border-strong, #8d8d8d);
+  --color-accent: var(--cds-link-primary, #0f62fe);
+  --color-accent-strong: var(--cds-link-primary-hover, #0043ce);
+  --color-accent-soft: var(--cds-layer-accent-01, #e0e0e0);
+  --color-danger: var(--cds-support-error, #da1e28);
 
-  --font-display: "Space Grotesk", Arial, sans-serif;
-  --font-body: "IBM Plex Sans", Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", Consolas, monospace;
+  --font-display: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
   --font-equation: var(--font-body);
 
+  /* Carbon spacing scale: spacing-02 through spacing-07. */
   --space-3xs: 0.25rem;
   --space-2xs: 0.5rem;
   --space-xs: 0.75rem;
   --space-sm: 1rem;
   --space-md: 1.5rem;
   --space-lg: 2rem;
-  --space-xl: 3rem;
-  --space-2xl: 4.5rem;
-  --space-3xl: 7rem;
 
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-md: 1rem;
   --text-lg: 1.25rem;
-  --text-xl: 1.75rem;
-  --text-2xl: 2.25rem;
-  --text-display: clamp(2rem, 3.6vw, 3.25rem);
 
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-short: 160ms;
-  --dur-medium: 240ms;
-
-  --radius-input: 0.5rem;
-  --radius-card: 0.875rem;
-  --radius-status: 999px;
-  --rule-hairline: 1px;
-  --shadow-raised: 0 12px 30px oklch(22% 0.025 205 / 7%);
-  --content-max: 82.5rem;
-}
-
-/* Carbon g10 governs UI surfaces, type, focus and shape. */
-:root,
-.cds--g10 {
-  --color-paper: var(--cds-background, #f4f4f4);
-  --color-paper-2: var(--cds-layer-01, #ffffff);
-  --color-paper-3: var(--cds-layer-02, #f4f4f4);
-  --color-surface: var(--cds-layer, #ffffff);
-  --color-surface-raised: var(--cds-field-01, #ffffff);
-  --color-ink: var(--cds-text-primary, #161616);
-  --color-ink-2: var(--cds-text-secondary, #525252);
-  --color-muted: var(--cds-text-secondary, #525252);
-  --color-rule: var(--cds-border-subtle, #e0e0e0);
-  --color-rule-strong: var(--cds-border-strong, #8d8d8d);
-  --color-accent: var(--cds-link-primary, #0f62fe);
-  --color-accent-strong: var(--cds-link-primary-hover, #0043ce);
-  --color-accent-soft: var(--cds-layer-accent-01, #e0e0e0);
-  --color-accent-ink: var(--cds-text-on-color, #ffffff);
-  --color-focus: var(--cds-focus, #0f62fe);
-  --color-danger: var(--cds-support-error, #da1e28);
-  --color-warning: var(--cds-support-warning, #f1c21b);
-  --color-success: var(--cds-support-success, #24a148);
-  --font-display: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
   --radius-input: 0;
   --radius-card: 0;
-  --radius-status: 0;
-  --shadow-raised: 0 2px 6px rgb(0 0 0 / 0.16);
+  --content-max: 82.5rem;
 }

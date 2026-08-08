@@ -628,7 +628,7 @@ export function App() {
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
         <aside ref={configurationPanelRef} className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
-          <div className="panel-heading"><div><h2>Configuration</h2><span className="method-chip">FDM</span></div><IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
+          <div className="panel-heading"><div><h2>Configuration</h2></div><IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>

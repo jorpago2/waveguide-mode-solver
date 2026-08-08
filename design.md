@@ -1,140 +1,72 @@
 # Design — Waveguide Mode Solver
 
-A locked design system for this scientific web app. Every view uses the same
-typography, colour language, spacing and interaction rules.
+This document is the canonical visual contract for the scientific application.
 
-## Genre
+## Foundation
 
-Modern-minimal scientific workbench: quiet chrome, dense but readable controls,
-and information revealed when it becomes relevant.
+- IBM Carbon Design System, theme `g10`, governs components, typography, colour,
+  focus, interaction states, layers and shape.
+- IBM Plex Sans is the interface typeface. IBM Plex Mono is reserved for
+  numerical output and equations.
+- Plotly is the only non-Carbon visual system and is used exclusively for
+  scientific plots.
+- Product CSS may arrange scientific content, constrain plot dimensions and
+  express data hierarchy, but must not restyle Carbon component internals.
 
-## Macrostructure family
+## Interface character
 
-- App views: Workbench — compact utility header, section rail, contextual title,
-  asymmetric configuration/results canvas and progressive disclosure.
-- Content views: Long Document — evidence-led sections with restrained rules and
-  no decorative cards.
-- Marketing pages: not present in the current product.
+The application is a dense scientific workbench, not a landing page. Chrome is
+quiet, controls are compact and the solved physical result is the primary visual
+subject. Wide displays use a centred scientific stage with a bounded working
+width; content is not stretched merely to fill the viewport.
 
-## Theme
+## Layout
 
-- `--color-paper`: oklch(97.2% 0.008 155)
-- `--color-paper-2`: oklch(94.5% 0.012 175)
-- `--color-surface`: oklch(98.5% 0.006 155)
-- `--color-ink`: oklch(22% 0.025 205)
-- `--color-ink-2`: oklch(43% 0.028 195)
-- `--color-rule`: oklch(86% 0.018 175)
-- `--color-accent`: oklch(48% 0.095 190)
-- `--color-focus`: oklch(50% 0.15 250)
+- Page structure uses Carbon `Grid` and `Column` with explicit `sm`, `md` and
+  `lg` spans.
+- The desktop workflow rail becomes bottom navigation below the large-screen
+  layout breakpoint.
+- Configuration and results form separate working regions. On narrow screens,
+  configuration replaces the result temporarily instead of compressing it.
+- Related controls use the narrowest readable arrangement. Scientific plots
+  stack only when their minimum useful width cannot be preserved.
+- Fixed navigation and status regions must never cover reachable content.
 
-## Typography
+## Components and icons
 
-- Display: Space Grotesk, weight 600–700, roman.
-- Body: IBM Plex Sans, weight 400–600.
-- Mono: IBM Plex Mono, weight 500–600, for numerical output only.
-- Display tracking: `-0.035em`.
-- Type scale anchor: `--text-display: clamp(2rem, 3.6vw, 3.25rem)`.
+- Use installed Carbon components for buttons, inputs, selects, switches, tabs,
+  accordions, notifications, loading states, tables, links and overlays.
+- Use official Carbon icons for navigation and actions.
+- Do not target `.cds--*` selectors in product CSS.
+- Do not recreate Carbon controls, tags, notifications or state indicators with
+  custom HTML and CSS.
+- Corners remain square, following Carbon g10. Decorative cards, pills,
+  gradients and ornamental shadows are not part of the product language.
 
-## Spacing
+## Scientific presentation
 
-Four-point named scale from `--space-3xs` to `--space-3xl`. Components use the
-named values from `tokens.css`; one-off spacing is not permitted.
+- Numerical values use tabular figures and show units explicitly.
+- Primary modal quantities precede secondary diagnostics.
+- Empty states explain the next scientific action without becoming hero panels.
+- Warnings and errors use Carbon status components and preserve technical detail.
+- Tables may become compact stacked records on mobile when horizontal scrolling
+  would obscure interpretation.
+- Plotly colours remain colour-blind-safe and are defined in the plot modules,
+  independently of application chrome.
 
-## Motion
+## Responsive and accessibility requirements
 
-- UI easing: `--ease-out` and `--ease-in-out` from `tokens.css`.
-- Reveal pattern: none. Scientific content is immediately available.
-- Reduced motion: all non-essential transitions removed.
+- Validate at 1920×1080, 1440×900, 1280×800, 1024×768, 768×1024 and 390×844.
+- No page-level horizontal overflow is permitted.
+- Keyboard operation, visible focus, accessible names, disabled semantics,
+  Escape behaviour and focus return must remain functional.
+- Reduced-motion preferences remove non-essential motion.
 
-## Microinteractions stance
+## Source files
 
-- Silent success; inline status for asynchronous work and errors.
-- Focus appears instantly with an opaque 3:1+ ring.
-- Disabled and busy are visually distinct.
-- Hover changes colour or rule weight only; no scaling or bounce.
-
-## CTA voice
-
-- Primary: solid teal, 8 px radius, direct verb first.
-- Secondary: tinted surface with a hairline rule.
-- Pills are reserved for compact status indicators.
-
-## Per-view allowances
-
-- Solver: persistent configuration rail on wide screens; Configure/Results switch
-  on narrow screens.
-- Materials: data controls beside the plot; no decorative wrapper layers.
-- Sweeps and Analysis: one containment layer, with advanced tools revealed by tabs.
-- Validation: the model explanation stands alone until a solved result exists.
-- Scientific plots retain their colorblind-safe data palette.
-
-## What views MUST share
-
-- Wordmark, teal accent and typography.
-- Title scale and heading rhythm without decorative eyebrows.
-- Button, input, tab, status and focus treatment.
-- Surface hierarchy and 4-point spacing scale.
-
-## What views MAY differ on
-
-- Control/result column proportions.
-- Plot height and table density according to the scientific content.
-- Whether a view uses tabs, details or a continuous document.
-
-## Exports
-
-### tokens.css
-
-The canonical implementation is the root-level `tokens.css` file.
-
-### Tailwind v4 `@theme`
-
-```css
-@theme {
-  --color-paper: oklch(97.2% 0.008 155);
-  --color-surface: oklch(98.5% 0.006 155);
-  --color-ink: oklch(22% 0.025 205);
-  --color-accent: oklch(48% 0.095 190);
-  --font-display: "Space Grotesk", sans-serif;
-  --font-body: "IBM Plex Sans", sans-serif;
-  --spacing-md: 1.5rem;
-  --radius-card: 8px;
-}
-```
-
-### DTCG `tokens.json`
-
-```json
-{
-  "color": {
-    "paper": { "$value": "oklch(97.2% 0.008 155)", "$type": "color" },
-    "surface": { "$value": "oklch(98.5% 0.006 155)", "$type": "color" },
-    "ink": { "$value": "oklch(22% 0.025 205)", "$type": "color" },
-    "accent": { "$value": "oklch(48% 0.095 190)", "$type": "color" }
-  },
-  "font": {
-    "display": { "$value": "Space Grotesk", "$type": "fontFamily" },
-    "body": { "$value": "IBM Plex Sans", "$type": "fontFamily" }
-  },
-  "space": {
-    "md": { "$value": "1.5rem", "$type": "dimension" }
-  }
-}
-```
-
-### shadcn/ui CSS variables
-
-```css
-:root {
-  --background: 97.2% 0.008 155;
-  --foreground: 22% 0.025 205;
-  --primary: 48% 0.095 190;
-  --primary-foreground: 98.5% 0.006 155;
-  --muted: 94.5% 0.012 175;
-  --muted-foreground: 43% 0.028 195;
-  --border: 86% 0.018 175;
-  --input: 86% 0.018 175;
-  --ring: 50% 0.15 250;
-  --radius: 8px;
-}
-```
+- `src/carbon.scss` loads the installed Carbon React styles and bundled IBM Plex
+  fonts.
+- `tokens.css` contains only Carbon-aligned semantic aliases and the bounded
+  scientific-stage width.
+- `src/styles.css` contains application layout and scientific presentation rules.
+- `src/plotColors.ts` and Plotly modules contain plot-specific visual settings.
