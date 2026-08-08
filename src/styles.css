@@ -176,7 +176,7 @@ a { color: inherit; }
 }
 .section-tabs { margin: var(--space-sm) 0 4px; }
 .tabbed-section { margin-top: 12px; }
-.sweep-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; align-items: end; }
+.sweep-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; align-items: end; }
 .sweep-controls .solve-button { margin-top: 0; }
 .sweep-plot { width: 100%; min-height: 520px; }
 .material-explorer { display: grid; grid-template: "controls plot" auto "note plot" 1fr / minmax(220px, 290px) minmax(0, 1fr); gap: 20px; }
@@ -269,11 +269,6 @@ body.plot-fullscreen-open { overflow: hidden; }
   .header-document-context { max-width: 22rem; }
   .workspace { grid-template-columns: minmax(272px, 288px) minmax(0, 1fr); }
   .workspace[data-panel-open="false"] { grid-template-columns: minmax(0, 1fr); }
-  .plots { grid-template-columns: 1fr; }
-  .field-plot { min-height: 400px; }
-  .cut-plot { min-height: 230px; }
-  .metrics { grid-template-columns: 1fr 1fr; }
-  .sweep-controls { grid-template-columns: 1fr 1fr; }
 }
 
 @media (max-width: 900px) {
@@ -298,11 +293,16 @@ body.plot-fullscreen-open { overflow: hidden; }
   .field-toolbar:not(.field-part-toolbar) { display: block; overflow-x: auto; scrollbar-width: thin; }
   .field-toolbar .carbon-switcher[data-option-count="6"] { min-width: 30rem; }
   .field-toolbar .carbon-switcher[data-option-count="8"] { min-width: 36rem; }
+  .validation-section .checks-card { order: -1; }
+  .status-strip { overflow-x: auto; gap: var(--space-sm); }
+}
+
+@media (max-width: 671.98px) {
+  .plots { grid-template-columns: 1fr; }
+  .cut-plot { min-height: 230px; }
   .analysis-columns { grid-template-columns: 1fr; }
   .material-explorer { grid-template: "controls" auto "plot" auto "note" auto / 1fr; }
   .material-explorer-controls { padding: 0 0 16px; border-right: 0; border-bottom: 1px solid var(--color-rule); }
-  .validation-section .checks-card { order: -1; }
-  .status-strip { overflow-x: auto; gap: var(--space-sm); }
 }
 
 @media (max-width: 460px) {
