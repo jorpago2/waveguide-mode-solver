@@ -39,7 +39,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificEmptyState, ScientificStatusBar } from "@jorpago2/scientific-ui";
+import { ScientificEmptyState, ScientificStatusBar, ScientificToolRail } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -623,20 +623,22 @@ export function App() {
     <Content id="scientific-workspace" className="scientific-content" tabIndex={-1}>
       <Grid fullWidth condensed className="workbench-grid">
         <Column sm={4} md={1} lg={1} className="tool-rail-column">
-          <nav className="tool-rail" aria-label="Scientific workflow">
-            {appViews.map((view) => <Button
-              ref={view.id === "solver" ? configureTriggerRef : undefined}
-              type="button"
-              kind="ghost"
-              size="sm"
-              className={activeView === view.id ? "active" : ""}
-              aria-current={activeView === view.id ? "page" : undefined}
-              aria-expanded={view.id === "solver" ? activeView === "solver" && navigationOpen : undefined}
-              aria-controls={view.id === "solver" ? "configuration-panel" : view.id}
-              key={view.id}
-              onClick={() => navigateToView(view.id)}
-            ><view.icon size={18} aria-hidden={true} /><span>{view.label}</span></Button>)}
-          </nav>
+          <ScientificToolRail
+            className="tool-rail"
+            label="Scientific workflow"
+            activeId={activeView === "solver" && !navigationOpen ? null : activeView}
+            onChange={(id) => {
+              if (id) navigateToView(id as AppView);
+              else if (activeView === "solver" && navigationOpen) closeConfiguration();
+            }}
+            registerItemRef={(id, node) => { if (id === "solver") configureTriggerRef.current = node; }}
+            items={appViews.map(({ id, label, icon: Icon }) => ({
+              id,
+              label,
+              icon: <Icon size={20} />,
+              controlsId: id === "solver" ? "configuration-panel" : id,
+            }))}
+          />
         </Column>
         <Column sm={4} md={7} lg={15} className="workbench-main">
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
