@@ -641,12 +641,12 @@ export function App() {
         <Column sm={4} md={7} lg={15} className="workbench-main">
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
-        <aside ref={configurationPanelRef} className="control-panel" id="configuration-panel" hidden={!navigationOpen}>
-          <div className="panel-heading">
-            <div><h2>Configuration</h2>{presetModified && <IconIndicator kind="caution-minor" label="Modified" />}</div>
-            <div className="panel-actions">{presetModified && <Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button>}<IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
+        <aside ref={configurationPanelRef} className="control-panel scientific-task-panel" id="configuration-panel" hidden={!navigationOpen}>
+          <div className="panel-heading scientific-task-panel__header">
+            <div className="scientific-task-panel__heading"><h2>Configuration</h2>{presetModified && <IconIndicator kind="caution-minor" label="Modified" />}</div>
+            <div className="panel-actions scientific-task-panel__actions">{presetModified && <Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button>}<IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
           </div>
-          <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
+          <form className="scientific-task-panel__body" id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <p className="configuration-summary">{draft.geometry ?? "channel"} · {draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · {materialDefinition(draft.coreMaterial ?? "custom").name} · λ {draft.wavelengthUm.toFixed(3)} µm · {draft.gridResolution} cells</p>
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
@@ -800,8 +800,8 @@ export function App() {
           </form>
         </aside>
 
-        <section className="results-panel" id="results-panel" aria-label="Mode result">
-          {!result && <div className="panel-heading results-heading"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
+        <section className="results-panel scientific-stage" id="results-panel" aria-label="Mode result">
+          {!result && <div className="panel-heading results-heading scientific-stage__header"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
           {result ? <div className="result-stage">
             <div className="result-command-bar">
               <div className="result-view-switcher"><Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
