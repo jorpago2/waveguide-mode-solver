@@ -39,6 +39,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
+import { ScientificEmptyState, ScientificStatusBar } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -594,6 +595,7 @@ export function App() {
       <SkipToContent href="#scientific-workspace" />
       <HeaderName className="product-name" href="./" prefix="" aria-label="W · Waveguide Mode Solver">
         <span className="product-mark">W</span>
+        <span className="product-label">Waveguide Mode Solver</span>
       </HeaderName>
       <div className="header-document-context" title={`${presetName}${presetModified ? " · Modified" : ""}`} aria-label="Current project status">
         <span className="header-preset-name">{presetName}{presetModified ? " · Modified" : ""}</span>
@@ -838,8 +840,8 @@ export function App() {
               {mode.azimuthalModeNumber && <Metric label="Azimuthal order m = βR" value={mode.azimuthalModeNumber.toFixed(3)} />}
               </div>
             </AccordionItem></Accordion>
-            </> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No guided mode found</strong><span>Inspect the mesh and structure, then increase the core size or index contrast.</span><Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Review configuration</Button></div></div>}
-          </div> : <div className="empty-state result-empty-state"><Result size={32} aria-hidden={true} /><div><strong>No solved mode yet</strong><span>Configure the cross-section and run the solver to reveal the electromagnetic result.</span>{!navigationOpen && <Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Configure waveguide</Button>}</div></div>}
+            </> : <ScientificEmptyState className="empty-state result-empty-state" icon={<Result size={32} />} title="No guided mode found" description="Inspect the mesh and structure, then increase the core size or index contrast." action={<Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Review configuration</Button>} />}
+          </div> : <ScientificEmptyState className="empty-state result-empty-state" icon={<Result size={32} />} title="No solved mode yet" description="Configure the cross-section and run the solver to reveal the electromagnetic result." action={!navigationOpen ? <Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Configure waveguide</Button> : undefined} />}
         </section>
       </div>
       </section>
@@ -928,12 +930,14 @@ export function App() {
         </Column>
       </Grid>
     </Content>
-    <footer className="status-strip" aria-label="Scientific status">
-      <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
+    <ScientificStatusBar className="status-strip" aria-label="Scientific status" status={{
+      state: solveState === "solved" ? "validated" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
+      label: solveStateLabel,
+    }} metadata={<>
       <span>{config.geometry ?? "channel"}</span>
       <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
       {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{validation.filter((check) => !check.pass).length} validation issue(s)</span></>}
-    </footer>
+    </>} />
     </Column>
   </Grid>
   </>;

@@ -13,9 +13,10 @@
 .app-shell { height: 100dvh; min-height: 0; max-width: none; padding: 0; color: var(--color-ink); background: var(--color-paper); font-family: var(--font-body); }
 .app-shell-column { height: 100dvh; min-width: 0; max-width: none; padding: 3rem 0 0; display: grid; grid-template-rows: auto minmax(0, 1fr) 2.5rem; }
 .site-header { height: 3rem; }
-.product-name { min-width: 3rem; flex-shrink: 0; }
+.product-name { min-width: 3rem; flex-shrink: 0; gap: var(--space-2xs); }
 .product-name > span { display: flex; align-items: center; }
 .product-name .product-mark { width: 1.5rem; height: 1.5rem; display: grid; place-items: center; flex: 0 0 1.5rem; color: var(--color-surface); background: var(--color-ink); font: 600 var(--text-xs)/1 var(--font-mono); }
+.product-name .product-label { overflow: hidden; font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .header-document-context { position: absolute; left: 50%; min-width: 0; max-width: 32rem; display: flex; align-items: center; gap: var(--space-xs); transform: translateX(-50%); }
 .header-preset-name { overflow: hidden; color: var(--cds-text-primary); font-size: var(--text-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .header-config-summary { color: var(--cds-text-secondary); font-size: var(--text-xs); white-space: nowrap; }

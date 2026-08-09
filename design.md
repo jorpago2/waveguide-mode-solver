@@ -1,5 +1,9 @@
 # Design — Waveguide Mode Solver
 
+## Shared contract (normative)
+
+This application consumes `@jorpago2/scientific-ui` and follows the [shared interface contract](https://github.com/jorpago2/jorpago2.github.io/blob/main/docs/interface-contract.md). Local rules below apply only to waveguide geometry, modal plots and scientific result density.
+
 This document is the canonical visual contract for the scientific application.
 
 ## Foundation
