@@ -260,12 +260,12 @@ body.plot-fullscreen-open { overflow: hidden; }
 }
 
 @media (max-width: 1055.98px) {
-  .app-shell-column { padding-bottom: 4rem; }
+  .app-shell-column { padding-bottom: var(--scientific-ui-mobile-nav-block-size); }
   .header-document-context { display: none; }
   .header-project-actions > :nth-child(-n + 2) { display: none; }
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
-  .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: 100%; max-width: none; height: 4rem; border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
-  .tool-rail { inline-size: 100%; block-size: 4rem; }
+  .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: 100%; max-width: none; height: var(--scientific-ui-mobile-nav-block-size); border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
+  .tool-rail { inline-size: 100%; block-size: var(--scientific-ui-mobile-nav-block-size); }
   .tool-rail ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
   .tool-rail .scientific-tool-rail__item { block-size: 100%; flex-direction: column; border-inline-start: 0; border-block-start: var(--scientific-ui-active-indicator-size) solid transparent; }
   .tool-rail .scientific-tool-rail__item.is-active,
