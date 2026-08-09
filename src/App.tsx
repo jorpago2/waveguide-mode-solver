@@ -7,9 +7,6 @@ import {
   Content,
   FileUploaderButton,
   Grid,
-  Header,
-  HeaderGlobalBar,
-  HeaderName,
   IconButton,
   InlineLoading,
   InlineNotification,
@@ -39,7 +36,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificEmptyState, ScientificStatusBar, ScientificToolRail } from "@jorpago2/scientific-ui";
+import { ScientificEmptyState, ScientificHeader, ScientificStatusBar, ScientificToolRail } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -591,25 +588,24 @@ export function App() {
   }
 
   return <>
-    <Header aria-label="Waveguide Mode Solver" className="site-header scientific-app-header">
-      <SkipToContent href="#scientific-workspace" />
-      <HeaderName className="product-name" href="./" prefix="" aria-label="W · Waveguide Mode Solver">
-        <span className="product-mark scientific-app-header__brand-mark">W</span>
-        <span className="product-detail"><strong className="product-label">Waveguide Mode Solver</strong><small>Mode analysis</small></span>
-      </HeaderName>
-      <div className="header-document-context" title={`${presetName}${presetModified ? " · Modified" : ""}`} aria-label="Current project status">
-        <span className="header-context-label">Current configuration</span>
-        <span className="header-preset-name">{presetName}{presetModified ? " · Modified" : ""}</span>
-        <span className="header-config-summary">{draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · λ {draft.wavelengthUm.toFixed(3)} µm</span>
-        <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
-      </div>
-      <HeaderGlobalBar className="header-project-actions" aria-label="Project actions">
+    <ScientificHeader
+      aria-label="Waveguide Mode Solver"
+      product="Waveguide Mode Solver"
+      productMark="W"
+      descriptor="Mode analysis"
+      href="./"
+      skipLink={<SkipToContent href="#scientific-workspace" />}
+      contextLabel="Current configuration"
+      context={`${presetName}${presetModified ? " · Modified" : ""}`}
+      contextDetail={`${draft.widthUm.toFixed(2)} × ${draft.heightUm.toFixed(2)} µm · λ ${draft.wavelengthUm.toFixed(3)} µm`}
+      status={{ state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input", label: solveStateLabel }}
+      secondaryActions={<>
         <IconButton type="button" kind="ghost" size="lg" label="Export project" onClick={exportProject}><DocumentExport size={20} aria-hidden={true} /></IconButton>
         <IconButton type="button" kind="ghost" size="lg" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></IconButton>
-        <IconButton type="button" kind="ghost" size="lg" label="Help" onClick={() => setHelpOpen(true)}><Help size={20} aria-hidden={true} /></IconButton>
         <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
-      </HeaderGlobalBar>
-    </Header>
+      </>}
+      primaryAction={<IconButton type="button" kind="ghost" size="lg" label="Help" onClick={() => setHelpOpen(true)}><Help size={20} aria-hidden={true} /></IconButton>}
+    />
     <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
       <div className="help-workflow">
         <p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p>
