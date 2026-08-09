@@ -591,10 +591,10 @@ export function App() {
   }
 
   return <>
-    <Header aria-label="Waveguide Mode Solver" className="site-header">
+    <Header aria-label="Waveguide Mode Solver" className="site-header scientific-app-header">
       <SkipToContent href="#scientific-workspace" />
       <HeaderName className="product-name" href="./" prefix="" aria-label="W · Waveguide Mode Solver">
-        <span className="product-mark">W</span>
+        <span className="product-mark scientific-app-header__brand-mark">W</span>
         <span className="product-detail"><strong className="product-label">Waveguide Mode Solver</strong><small>Mode analysis</small></span>
       </HeaderName>
       <div className="header-document-context" title={`${presetName}${presetModified ? " · Modified" : ""}`} aria-label="Current project status">
@@ -627,7 +627,8 @@ export function App() {
           <ScientificToolRail
             className="tool-rail"
             label="Scientific workflow"
-            activeId={activeView === "solver" && !navigationOpen ? null : activeView}
+            activeId={activeView}
+            expandedId={activeView === "solver" && navigationOpen ? "solver" : null}
             onChange={(id) => {
               if (id) navigateToView(id as AppView);
               else if (activeView === "solver" && navigationOpen) closeConfiguration();

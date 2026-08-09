@@ -244,6 +244,8 @@ body.plot-fullscreen-open { overflow: hidden; }
 .status-strip span { white-space: nowrap; }
 
 @media (min-width: 1056px) {
+  .tool-rail-column { position: fixed; z-index: 90; inset: 4rem auto 0 0; block-size: auto; }
+  .status-strip { margin-inline-start: var(--scientific-ui-rail-inline-size); }
   .field-control-bar { grid-template-columns: minmax(12rem, 18rem) minmax(28rem, 1fr); }
 }
 
@@ -268,11 +270,6 @@ body.plot-fullscreen-open { overflow: hidden; }
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
   .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: auto; max-width: none; height: var(--scientific-ui-mobile-nav-block-size); border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
   .tool-rail { display: block; inline-size: 100%; block-size: var(--scientific-ui-mobile-nav-block-size); overflow: hidden; }
-  .tool-rail ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-  .tool-rail .scientific-tool-rail__item { block-size: 100%; flex-direction: column; padding-inline: var(--space-3xs); border-inline-start: 0; border-block-start: var(--scientific-ui-active-indicator-size) solid transparent; }
-  .tool-rail .scientific-tool-rail__item.is-active,
-  .tool-rail .scientific-tool-rail__item[aria-expanded="true"] { border-block-start-color: var(--scientific-ui-link); }
-  .tool-rail .scientific-tool-rail__label { position: static; inline-size: auto; block-size: auto; clip: auto; clip-path: none; }
   .workbench-main { grid-column: 1; width: 100%; }
   .workspace, .validation-section { grid-template-columns: 1fr; }
   .workspace[data-panel-open="true"] .results-panel { display: none; }
