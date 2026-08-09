@@ -595,9 +595,10 @@ export function App() {
       <SkipToContent href="#scientific-workspace" />
       <HeaderName className="product-name" href="./" prefix="" aria-label="W · Waveguide Mode Solver">
         <span className="product-mark">W</span>
-        <span className="product-label">Waveguide Mode Solver</span>
+        <span className="product-detail"><strong className="product-label">Waveguide Mode Solver</strong><small>Mode analysis</small></span>
       </HeaderName>
       <div className="header-document-context" title={`${presetName}${presetModified ? " · Modified" : ""}`} aria-label="Current project status">
+        <span className="header-context-label">Current configuration</span>
         <span className="header-preset-name">{presetName}{presetModified ? " · Modified" : ""}</span>
         <span className="header-config-summary">{draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · λ {draft.wavelengthUm.toFixed(3)} µm</span>
         <IconIndicator kind={solveState === "solved" ? "succeeded" : solveState === "solving" ? "in-progress" : solveState === "stale" ? "caution-minor" : "not-started"} label={solveStateLabel} />
