@@ -251,10 +251,12 @@ body.plot-fullscreen-open { overflow: hidden; }
 }
 
 @media (max-width: 1055.98px) {
-  .app-shell-column { padding-bottom: var(--scientific-ui-mobile-nav-block-size); }
+  .app-shell-column { padding-bottom: var(--scientific-ui-mobile-nav-total-block-size); }
+  .app-shell-column[data-panel-open="true"] { grid-template-rows: auto minmax(0, 1fr); }
+  .app-shell-column[data-panel-open="true"] .status-strip { display: none; }
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
-  .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: auto; max-width: none; height: var(--scientific-ui-mobile-nav-block-size); border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
-  .tool-rail { display: block; inline-size: 100%; block-size: var(--scientific-ui-mobile-nav-block-size); overflow: hidden; }
+  .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: auto; max-width: none; height: var(--scientific-ui-mobile-nav-total-block-size); border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
+  .tool-rail { display: block; inline-size: 100%; block-size: var(--scientific-ui-mobile-nav-total-block-size); overflow: hidden; }
   .workbench-main { grid-column: 1; width: 100%; }
   .workspace, .validation-section { grid-template-columns: 1fr; }
   .workspace[data-panel-open="true"] .results-panel { display: none; }

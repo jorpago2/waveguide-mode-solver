@@ -614,7 +614,7 @@ export function App() {
       </div>
     </Modal>
     <Grid fullWidth condensed className="app-shell">
-    <Column sm={4} md={8} lg={16} className="app-shell-column">
+    <Column sm={4} md={8} lg={16} className="app-shell-column" data-panel-open={navigationOpen}>
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
 
     <Content id="scientific-workspace" className="scientific-content" tabIndex={-1}>
