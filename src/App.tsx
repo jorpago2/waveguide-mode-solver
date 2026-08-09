@@ -641,7 +641,7 @@ export function App() {
         <Column sm={4} md={7} lg={15} className="workbench-main">
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
-        <aside ref={configurationPanelRef} className="control-panel scientific-task-panel" id="configuration-panel" hidden={!navigationOpen}>
+        <aside ref={configurationPanelRef} className="control-panel scientific-task-panel scientific-task-panel--managed" id="configuration-panel" hidden={!navigationOpen}>
           <div className="panel-heading scientific-task-panel__header">
             <div className="scientific-task-panel__heading"><h2>Configuration</h2>{presetModified && <IconIndicator kind="caution-minor" label="Modified" />}</div>
             <div className="panel-actions scientific-task-panel__actions">{presetModified && <Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button>}<IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
