@@ -26,7 +26,7 @@
 .header-project-actions { height: 4rem; margin-left: 0; justify-self: end; display: flex; align-items: stretch; }
 .scientific-content { grid-row: 2; width: 100%; height: 100%; min-height: 0; max-width: none; padding: 0; overflow: hidden; }
 .workbench-grid { height: 100%; min-height: 0; margin: 0; padding: 0; display: grid; grid-template-columns: var(--scientific-ui-rail-inline-size) minmax(0, 1fr); }
-.tool-rail-column { grid-column: 1; grid-row: 1; flex: 0 0 var(--scientific-ui-rail-inline-size); width: var(--scientific-ui-rail-inline-size); max-width: var(--scientific-ui-rail-inline-size); min-width: 0; height: 100%; padding: 0; }
+.tool-rail-column { grid-column: 1; grid-row: 1; flex: 0 0 var(--scientific-ui-rail-inline-size); width: var(--scientific-ui-rail-inline-size); max-width: var(--scientific-ui-rail-inline-size); min-width: 0; height: 100%; margin: 0; padding: 0; }
 .tool-rail { height: 100%; min-height: 0; }
 .workbench-main { grid-column: 2; grid-row: 1; width: auto; max-width: none; min-width: 0; height: 100%; padding: 0; overflow: hidden; }
 .workspace { height: 100%; min-height: 0; display: grid; grid-template-columns: var(--scientific-ui-panel-inline-size) minmax(0, 1fr); align-items: stretch; }
@@ -266,10 +266,10 @@ body.plot-fullscreen-open { overflow: hidden; }
   .app-shell-column { padding-bottom: var(--scientific-ui-mobile-nav-block-size); }
   .header-project-actions > :nth-child(-n + 2) { display: none; }
   .workbench-grid { grid-template-columns: minmax(0, 1fr); }
-  .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: 100%; max-width: none; height: var(--scientific-ui-mobile-nav-block-size); border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
-  .tool-rail { inline-size: 100%; block-size: var(--scientific-ui-mobile-nav-block-size); }
+  .tool-rail-column { position: fixed; z-index: 90; right: 0; bottom: 0; left: 0; width: auto; max-width: none; height: var(--scientific-ui-mobile-nav-block-size); border-top: 1px solid var(--cds-border-subtle); border-right: 0; }
+  .tool-rail { display: block; inline-size: 100%; block-size: var(--scientific-ui-mobile-nav-block-size); overflow: hidden; }
   .tool-rail ul { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
-  .tool-rail .scientific-tool-rail__item { block-size: 100%; flex-direction: column; border-inline-start: 0; border-block-start: var(--scientific-ui-active-indicator-size) solid transparent; }
+  .tool-rail .scientific-tool-rail__item { block-size: 100%; flex-direction: column; padding-inline: var(--space-3xs); border-inline-start: 0; border-block-start: var(--scientific-ui-active-indicator-size) solid transparent; }
   .tool-rail .scientific-tool-rail__item.is-active,
   .tool-rail .scientific-tool-rail__item[aria-expanded="true"] { border-block-start-color: var(--scientific-ui-link); }
   .tool-rail .scientific-tool-rail__label { position: static; inline-size: auto; block-size: auto; clip: auto; clip-path: none; }
