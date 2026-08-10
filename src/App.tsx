@@ -589,7 +589,7 @@ export function App() {
   return <>
     <ScientificHeader
       aria-label="Waveguide Mode Solver"
-      product="Waveguide Mode Solver"
+      product="Waveguide Solver"
       productMark="W"
       descriptor="Mode analysis"
       href="./"
@@ -654,7 +654,7 @@ export function App() {
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <p className="configuration-summary">{draft.geometry ?? "channel"} · {draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · {materialDefinition(draft.coreMaterial ?? "custom").name} · λ {draft.wavelengthUm.toFixed(3)} µm · {draft.gridResolution} cells</p>
-            <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
+            <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Shape" }, { value: "materials", label: "Media" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3></div>
               <CarbonSelectField id="geometry" label="Geometry" value={draft.geometry ?? "channel"} options={[{ value: "channel", label: "Channel" }, { value: "rib", label: "Rib" }, { value: "slot", label: "Slot" }, { value: "coupler", label: "Two-guide coupler" }, { value: "multilayer", label: "Multilayer ridge" }, { value: "polygon", label: "Polygon regions" }]} onChange={(value) => setDraft((current) => {

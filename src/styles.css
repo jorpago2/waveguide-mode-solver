@@ -283,7 +283,7 @@ body.plot-fullscreen-open { overflow: hidden; }
 @media (max-width: 460px) {
   .form-grid { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: 1fr 1fr; }
-  .primary-metrics { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(9rem, 42vw); overflow-x: auto; scrollbar-width: thin; }
+  .primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row; overflow-x: visible; }
   .result-command-bar { align-items: stretch; flex-direction: column; gap: var(--space-2xs); }
   .result-view-switcher { width: 100%; }
   .result-command-bar > button { align-self: flex-end; }
