@@ -25,7 +25,6 @@ import {
   ChartLine,
   CheckmarkOutline,
   Chemistry,
-  Close,
   DocumentExport,
   DocumentImport,
   Download,
@@ -36,7 +35,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificEmptyState, ScientificHeader, ScientificStatusBar, ScientificToolRail } from "@jorpago2/scientific-ui";
+import { ScientificEmptyState, ScientificHeader, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -641,12 +640,18 @@ export function App() {
         <Column sm={4} md={7} lg={15} className="workbench-main">
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
-        <aside ref={configurationPanelRef} className="control-panel scientific-task-panel scientific-task-panel--managed" id="configuration-panel" hidden={!navigationOpen}>
-          <div className="panel-heading scientific-task-panel__header">
-            <div className="scientific-task-panel__heading"><h2>Configuration</h2>{presetModified && <IconIndicator kind="caution-minor" label="Modified" />}</div>
-            <div className="panel-actions scientific-task-panel__actions">{presetModified && <Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button>}<IconButton type="button" kind="ghost" size="sm" label="Close configuration" onClick={closeConfiguration}><Close size={16} aria-hidden={true} /></IconButton></div>
-          </div>
-          <form className="scientific-task-panel__body" id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
+        <ScientificTaskPanel
+          ref={configurationPanelRef}
+          className="control-panel"
+          id="configuration-panel"
+          title="Configuration"
+          eyebrow="Mode solver"
+          closeLabel="Close"
+          onClose={closeConfiguration}
+          hidden={!navigationOpen}
+          actions={presetModified ? <><IconIndicator kind="caution-minor" label="Modified" /><Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button></> : undefined}
+        >
+          <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <p className="configuration-summary">{draft.geometry ?? "channel"} · {draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · {materialDefinition(draft.coreMaterial ?? "custom").name} · λ {draft.wavelengthUm.toFixed(3)} µm · {draft.gridResolution} cells</p>
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Geometry" }, { value: "materials", label: "Materials" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
@@ -798,7 +803,7 @@ export function App() {
             <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"}</Button>
             <InlineNotification className="status" kind="info" title="Solver status" subtitle={message} hideCloseButton lowContrast />{error && <InlineNotification kind="error" title="Solver error" subtitle={error} hideCloseButton lowContrast />}
           </form>
-        </aside>
+        </ScientificTaskPanel>
 
         <section className="results-panel scientific-stage" id="results-panel" aria-label="Mode result">
           {!result && <div className="panel-heading results-heading scientific-stage__header"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
