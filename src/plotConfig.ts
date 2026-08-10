@@ -9,11 +9,17 @@ const fullscreenIcon = {
 };
 
 let fullscreenPlot: Plotly.PlotlyHTMLElement | null = null;
+let previousPlotSize: { width: string; height: string } | null = null;
 
 function closePlotFullscreen() {
   if (!fullscreenPlot) return;
   const plot = fullscreenPlot;
   fullscreenPlot = null;
+  if (previousPlotSize) {
+    plot.style.width = previousPlotSize.width;
+    plot.style.height = previousPlotSize.height;
+  }
+  previousPlotSize = null;
   plot.classList.remove("plot-fullscreen");
   document.body.classList.remove("plot-fullscreen-open");
   document.removeEventListener("keydown", closeFullscreenOnEscape);
@@ -26,6 +32,9 @@ function closeFullscreenOnEscape(event: KeyboardEvent) {
 
 function openPlotFullscreen(plot: Plotly.PlotlyHTMLElement) {
   fullscreenPlot = plot;
+  previousPlotSize = { width: plot.style.width, height: plot.style.height };
+  plot.style.width = "100%";
+  plot.style.height = "100%";
   plot.classList.add("plot-fullscreen");
   document.body.classList.add("plot-fullscreen-open");
   document.addEventListener("keydown", closeFullscreenOnEscape);

@@ -7,7 +7,6 @@ import {
   Content,
   FileUploaderButton,
   Grid,
-  IconButton,
   InlineLoading,
   InlineNotification,
   Link,
@@ -35,7 +34,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificEmptyState, ScientificHeader, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail } from "@jorpago2/scientific-ui";
+import { ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -599,11 +598,11 @@ export function App() {
       contextDetail={`${draft.widthUm.toFixed(2)} × ${draft.heightUm.toFixed(2)} µm · λ ${draft.wavelengthUm.toFixed(3)} µm`}
       status={{ state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input", label: solveStateLabel }}
       secondaryActions={<>
-        <IconButton type="button" kind="ghost" size="lg" label="Export project" onClick={exportProject}><DocumentExport size={20} aria-hidden={true} /></IconButton>
-        <IconButton type="button" kind="ghost" size="lg" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></IconButton>
+        <ScientificHeaderAction type="button" label="Export project" onClick={exportProject}><DocumentExport size={20} aria-hidden={true} /></ScientificHeaderAction>
+        <ScientificHeaderAction type="button" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></ScientificHeaderAction>
         <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
       </>}
-      primaryAction={<IconButton type="button" kind="ghost" size="lg" label="Help" onClick={() => setHelpOpen(true)}><Help size={20} aria-hidden={true} /></IconButton>}
+      primaryAction={<ScientificHeaderAction type="button" label="Help" onClick={() => setHelpOpen(true)}><Help size={20} aria-hidden={true} /></ScientificHeaderAction>}
     />
     <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
       <div className="help-workflow">
@@ -617,6 +616,7 @@ export function App() {
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
 
     <Content id="scientific-workspace" className="scientific-content" tabIndex={-1}>
+      <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
       <Grid fullWidth condensed className="workbench-grid">
         <Column sm={4} md={1} lg={1} className="tool-rail-column">
           <ScientificToolRail
@@ -949,7 +949,7 @@ export function App() {
 }
 
 function ViewHeading({ title, id, icon }: { title: string; id: string; icon: ReactNode }) {
-  return <header className="view-heading"><div className="view-title">{icon}<h1 id={id}>{title}</h1></div></header>;
+  return <header className="view-heading"><div className="view-title">{icon}<h2 id={id}>{title}</h2></div></header>;
 }
 
 function VisualizationFallback() {
