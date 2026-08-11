@@ -10,14 +10,7 @@
 
 * { box-sizing: border-box; }
 #root { height: 100dvh; }
-.app-shell { height: calc(100dvh - var(--scientific-ui-header-block-size)); min-height: 0; max-width: none; padding: 0; overflow: hidden; grid-template-rows: minmax(0, 1fr); color: var(--color-ink); background: var(--color-paper); font-family: var(--font-body); }
-.app-shell-column { height: 100%; min-width: 0; min-height: 0; max-width: none; padding: 0; overflow: hidden; display: grid; grid-template-rows: auto minmax(0, 1fr) 2.5rem; }
-.scientific-content { grid-row: 2; width: 100%; height: 100%; min-height: 0; max-width: none; padding: 0; overflow: hidden; }
-.workbench-grid { height: 100%; min-height: 0; margin: 0; padding: 0; display: grid; grid-template-columns: var(--scientific-ui-rail-inline-size) minmax(0, 1fr); }
-.tool-rail-column { display: contents; }
-.workbench-main { grid-column: 2; grid-row: 1; width: auto; max-width: none; min-width: 0; min-height: 0; height: 100%; padding: 0; overflow: hidden; }
-.workspace { height: 100%; min-height: 0; display: grid; grid-template-columns: var(--scientific-ui-panel-inline-size) minmax(0, 1fr); align-items: stretch; }
-.workspace[data-panel-open="false"] { grid-template-columns: minmax(0, 1fr); }
+.scientific-content, .workspace { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .control-panel, .results-panel { background: var(--color-surface); }
 
 html { scroll-padding-top: var(--scientific-ui-header-block-size); }
@@ -207,23 +200,7 @@ body.plot-fullscreen-open { overflow: hidden; }
 .solver-details dt { color: var(--color-ink-2); }
 .solver-details dd { color: var(--color-ink); font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-.status-strip {
-  grid-row: 3;
-  z-index: 30;
-  min-height: 2.5rem;
-  padding: 0 var(--space-sm);
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  color: var(--cds-text-secondary);
-  background: var(--cds-layer);
-  border-top: 1px solid var(--cds-border-subtle);
-  font-size: var(--text-xs);
-}
-.status-strip span { white-space: nowrap; }
-
 @media (min-width: 1056px) {
-  .status-strip { margin-inline-start: var(--scientific-ui-rail-inline-size); }
   .field-control-bar { grid-template-columns: minmax(12rem, 18rem) minmax(28rem, 1fr); }
 }
 
@@ -236,26 +213,14 @@ body.plot-fullscreen-open { overflow: hidden; }
   .primary-metrics { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
 
-@media (max-width: 1120px) {
-  .workspace { grid-template-columns: minmax(352px, 368px) minmax(0, 1fr); }
-  .workspace[data-panel-open="false"] { grid-template-columns: minmax(0, 1fr); }
-}
-
 @media (max-width: 1055.98px) {
-  .app-shell-column { padding-bottom: var(--scientific-ui-mobile-nav-total-block-size); }
-  .app-shell-column[data-panel-open="true"] { grid-template-rows: auto minmax(0, 1fr); }
-  .app-shell-column[data-panel-open="true"] .status-strip { display: none; }
-  .workbench-grid { grid-template-columns: minmax(0, 1fr); }
-  .workbench-main { grid-column: 1; width: 100%; }
-  .workspace, .validation-section { grid-template-columns: 1fr; }
-  .workspace[data-panel-open="true"] .results-panel { display: none; }
+  .validation-section { grid-template-columns: 1fr; }
   .control-panel { width: 100%; background: var(--cds-layer); border-right: 0; }
   .results-panel { padding: var(--space-sm); }
   .field-plot { min-height: 340px; }
   .geometry-plot { min-height: 360px; }
   .sweep-section { padding: 16px; }
   .validation-section .checks-card { order: -1; }
-  .status-strip { overflow-x: auto; gap: var(--space-sm); }
   .js-plotly-plot .modebar { display: flex; max-width: 100%; flex-wrap: wrap; justify-content: center; }
   .js-plotly-plot .modebar-btn { min-width: var(--scientific-ui-target-size); min-height: var(--scientific-ui-target-size); display: inline-flex; align-items: center; justify-content: center; }
 }
@@ -291,8 +256,6 @@ body.plot-fullscreen-open { overflow: hidden; }
   .stack-layer { grid-template-columns: 1fr; }
   .analysis-card { padding: var(--space-sm) 0 0; }
   .analysis-plot, .mode-map-plot { min-height: 460px; }
-  .status-strip { padding-inline: var(--space-2xs); overflow: hidden; }
-  .status-strip > span:nth-of-type(n + 3) { display: none; }
   .comparison-scroll:has(.candidate-table) { overflow-x: visible; }
   .candidate-table { min-width: 0; }
   .candidate-table table, .candidate-table tbody, .candidate-table tr, .candidate-table td { display: block; width: 100%; }

@@ -3,10 +3,7 @@ import {
   Accordion,
   AccordionItem,
   Button,
-  Column,
-  Content,
   FileUploaderButton,
-  Grid,
   InlineLoading,
   InlineNotification,
   Link,
@@ -32,7 +29,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, useScientificShortcut } from "@jorpago2/scientific-ui";
+import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -577,8 +574,9 @@ export function App() {
     }
   }
 
-  return <>
-    <ScientificHeader
+  return <ScientificAppShell
+    className="waveguide-app"
+    header={<ScientificHeader
       aria-label="Waveguide Mode Solver"
       product="Waveguide Solver"
       productMark="W"
@@ -609,16 +607,8 @@ export function App() {
         <ScientificHeaderAction type="button" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></ScientificHeaderAction>
         <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
       </>}
-    />
-    <Grid fullWidth condensed className="app-shell">
-    <Column sm={4} md={8} lg={16} className="app-shell-column" data-panel-open={navigationOpen}>
-    {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
-
-    <Content id="scientific-workspace" className="scientific-content" tabIndex={-1}>
-      <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
-      <Grid fullWidth condensed className="workbench-grid">
-        <Column sm={4} md={1} lg={1} className="tool-rail-column">
-          <ScientificToolRail
+    />}
+    navigation={<ScientificToolRail
             className="tool-rail"
             label="Scientific workflow"
             activeId={activeView}
@@ -634,12 +624,9 @@ export function App() {
               icon: <Icon size={20} />,
               controlsId: id === "solver" ? "configuration-panel" : id,
             }))}
-          />
-        </Column>
-        <Column sm={4} md={7} lg={15} className="workbench-main">
-      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
-      <div id="mode-solver-workspace" className="workspace" data-panel-open={navigationOpen} tabIndex={-1}>
-        <ScientificTaskPanel
+          />}
+    panelOpen={navigationOpen}
+    panel={<ScientificTaskPanel
           ref={configurationPanelRef}
           className="control-panel"
           id="configuration-panel"
@@ -647,7 +634,6 @@ export function App() {
           eyebrow="Mode solver"
           closeLabel="Close"
           onClose={closeConfiguration}
-          hidden={!navigationOpen}
           actions={presetModified ? <><IconIndicator kind="caution-minor" label="Modified" /><Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button></> : undefined}
         >
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
@@ -802,8 +788,21 @@ export function App() {
             <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Solve modes"}</Button>
             <InlineNotification className="status" kind="info" title="Solver status" subtitle={message} hideCloseButton lowContrast />{error && <InlineNotification kind="error" title="Solver error" subtitle={error} hideCloseButton lowContrast />}
           </form>
-        </ScientificTaskPanel>
-
+        </ScientificTaskPanel>}
+    statusBar={<ScientificStatusBar aria-label="Scientific status" status={{
+      state: solveState === "solved" ? "validated" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
+      label: solveStateLabel,
+    }} metadata={<>
+      <span>{config.geometry ?? "channel"}</span>
+      <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
+      {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{validation.filter((check) => !check.pass).length} validation issue(s)</span></>}
+    </>} />}
+  >
+    {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
+    <div id="scientific-workspace" className="scientific-content" tabIndex={-1}>
+      <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
+      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
+      <div id="mode-solver-workspace" className="workspace" tabIndex={-1}>
         <section className="results-panel scientific-stage" id="results-panel" aria-label="Mode result">
           {!result && <div className="panel-heading results-heading scientific-stage__header"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
           {result ? <div className="result-stage">
@@ -931,20 +930,8 @@ export function App() {
         <div className="comparison-scroll"><CarbonTable className="candidate-table" title={<>Ritz candidates · target {result.searchTargetEffectiveIndex.toFixed(5)} · window {result.searchWindow.minimum.toFixed(5)}–{result.searchWindow.maximum.toFixed(5)}</>} headers={["Candidate", "Re(neff)", "Im(neff)", "Residual", "Status", "Reason"]} rows={result.candidates.map((candidate, index) => ({ id: `${candidate.effectiveIndex}-${candidate.effectiveIndexImaginary}-${index}`, cells: [candidate.label ?? `Ritz ${index + 1}`, candidate.effectiveIndex.toFixed(7), candidate.effectiveIndexImaginary.toExponential(3), candidate.residual.toExponential(2), <IconIndicator kind={candidate.status === "selected" || candidate.status === "available" ? "succeeded" : "incomplete"} label={candidate.status} />, candidate.reason] }))} /></div>
       </section>}
       </section>
-        </Column>
-      </Grid>
-    </Content>
-    <ScientificStatusBar className="status-strip" aria-label="Scientific status" status={{
-      state: solveState === "solved" ? "validated" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
-      label: solveStateLabel,
-    }} metadata={<>
-      <span>{config.geometry ?? "channel"}</span>
-      <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
-      {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{validation.filter((check) => !check.pass).length} validation issue(s)</span></>}
-    </>} />
-    </Column>
-  </Grid>
-  </>;
+    </div>
+  </ScientificAppShell>;
 }
 
 function ViewHeading({ title, id, icon }: { title: string; id: string; icon: ReactNode }) {
