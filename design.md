@@ -10,7 +10,7 @@ This document is the canonical visual contract for the scientific application.
 
 - IBM Carbon Design System, theme `g10`, governs components, typography, colour,
   focus, interaction states, layers and shape.
-- IBM Plex Sans is the interface typeface. IBM Plex Mono is reserved for
+- IBM Plex Sans is the interface typeface for all content, including
   numerical output and equations.
 - Plotly is the only non-Carbon visual system and is used exclusively for
   scientific plots.
