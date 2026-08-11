@@ -32,7 +32,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail } from "@jorpago2/scientific-ui";
+import { ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -256,22 +256,21 @@ export function App() {
     if (navigationOpen) configurationPanelRef.current?.scrollTo({ top: 0 });
   }, [configurationTab, navigationOpen]);
 
-  useEffect(() => {
-    const handleShortcut = (event: globalThis.KeyboardEvent) => {
-      if (event.repeat || event.defaultPrevented) return;
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault();
-        if (!busy) document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit();
-      } else if (event.key === "Escape") {
-        if (navigationOpen) {
-          setNavigationOpen(false);
-          window.requestAnimationFrame(() => configureTriggerRef.current?.focus());
-        } else if (busy) cancelSolverWorker();
-      }
-    };
-    document.addEventListener("keydown", handleShortcut, true);
-    return () => document.removeEventListener("keydown", handleShortcut, true);
-  }, [activeView, busy, navigationOpen]);
+  const escapeShortcut = useMemo(() => ({
+    id: "waveguide:close-or-cancel",
+    shortcut: "Escape",
+    displayKeys: ["Esc"],
+    description: "Close configuration or cancel calculation",
+    enabled: navigationOpen || busy,
+    priority: 20,
+    handler: () => {
+      if (navigationOpen) {
+        setNavigationOpen(false);
+        window.requestAnimationFrame(() => configureTriggerRef.current?.focus());
+      } else if (busy) cancelSolverWorker();
+    },
+  }), [busy, navigationOpen]);
+  useScientificShortcut(escapeShortcut);
 
   function navigateToView(view: AppView) {
     window.history.pushState(null, "", `#${view}`);
@@ -592,12 +591,19 @@ export function App() {
       status={{ state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input", label: solveStateLabel }}
       help={{
         summary: "Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.",
-        shortcuts: [
-          { keys: ["Ctrl/⌘", "Enter"], description: "Solve modes" },
-          { keys: ["Esc"], description: "Close the active panel or cancel calculation" },
-        ],
         footer: <><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></>,
       }}
+      primaryAction={<ScientificRunControl
+        size="lg"
+        execution={{
+          state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "ready",
+          label: solveStateLabel,
+          onRun: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit(),
+          onStop: cancelSolverWorker,
+          runLabel: "Solve",
+          stopLabel: "Cancel",
+        }}
+      />}
       secondaryActions={<>
         <ScientificHeaderAction type="button" label="Export project" onClick={exportProject}><DocumentExport size={20} aria-hidden={true} /></ScientificHeaderAction>
         <ScientificHeaderAction type="button" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></ScientificHeaderAction>
