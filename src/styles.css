@@ -197,12 +197,6 @@ body.plot-fullscreen-open { overflow: hidden; }
 .equation > * { margin-inline: 0.1em; }
 .equation sub { vertical-align: sub; font-size: 0.7em; }
 .equation sup { vertical-align: super; font-size: 0.7em; }
-.help-workflow { display: grid; gap: var(--space-sm); }
-.help-workflow p, .help-workflow dl { margin: 0; }
-.help-workflow dl { display: grid; gap: var(--space-2xs); }
-.help-workflow dl > div { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: var(--space-sm); align-items: center; }
-.help-workflow dt, .help-workflow dd { margin: 0; }
-.help-workflow kbd { padding: 2px 6px; border: 1px solid var(--color-rule-strong); background: var(--color-paper-2); font: 600 var(--text-xs)/1.4 var(--font-mono); }
 .limitation { margin: 0; padding-top: 16px; color: var(--color-ink-2); border-top: 1px solid var(--color-rule); font-size: 0.78rem; line-height: 1.55; }
 .checks { display: grid; gap: 8px; }
 .checks > div { padding: 12px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--color-rule); }
@@ -294,7 +288,6 @@ body.plot-fullscreen-open { overflow: hidden; }
   .sweep-plot { min-height: 480px; }
   .material-plot { min-height: 560px; }
   .analysis-controls.compact { grid-template-columns: 1fr; }
-  .help-workflow dl > div { grid-template-columns: 1fr; gap: var(--space-3xs); }
   .stack-layer { grid-template-columns: 1fr; }
   .analysis-card { padding: var(--space-sm) 0 0; }
   .analysis-plot, .mode-map-plot { min-height: 460px; }

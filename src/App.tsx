@@ -10,7 +10,6 @@ import {
   InlineLoading,
   InlineNotification,
   Link,
-  Modal,
   SkipToContent,
   Tab,
   TabList,
@@ -27,7 +26,6 @@ import {
   DocumentExport,
   DocumentImport,
   Download,
-  Help,
   Play,
   Result,
   SettingsAdjust,
@@ -207,7 +205,6 @@ export function App() {
   const [blochSweepMessage, setBlochSweepMessage] = useState("Enable a periodic boundary to calculate transverse-array dispersion.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(() => typeof window === "undefined" || viewFromHash() === "solver");
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
   const configurationPanelRef = useRef<HTMLElement>(null);
@@ -261,19 +258,15 @@ export function App() {
 
   useEffect(() => {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
-      if (event.repeat) return;
+      if (event.repeat || event.defaultPrevented) return;
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
         if (!busy) document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit();
       } else if (event.key === "Escape") {
-        setHelpOpen(false);
         if (navigationOpen) {
           setNavigationOpen(false);
           window.requestAnimationFrame(() => configureTriggerRef.current?.focus());
         } else if (busy) cancelSolverWorker();
-      } else if (event.key === "?" && !isEditableTarget(event.target)) {
-        event.preventDefault();
-        setHelpOpen((open) => !open);
       }
     };
     document.addEventListener("keydown", handleShortcut, true);
@@ -597,20 +590,20 @@ export function App() {
       context={`${presetName}${presetModified ? " · Modified" : ""}`}
       contextDetail={`${draft.widthUm.toFixed(2)} × ${draft.heightUm.toFixed(2)} µm · λ ${draft.wavelengthUm.toFixed(3)} µm`}
       status={{ state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input", label: solveStateLabel }}
+      help={{
+        summary: "Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.",
+        shortcuts: [
+          { keys: ["Ctrl/⌘", "Enter"], description: "Solve modes" },
+          { keys: ["Esc"], description: "Close the active panel or cancel calculation" },
+        ],
+        footer: <><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></>,
+      }}
       secondaryActions={<>
         <ScientificHeaderAction type="button" label="Export project" onClick={exportProject}><DocumentExport size={20} aria-hidden={true} /></ScientificHeaderAction>
         <ScientificHeaderAction type="button" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></ScientificHeaderAction>
         <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
       </>}
-      primaryAction={<ScientificHeaderAction type="button" label="Help" onClick={() => setHelpOpen(true)}><Help size={20} aria-hidden={true} /></ScientificHeaderAction>}
     />
-    <Modal open={helpOpen} passiveModal modalHeading="Quick workflow" onRequestClose={() => setHelpOpen(false)}>
-      <div className="help-workflow">
-        <p>Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.</p>
-        <dl><div><dt><kbd>Ctrl/⌘</kbd> + <kbd>Enter</kbd></dt><dd>Solve modes</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Close the active panel or cancel calculation</dd></div><div><dt><kbd>?</kbd></dt><dd>Toggle this help</dd></div></dl>
-        <p><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></p>
-      </div>
-    </Modal>
     <Grid fullWidth condensed className="app-shell">
     <Column sm={4} md={8} lg={16} className="app-shell-column" data-panel-open={navigationOpen}>
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
@@ -1072,9 +1065,6 @@ function WarningMessages({ warnings }: { warnings: string[] }) {
   return <>{warnings.map((warning) => <InlineNotification kind="warning" title="Review" subtitle={warning} hideCloseButton lowContrast key={warning} />)}</>;
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.matches("input, select, textarea") || target.isContentEditable);
-}
 
 function download(content: string, filename: string, mimeType = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
