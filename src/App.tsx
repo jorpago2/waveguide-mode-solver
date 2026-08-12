@@ -16,7 +16,6 @@ import {
   preview__IconIndicator as IconIndicator,
 } from "@carbon/react";
 import {
-  Analytics,
   ChartLine,
   CheckmarkOutline,
   Chemistry,
@@ -29,7 +28,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, useScientificShortcut } from "@jorpago2/scientific-ui";
+import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -162,24 +161,25 @@ const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm:
 const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
 const initialBlochSweep: BlochSweepSettings = { axis: "x", startPhaseRad: -Math.PI, stopPhaseRad: Math.PI, points: 9, modeIndex: 0 };
 const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "intensity", "Hx", "Hy", "Hz", "poynting"];
-type AppView = "solver" | "materials" | "sweeps" | "analysis" | "validation";
+type AppView = "solver" | "materials" | "sweeps" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
+type StudyPane = "wavelength" | "geometry" | "bloch" | "analysis";
 const appViews = [
-  { id: "solver", label: "Configure", hint: "Geometry, materials and solver", icon: SettingsAdjust },
+  { id: "solver", label: "Setup", hint: "Geometry, materials and solver", icon: SettingsAdjust },
   { id: "materials", label: "Materials", hint: "Inspect optical data", icon: Chemistry },
-  { id: "sweeps", label: "Sweeps", hint: "Track parameters", icon: ChartLine },
-  { id: "analysis", label: "Analysis", hint: "Design studies", icon: Analytics },
+  { id: "sweeps", label: "Studies", hint: "Track parameters", icon: ChartLine },
   { id: "validation", label: "Validation", hint: "Numerical confidence", icon: CheckmarkOutline },
 ] as const;
 
 function viewFromHash(): AppView {
   const hash = window.location.hash.slice(1);
+  if (hash === "analysis") return "sweeps";
   return appViews.some((view) => view.id === hash) ? hash as AppView : "solver";
 }
 
 export function App() {
   const [activeView, setActiveView] = useState<AppView>(() => typeof window === "undefined" ? "solver" : viewFromHash());
-  const [sweepPane, setSweepPane] = useState<"wavelength" | "geometry" | "bloch">("wavelength");
+  const [sweepPane, setSweepPane] = useState<StudyPane>(() => typeof window !== "undefined" && window.location.hash === "#analysis" ? "analysis" : "wavelength");
   const [configurationTab, setConfigurationTab] = useState<ConfigurationTab>("geometry");
   const [presetName, setPresetName] = useState("SiN · channel");
   const [draft, setDraft] = useState<WaveguideConfig>(initialConfig);
@@ -790,8 +790,8 @@ export function App() {
           </form>
         </ScientificTaskPanel>}
     statusBar={<ScientificStatusBar aria-label="Scientific status" status={{
-      state: solveState === "solved" ? "validated" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
-      label: solveStateLabel,
+      state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
+      label: solveState === "solved" ? `${solveStateLabel} · review validation evidence` : solveStateLabel,
     }} metadata={<>
       <span>{config.geometry ?? "channel"}</span>
       <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
@@ -855,8 +855,8 @@ export function App() {
       </section>
 
       <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
-      <ViewHeading title="Sweeps" id="sweeps-title" icon={<ChartLine size={20} aria-hidden={true} />} />
-      <div className="section-tabs"><CarbonSwitcher label="Sweep type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength" }, { value: "geometry", label: "Geometry" }, { value: "bloch", label: "Bloch phase" }]} onChange={(value) => setSweepPane(value as "wavelength" | "geometry" | "bloch")} /></div>
+      <ViewHeading title="Studies" id="sweeps-title" icon={<ChartLine size={20} aria-hidden={true} />} />
+      <div className="section-tabs"><CarbonSwitcher label="Study type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength" }, { value: "geometry", label: "Geometry" }, { value: "bloch", label: "Bloch phase" }, { value: "analysis", label: "Advanced" }]} onChange={(value) => setSweepPane(value as StudyPane)} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
         <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
@@ -898,18 +898,23 @@ export function App() {
         {!blochSweepResult && <div className="tool-empty-state">Enable a periodic boundary to inspect the tracked Bloch branches.</div>}
         {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><Metric label={<>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</>} value={blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)} /><Metric label="Tracked subspace" value={`${Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)`} /></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense><WarningMessages warnings={blochSweepResult.warnings} /></>}
       </section>
+      <section className="sweep-section tabbed-section" hidden={sweepPane !== "analysis"}>
+        {activeView === "sweeps" && sweepPane === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
-
-      <section className="app-view" id="analysis" hidden={activeView !== "analysis"} aria-labelledby="analysis-title" tabIndex={-1}>
-      <ViewHeading title="Analysis" id="analysis-title" icon={<Analytics size={20} aria-hidden={true} />} />
-      {activeView === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
 
       <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title" tabIndex={-1}>
       <ViewHeading title="Validation" id="validation-title" icon={<CheckmarkOutline size={20} aria-hidden={true} />} />
       <section className={`validation-section${result ? "" : " validation-section-single"}`}>
-        <div className="method-card"><h2>Full-vector finite-difference eigenmode method</h2><p>{(config.bendRadiusUm ?? 0) > 0 ? <>The bent solver uses a radial coordinate transformation: the metric 1 + x/R modifies the material tensors, a reduced transverse-electric eigenproblem is solved by sparse shift–invert LU, and the magnetic and longitudinal fields are reconstructed.</> : result?.formulation === "first-order" ? <>The Rust/WebAssembly tensor solver uses a four-transverse-field first-order Maxwell eigenproblem and reconstructs the longitudinal fields, retaining all six independent components of the symmetric permittivity tensor.</> : <>The straight diagonal-tensor solver uses a Rust/WebAssembly coupled transverse magnetic-field eigenproblem.</>} Subpixel material averaging and geometry-aligned nonuniform differences improve interface and mesh convergence.</p><div className="equation">{result?.formulation === "first-order" ? <><b>B</b><b><var>Ψ</var></b><span>=</span><var>β</var><b><var>Ψ</var></b></> : result?.formulation === "transverse-e" ? <><b>PQ</b><b>E</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>E</b><sub>t</sub></> : <><span>U</span><b>H</b><sub>t</sub><span>=</span><var>β</var><sup>2</sup><b>H</b><sub>t</sub></>}</div><p className="limitation">Scope: linear, local, non-magnetic materials. Straight guides support diagonal complex permittivity, including metals and transverse Bloch-periodic boundaries; arbitrary real symmetric tensors require hard boundaries. Metallic bends, longitudinal periodicity and nonlocal nanoscale response are outside the validated scope. Repeat mesh and domain sweeps before interpreting results quantitatively.</p></div>
-        {result && <div className="checks-card"><h2>Validation checks</h2><div className="checks">{validation.map((check) => <div key={check.label}><IconIndicator kind={check.pass ? "succeeded" : "caution-minor"} label={check.pass ? "Pass" : "Review"} /><strong>{check.label}</strong></div>)}</div>{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
+        <ScientificModelScope
+          model={(config.bendRadiusUm ?? 0) > 0 ? "Full-vector finite-difference eigenmode method with a radial coordinate transformation." : "Full-vector finite-difference eigenmode method with subpixel material averaging and geometry-aligned nonuniform differences."}
+          assumptions={["Linear, local and non-magnetic materials", "Translational invariance along the propagation axis"]}
+          limits={["Metallic bends and longitudinal periodicity are outside scope", "Nonlocal nanoscale response is excluded", "Quantitative use requires mesh and domain convergence"]}
+        />
+        {result && <div className="checks-card"><ScientificValidationSummary
+          status={{ state: validation.every((check) => check.pass) && result.warnings.length === 0 ? "validated" : "warning", label: validation.every((check) => check.pass) && result.warnings.length === 0 ? "Numerically validated" : "Review validation evidence" }}
+          checks={validation.map((check, index) => ({ id: `mode-check-${index}`, label: check.label, state: check.pass ? "passed" : "warning" }))}
+        />{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
       </section>
       {mode && result && <section className="sweep-section validation-diagnostics">
         <div className="panel-heading"><div><h2>Complex-mode diagnostics</h2></div><Link href="https://github.com/jorpago2/waveguide-mode-solver/blob/main/REFERENCES.md" target="_blank" rel="noreferrer">References</Link></div>
