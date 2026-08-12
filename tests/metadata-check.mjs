@@ -15,7 +15,7 @@ test("builds the Carbon UI contract", async () => {
   const carbon = await readFile(new URL("../src/carbon.scss", import.meta.url), "utf8");
   assert.match(carbon, /@use ["']@carbon\/react["']/);
   assert.doesNotMatch(styles, /tailwindcss|@theme inline/);
-  assert.match(app, /<Grid fullWidth/);
+  assert.match(app, /<ScientificAppShell/);
 });
 
 test("waits for explicit user action before solving modes", async () => {
