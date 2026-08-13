@@ -28,7 +28,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificOutcomeSummary, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificShortcut } from "@jorpago2/scientific-ui";
+import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificOutcomeSummary, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificResultTransition, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -206,6 +206,7 @@ export function App() {
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
   const configurationPanelRef = useRef<HTMLElement>(null);
   const projectImportRef = useRef<HTMLInputElement>(null);
+  const outcomeHeading = useRef<HTMLHeadingElement>(null);
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const draftFingerprint = useMemo(() => JSON.stringify(draft), [draft]);
   const solvedFingerprint = useMemo(() => JSON.stringify(config), [config]);
@@ -214,6 +215,12 @@ export function App() {
   const resultIsStale = Boolean(result && draftFingerprint !== solvedFingerprint);
   const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
   const solveStateLabel = busy ? "Solving" : resultIsStale ? "Stale" : result ? "Solved" : "Not solved";
+  useScientificResultTransition({
+    state: busy ? "running" : resultIsStale ? "modified" : result?.warnings.length ? "warning" : result ? "up-to-date" : "ready",
+    resultRef: outcomeHeading,
+    completionKey: result ? message : null,
+    onReveal: () => { setActiveView("solver"); setNavigationOpen(false); },
+  });
   const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.guidanceMargin > 0 && !mode.nearCutoff },
     { label: "Eigenpair residual", pass: mode.residual < 2e-3 },
@@ -807,6 +814,7 @@ export function App() {
           <ScientificOutcomeSummary
             className="waveguide-outcome"
             title={mode ? `${mode.label} mode outcome` : "Mode solve outcome"}
+            headingRef={outcomeHeading}
             status={busy
               ? { state: "running", label: "Solving eigenproblem", detail: message }
               : resultIsStale
@@ -824,10 +832,10 @@ export function App() {
                   : "The selected guided mode is current. Review residual, mesh and boundary evidence before accepting quantitative values."
               : "Configure the cross-section and solve the eigenproblem to obtain the first guided-mode result."}
             metrics={mode ? [
-              { id: "effective-index", label: "Effective index", value: mode.effectiveIndex.toFixed(6) },
-              { id: "core-power", label: "Core power fraction", value: `${(mode.corePowerFraction * 100).toFixed(1)}%` },
-              { id: "attenuation", label: "Total attenuation", value: mode.lossDbPerCm.toPrecision(3), unit: "dB/cm", status: mode.nearCutoff ? "warning" : "neutral" },
-              { id: "relative-residual", label: "Relative residual", value: mode.residual.toExponential(2), status: validation.every((check) => check.pass) ? "success" : "warning" },
+              { id: "effective-index", label: "Effective index", value: mode.effectiveIndex, format: { significantDigits: 7 } },
+              { id: "core-power", label: "Core power fraction", value: mode.corePowerFraction * 100, unit: "%", format: { significantDigits: 3 } },
+              { id: "attenuation", label: "Total attenuation", value: mode.lossDbPerCm, unit: "dB/cm", format: { significantDigits: 3 }, status: mode.nearCutoff ? "warning" : "neutral" },
+              { id: "relative-residual", label: "Relative residual", value: mode.residual, format: { significantDigits: 3 }, status: validation.every((check) => check.pass) ? "success" : "warning" },
             ] : []}
             actions={mode ? [
               { id: "export-field", label: "Export field CSV", emphasis: "primary", disabled: busy, onClick: exportField },
