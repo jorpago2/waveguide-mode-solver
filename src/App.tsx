@@ -28,7 +28,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificShortcut } from "@jorpago2/scientific-ui";
+import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificOutcomeSummary, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -804,27 +804,50 @@ export function App() {
       <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" tabIndex={-1}>
         <section className="results-panel scientific-stage" id="results-panel" aria-label="Mode result">
-          {!result && <div className="panel-heading results-heading scientific-stage__header"><div><Result className="panel-title-icon" size={20} aria-hidden={true} /><h2>Mode result</h2></div></div>}
+          <ScientificOutcomeSummary
+            className="waveguide-outcome"
+            title={mode ? `${mode.label} mode outcome` : "Mode solve outcome"}
+            status={busy
+              ? { state: "running", label: "Solving eigenproblem", detail: message }
+              : resultIsStale
+                ? { state: "modified", label: "Result uses an earlier configuration" }
+                : result?.warnings.length
+                  ? { state: "warning", label: "Solved with warnings" }
+                  : result
+                    ? { state: "up-to-date", label: "Result current" }
+                    : { state: "needs-input", label: "Not solved" }}
+            summary={mode
+              ? resultIsStale
+                ? "The displayed mode, sweeps and exports still use the last solved configuration. Solve again before quantitative interpretation."
+                : mode.nearCutoff
+                  ? "A mode was found near cutoff. Treat confinement and attenuation as provisional until mesh and boundary convergence are checked."
+                  : "The selected guided mode is current. Review residual, mesh and boundary evidence before accepting quantitative values."
+              : "Configure the cross-section and solve the eigenproblem to obtain the first guided-mode result."}
+            metrics={mode ? [
+              { id: "effective-index", label: "Effective index", value: mode.effectiveIndex.toFixed(6) },
+              { id: "core-power", label: "Core power fraction", value: `${(mode.corePowerFraction * 100).toFixed(1)}%` },
+              { id: "attenuation", label: "Total attenuation", value: mode.lossDbPerCm.toPrecision(3), unit: "dB/cm", status: mode.nearCutoff ? "warning" : "neutral" },
+              { id: "relative-residual", label: "Relative residual", value: mode.residual.toExponential(2), status: validation.every((check) => check.pass) ? "success" : "warning" },
+            ] : []}
+            actions={mode ? [
+              { id: "export-field", label: "Export field CSV", emphasis: "primary", disabled: busy, onClick: exportField },
+              { id: "solve-current", label: resultIsStale ? "Solve current setup" : "Solve again", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit() },
+              { id: "export-project", label: "Export project", emphasis: "tertiary", overflowOnly: true, disabled: busy, onClick: exportProject },
+            ] : [
+              { id: "configure", label: "Review configuration", emphasis: "primary", onClick: openConfiguration },
+              { id: "solve", label: "Solve modes", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit() },
+            ]}
+          />
           {result ? <div className="result-stage">
             <div className="result-command-bar">
               <div className="result-view-switcher"><Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
                 <TabList contained aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
               </Tabs></div>
-              <Button kind="tertiary" size="sm" type="button" renderIcon={Download} onClick={exportField} disabled={!mode}>Export CSV</Button>
             </div>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
             <Tabs selectedIndex={selectedMode} onChange={({ selectedIndex }) => setSelectedMode(selectedIndex)}>
               <TabList className="mode-tabs" aria-label="Guided modes">{result.modes.map((item) => <Tab key={item.id}>{item.label} · {item.polarization} · n<sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</Tab>)}</TabList>
             </Tabs>
-            <div className="metrics primary-metrics">
-              <Metric label={<>Effective index <i>n</i><sub>eff</sub></>} value={mode.effectiveIndex.toFixed(6)} />
-              <Metric label={<>Propagation constant β</>} value={`${mode.propagationConstantPerUm.toFixed(4)} µm⁻¹`} />
-              <Metric label="Mode class" value={mode.physicalClass} />
-              <Metric label="Dispersive-energy confinement" value={`${(mode.energyConfinement * 100).toFixed(1)}%`} />
-              <Metric label="Core power fraction" value={`${(mode.corePowerFraction * 100).toFixed(1)}%`} />
-              <Metric label={<>Energy effective area <i>A</i><sub>eff</sub></>} value={`${mode.energyEffectiveAreaUm2.toFixed(3)} µm²`} />
-              <Metric label="Total attenuation" value={`${mode.lossDbPerCm.toPrecision(3)} dB/cm`} />
-            </div>
             <div className="field-control-bar">
               <div className="field-toolbar field-component-toolbar"><CarbonSelectField id="field-component" label="Field component" value={component} inline options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
               <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
