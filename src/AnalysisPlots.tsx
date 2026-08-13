@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import type { ConvergenceResult, ModeMapResult, ToleranceResult } from "./analysis";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { TopologySweepResult } from "./solver";
 
 const axis = PLOT_AXIS;
@@ -12,12 +12,12 @@ export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
     if (!plotRef.current) return;
     const resolutions = result.levels.map((level) => level.resolution);
     const data: Plotly.Data[] = [
-      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: resolutions, y: result.levels.map((level) => level.effectiveIndex), line: { color: "#0072b2", width: 2.5 }, marker: { size: 8 } },
-      { type: "scatter", mode: "lines+markers", name: "Loss", x: resolutions, y: result.levels.map((level) => level.lossDbPerCm), yaxis: "y2", line: { color: "#d55e00", width: 2, dash: "dash" }, marker: { size: 7 } },
+      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: resolutions, y: result.levels.map((level) => level.effectiveIndex), line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis }, marker: { size: 8 } },
+      { type: "scatter", mode: "lines+markers", name: "Loss", x: resolutions, y: result.levels.map((level) => level.lossDbPerCm), yaxis: "y2", line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.primary, dash: "dash" }, marker: { size: 7 } },
     ];
     if (result.richardsonEffectiveIndex !== undefined) data.push({
       type: "scatter", mode: "lines", name: "Richardson n<sub>eff</sub>", x: [resolutions[0], resolutions[2]],
-      y: [result.richardsonEffectiveIndex, result.richardsonEffectiveIndex], line: { color: "#009e73", width: 1.5, dash: "dot" },
+      y: [result.richardsonEffectiveIndex, result.richardsonEffectiveIndex], line: { color: "#009e73", width: PLOT_LINE_WIDTHS.reference, dash: "dot" },
     });
     void Plotly.react(plotRef.current, data, {
       margin: { l: 68, r: 76, t: 38, b: 58 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
@@ -94,14 +94,14 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
       const color = colors[branchIndex % colors.length];
       data.push({
         type: "scatter", mode: "lines+markers", name: `Branch ${branch + 1}`, x: samples.map((sample) => sample.value),
-        y: samples.map((sample) => sample.effectiveIndex), line: { color, width: 2 }, marker: { color, size: 5 },
+        y: samples.map((sample) => sample.effectiveIndex), line: { color, width: PLOT_LINE_WIDTHS.primary }, marker: { color, size: 5 },
         text: samples.map((sample) => `${sample.label}<br>Im(neff) = ${sample.effectiveIndexImaginary.toExponential(3)}<br>κproj = ${sample.conditionEstimate.toPrecision(4)}`),
         hovertemplate: "%{text}<br>parameter = %{x:.5g}<br>Re(n<sub>eff</sub>) = %{y:.7f}<extra></extra>",
       });
       data.push({
         type: "scatter", mode: "lines+markers", name: `Branch ${branch + 1}`, showlegend: false, xaxis: "x2", yaxis: "y2",
         x: samples.map((sample) => sample.effectiveIndex), y: samples.map((sample) => sample.effectiveIndexImaginary),
-        line: { color, width: 1.5 }, marker: { color: samples.map((sample) => Math.log10(Math.max(1, sample.petermannFactorEstimate))), colorscale: "Magma", cmin: 0, cmax: maximumLogK, size: 7,
+        line: { color, width: PLOT_LINE_WIDTHS.secondary }, marker: { color: samples.map((sample) => Math.log10(Math.max(1, sample.petermannFactorEstimate))), colorscale: "Magma", cmin: 0, cmax: maximumLogK, size: 7,
           ...(branchIndex === 0 ? { colorbar: { title: { text: "log₁₀ Kproj" }, thickness: 11 } } : {}) },
         text: samples.map((sample) => `${sample.label}<br>parameter = ${sample.value.toPrecision(5)}<br>Kproj = ${sample.petermannFactorEstimate.toPrecision(4)}`),
         hovertemplate: "%{text}<br>Re(n<sub>eff</sub>) = %{x:.7f}<br>Im(n<sub>eff</sub>) = %{y:.3e}<extra></extra>",

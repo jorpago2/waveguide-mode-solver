@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { SweepResult } from "./solver";
 
 export function SweepPlot({ result }: { result: SweepResult }) {
@@ -13,31 +13,31 @@ export function SweepPlot({ result }: { result: SweepResult }) {
     void Plotly.react(plotRef.current, [
       {
         type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: wavelength,
-        y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: 2.5 },
+        y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis },
         marker: { size: result.points.map((point) => point.nearCutoff ? 9 : 5), color: result.points.map((point) => point.nearCutoff ? "#d55e00" : "#0072b2") },
         text: result.points.map((point) => `${point.modeLabel}${point.nearCutoff ? " · near cutoff" : ""}`), hovertemplate: "%{text}<br>λ = %{x:.4f} µm<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>",
       },
       {
         type: "scatter", mode: "lines+markers", name: "n<sub>g</sub>", x: wavelength,
-        y: result.points.map((point) => point.groupIndex), line: { color: "#d55e00", width: 2.5, dash: "dash" },
+        y: result.points.map((point) => point.groupIndex), line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.emphasis, dash: "dash" },
         marker: { size: 5 }, hovertemplate: "λ = %{x:.4f} µm<br>n<sub>g</sub> = %{y:.6f}<extra></extra>",
       },
       {
         type: "scatter", mode: "lines", name: "D", x: wavelength,
         y: result.points.map((point) => point.dispersionPsPerNmKm), xaxis: "x2", yaxis: "y2",
-        line: { color: "#009e73", width: 2 },
+        line: { color: "#009e73", width: PLOT_LINE_WIDTHS.primary },
         hovertemplate: "λ = %{x:.4f} µm<br>D = %{y:.2f} ps/(nm·km)<extra></extra>",
       },
       {
         type: "scatter", mode: "lines", name: "β<sub>2</sub>", x: wavelength,
         y: result.points.map((point) => point.beta2Ps2PerKm), xaxis: "x2", yaxis: "y3",
-        line: { color: "#d55e00", width: 2, dash: "dash" },
+        line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.primary, dash: "dash" },
         hovertemplate: "λ = %{x:.4f} µm<br>β<sub>2</sub> = %{y:.2f} ps²/km<extra></extra>",
       },
       {
         type: "scatter", mode: "lines", name: "Loss", x: wavelength,
         y: result.points.map((point) => point.lossDbPerCm), xaxis: "x3", yaxis: "y4",
-        line: { color: "#cc79a7", width: 2, dash: "dot" },
+        line: { color: "#cc79a7", width: PLOT_LINE_WIDTHS.primary, dash: "dot" },
         hovertemplate: "λ = %{x:.4f} µm<br>loss = %{y:.3g} dB/cm<extra></extra>",
       },
     ] as Plotly.Data[], {

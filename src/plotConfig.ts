@@ -1,6 +1,7 @@
 import type Plotly from "plotly.js-cartesian-dist-min";
 import {
   SCIENTIFIC_PLOT_FONT,
+  SCIENTIFIC_PLOT_LINE_WIDTHS,
   createScientificPlotlyAxis,
   createScientificPlotlyConfig,
   prepareScientificPlotlyToolbar,
@@ -23,3 +24,4 @@ export const PLOT_CONFIG = createScientificPlotlyConfig({
 }) as Partial<Plotly.Config>;
 
 export const preparePlotlyToolbar = prepareScientificPlotlyToolbar;
+export const PLOT_LINE_WIDTHS = SCIENTIFIC_PLOT_LINE_WIDTHS;

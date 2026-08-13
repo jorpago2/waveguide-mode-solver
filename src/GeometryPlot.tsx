@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { CarbonCheckboxField, CarbonSelectField, CarbonSwitcher } from "./CarbonControls";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
@@ -42,7 +42,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
         { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMinimum + pmlThickness, y1: yMinimum + pmlThickness },
         { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum - pmlThickness, y1: yMaximum - pmlThickness },
       ] : []),
-    ].map((shape) => ({ ...shape, line: { color: "#d55e00", width: 1.5, dash: "dash" as const } })) : [];
+    ].map((shape) => ({ ...shape, line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.reference, dash: "dash" as const } })) : [];
     const periodicShapes = [
       ...(config.periodicX ? [
         { type: "line" as const, x0: xMinimum, x1: xMinimum, y0: yMinimum, y1: yMaximum },
@@ -52,7 +52,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
         { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMinimum, y1: yMinimum },
         { type: "line" as const, x0: xMinimum, x1: xMaximum, y0: yMaximum, y1: yMaximum },
       ] : []),
-    ].map((shape) => ({ ...shape, line: { color: "#0072b2", width: 2, dash: "dot" as const } }));
+    ].map((shape) => ({ ...shape, line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.secondary, dash: "dot" as const } }));
 
     const epsilonReal = result.permittivity.real[axis];
     const epsilonImaginary = result.permittivity.imaginary[axis];
@@ -88,7 +88,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
         z: mode.fields.intensity.map((row) => row.map((value) => value / maximumIntensity)),
         name: `${mode.label} |E|²`, showlegend: false, showscale: false, hoverinfo: "skip",
         contours: { start: 0.1, end: 0.9, size: 0.2, coloring: "none", showlabels: false },
-        line: { color: "#cc79a7", width: 1.8 },
+        line: { color: "#cc79a7", width: PLOT_LINE_WIDTHS.primary },
       } as Plotly.Data);
     }
 

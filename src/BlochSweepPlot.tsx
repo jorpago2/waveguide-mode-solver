@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { BlochSweepResult } from "./solver";
 
 export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
@@ -20,14 +20,14 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
       },
       {
         type: "scatter", mode: "lines+markers", name: "Tracked branch", x: phase,
-        y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: 2.5 },
+        y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis },
         marker: { size: result.points.map((point) => point.degenerateSubspaceSize > 1 ? 9 : 5), color: "#0072b2" },
         text: result.points.map((point) => `${point.modeLabel}${point.degenerateSubspaceSize > 1 ? ` · ${point.degenerateSubspaceSize}D subspace` : ""}`),
         hovertemplate: "%{text}<br>θ/π = %{x:.3f}<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>",
       },
       {
         type: "scatter", mode: "lines+markers", name: "Loss", x: phase, xaxis: "x2", yaxis: "y2",
-        y: result.points.map((point) => point.lossDbPerCm), line: { color: "#cc79a7", width: 2, dash: "dot" }, marker: { size: 5 },
+        y: result.points.map((point) => point.lossDbPerCm), line: { color: "#cc79a7", width: PLOT_LINE_WIDTHS.primary, dash: "dot" }, marker: { size: 5 },
         hovertemplate: "θ/π = %{x:.3f}<br>loss = %{y:.4g} dB/cm<extra></extra>",
       },
     ] as Plotly.Data[], {

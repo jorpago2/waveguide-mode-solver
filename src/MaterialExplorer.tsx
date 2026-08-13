@@ -3,7 +3,7 @@ import { Link, Tile } from "@carbon/react";
 import { ScientificPlotFrame } from "@jorpago2/scientific-ui";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { CarbonNumberField, CarbonSelectField } from "./CarbonControls";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import {
   MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
   type BuiltInMaterialId,
@@ -36,17 +36,17 @@ export function MaterialExplorer() {
 
     const axis = PLOT_AXIS;
     const refractiveIndexTraces: Plotly.Data[] = [
-      { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
-      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#009e73", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
-      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#cc79a7", width: 2 }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#009e73", width: PLOT_LINE_WIDTHS.primary, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#cc79a7", width: PLOT_LINE_WIDTHS.primary }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
     ];
     const permittivityTraces: Plotly.Data[] = [
-      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
-      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.primary, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
     ];
     const dispersionTraces: Plotly.Data[] = [
-      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, line: { color: "#009e73", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" },
-      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" } as Plotly.Data] : []),
+      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, line: { color: "#009e73", width: PLOT_LINE_WIDTHS.emphasis }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.primary, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" } as Plotly.Data] : []),
     ];
 
     const commonLayout: Partial<Plotly.Layout> = {
@@ -152,7 +152,7 @@ function probeWavelengthShape(wavelengthUm: number): Partial<Plotly.Shape> {
     x1: wavelengthUm,
     y0: 0,
     y1: 1,
-    line: { color: "rgba(25,49,58,0.35)", width: 1, dash: "dot" },
+    line: { color: "rgba(25,49,58,0.35)", width: PLOT_LINE_WIDTHS.reference, dash: "dot" },
   };
 }
 

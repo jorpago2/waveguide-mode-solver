@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import { interpolateFieldMatrix, type ComplexFieldMatrix, type FieldComponent, type PhysicalFieldComponent, type WaveguideConfig, type WaveguideMode } from "./solver";
 
 export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
@@ -106,7 +106,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
         name: "Horizontal cut",
         x: plotXUm,
         y: z[centerRow],
-        line: { color: "#0072b2", width: 2.5 },
+        line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis },
         hovertemplate: `x = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>horizontal</extra>`,
       },
       {
@@ -115,7 +115,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
         name: "Vertical cut",
         x: plotYUm,
         y: z.map((row) => row[centerColumn]),
-        line: { color: "#d55e00", width: 2.5, dash: "dash" },
+        line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.emphasis, dash: "dash" },
         hovertemplate: `y = %{x:.3f} µm<br>value = %{y:.4g} ${phaseField ? "°" : units[component]}<extra>vertical</extra>`,
       },
     ], {
@@ -214,7 +214,7 @@ function partLabel(part: FieldPart): string {
 }
 
 function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
-  const line = { color: "rgba(255,255,255,0.9)", width: 1.5, dash: "dot" as const };
+  const line = { color: "rgba(255,255,255,0.9)", width: PLOT_LINE_WIDTHS.reference, dash: "dot" as const };
   const rectangle = (x0: number, x1: number, y0: number, y1: number) => ({ type: "rect" as const, x0, x1, y0, y1, line });
   const trapezoid = (centerX: number, topWidth: number, bottomWidth: number, bottomY: number, topY: number) => ({
     type: "path" as const,

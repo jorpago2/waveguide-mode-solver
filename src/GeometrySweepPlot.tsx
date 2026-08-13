@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { GeometrySweepResult } from "./solver";
 
 const parameterLabels = { widthUm: "Core width", heightUm: "Core height", slotGapUm: "Slot gap", couplerGapUm: "Coupler gap", bendRadiusUm: "Bend radius" };
@@ -13,10 +13,10 @@ export function GeometrySweepPlot({ result }: { result: GeometrySweepResult }) {
     const bendSweep = result.parameter === "bendRadiusUm";
     const axis = PLOT_AXIS;
     void Plotly.react(plotRef.current, [
-      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x, y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: 2.5 }, marker: { size: result.points.map((point) => point.nearCutoff ? 9 : 5), color: result.points.map((point) => point.nearCutoff ? "#d55e00" : "#0072b2") }, text: result.points.map((point) => `${point.modeLabel}${point.nearCutoff ? " · near cutoff" : ""}`), hovertemplate: "%{text}<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>" },
-      { type: "scatter", mode: "lines+markers", name: "Confinement", x, y: result.points.map((point) => 100 * point.electricConfinement), yaxis: "y2", line: { color: "#d55e00", width: 2.5, dash: "dash" }, marker: { size: 5 } },
-      { type: "scatter", mode: "lines", name: bendSweep ? "Loss" : "A<sub>eff</sub>", x, y: result.points.map((point) => bendSweep ? point.lossDbPerCm : point.effectiveAreaUm2), xaxis: "x2", yaxis: "y3", line: { color: "#009e73", width: 2 } },
-      { type: "scatter", mode: "lines", name: "Subspace overlap", x, y: result.points.map((point) => point.overlap), xaxis: "x2", yaxis: "y4", line: { color: "#cc79a7", width: 2, dash: "dot" } },
+      { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x, y: result.points.map((point) => point.effectiveIndex), line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis }, marker: { size: result.points.map((point) => point.nearCutoff ? 9 : 5), color: result.points.map((point) => point.nearCutoff ? "#d55e00" : "#0072b2") }, text: result.points.map((point) => `${point.modeLabel}${point.nearCutoff ? " · near cutoff" : ""}`), hovertemplate: "%{text}<br>n<sub>eff</sub> = %{y:.6f}<extra></extra>" },
+      { type: "scatter", mode: "lines+markers", name: "Confinement", x, y: result.points.map((point) => 100 * point.electricConfinement), yaxis: "y2", line: { color: "#d55e00", width: PLOT_LINE_WIDTHS.emphasis, dash: "dash" }, marker: { size: 5 } },
+      { type: "scatter", mode: "lines", name: bendSweep ? "Loss" : "A<sub>eff</sub>", x, y: result.points.map((point) => bendSweep ? point.lossDbPerCm : point.effectiveAreaUm2), xaxis: "x2", yaxis: "y3", line: { color: "#009e73", width: PLOT_LINE_WIDTHS.primary } },
+      { type: "scatter", mode: "lines", name: "Subspace overlap", x, y: result.points.map((point) => point.overlap), xaxis: "x2", yaxis: "y4", line: { color: "#cc79a7", width: PLOT_LINE_WIDTHS.primary, dash: "dot" } },
     ] as Plotly.Data[], {
       margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
       font: PLOT_FONT,
