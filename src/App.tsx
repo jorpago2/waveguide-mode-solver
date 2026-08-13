@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import {
   Accordion,
   AccordionItem,
@@ -28,7 +28,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
-import { ScientificAppShell, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificOutcomeSummary, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificResultTransition, useScientificShortcut } from "@jorpago2/scientific-ui";
+import { ScientificAppShell, ScientificAutosaveStatus, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificOutcomeSummary, ScientificRecoveryNotice, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificAutosave, useScientificResultTransition, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
 import packageJson from "../package.json";
@@ -164,6 +164,16 @@ const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "intensity", "Hx", 
 type AppView = "solver" | "materials" | "sweeps" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
 type StudyPane = "wavelength" | "geometry" | "bloch" | "analysis";
+type WaveguideSession = {
+  presetName: string;
+  draft: WaveguideConfig;
+  sweepSettings: SweepSettings;
+  geometrySweep: GeometrySweepSettings;
+  blochSweep: BlochSweepSettings;
+  component: FieldComponent;
+  fieldPart: FieldPart;
+  displayInterpolation: DisplayInterpolation;
+};
 const appViews = [
   { id: "solver", label: "Setup", hint: "Geometry, materials and solver", icon: SettingsAdjust },
   { id: "materials", label: "Materials", hint: "Inspect optical data", icon: Chemistry },
@@ -236,6 +246,38 @@ export function App() {
     ...((config.bendRadiusUm ?? 0) > 0 ? [{ label: "Open radial boundary", pass: (config.boundary ?? "hard") === "pml" }] : []),
   ] : [], [config, mode, result]);
   const geometrySweepMaximum = geometrySweep.parameter === "bendRadiusUm" ? PARAMETER_MAXIMUMS.bendRadiusUm : PARAMETER_MAXIMUMS.dimensionUm;
+  const session = useMemo<WaveguideSession>(() => ({
+    presetName,
+    draft,
+    sweepSettings,
+    geometrySweep,
+    blochSweep,
+    component,
+    fieldPart,
+    displayInterpolation,
+  }), [blochSweep, component, displayInterpolation, draft, fieldPart, geometrySweep, presetName, sweepSettings]);
+  const restoreSession = useCallback((saved: WaveguideSession) => {
+    setPresetName(saved.presetName);
+    setDraft(saved.draft);
+    setSweepSettings(saved.sweepSettings);
+    setGeometrySweep(saved.geometrySweep);
+    setBlochSweep(saved.blochSweep);
+    setComponent(saved.component);
+    setFieldPart(saved.fieldPart);
+    setDisplayInterpolation(saved.displayInterpolation);
+    setResult(undefined);
+    setSweepResult(undefined);
+    setGeometrySweepResult(undefined);
+    setBlochSweepResult(undefined);
+    setMessage("Previous configuration restored. Solve modes to regenerate results.");
+    setError("");
+  }, []);
+  const autosave = useScientificAutosave({
+    storageKey: "waveguide-mode-solver:session",
+    value: session,
+    onRestore: restoreSession,
+    schemaVersion: 1,
+  });
 
   useEffect(() => {
     if (blochSweep.axis === "x" && !config.periodicX && config.periodicY) setBlochSweep((current) => ({ ...current, axis: "y" }));
@@ -583,6 +625,7 @@ export function App() {
 
   return <ScientificAppShell
     className="waveguide-app"
+    recovery={autosave.recovery && <ScientificRecoveryNotice savedAt={autosave.recovery.savedAt} onRestore={autosave.restore} onDiscard={autosave.discard} />}
     header={<ScientificHeader
       aria-label="Waveguide Mode Solver"
       product="Waveguide Solver"
@@ -800,6 +843,7 @@ export function App() {
       state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
       label: solveState === "solved" ? `${solveStateLabel} · review validation evidence` : solveStateLabel,
     }} metadata={<>
+      <ScientificAutosaveStatus status={autosave.status} savedAt={autosave.lastSavedAt} />
       <span>{config.geometry ?? "channel"}</span>
       <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
       {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{validation.filter((check) => !check.pass).length} validation issue(s)</span></>}
