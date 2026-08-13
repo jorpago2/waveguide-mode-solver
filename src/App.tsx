@@ -579,7 +579,7 @@ export function App() {
     header={<ScientificHeader
       aria-label="Waveguide Mode Solver"
       product="Waveguide Solver"
-      productMark="W"
+      productIcon="waveguide"
       descriptor="Mode analysis"
       href="./"
       skipLink={<SkipToContent href="#scientific-workspace" />}
