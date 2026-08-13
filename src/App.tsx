@@ -919,7 +919,7 @@ export function App() {
               </div>
             </AccordionItem></Accordion>
             </> : <ScientificEmptyState className="empty-state result-empty-state" icon={<Result size={32} />} title="No guided mode found" description="Inspect the mesh and structure, then increase the core size or index contrast." action={<Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Review configuration</Button>} />}
-          </div> : <ScientificEmptyState className="empty-state result-empty-state" icon={<Result size={32} />} title="No solved mode yet" description="Configure the cross-section and run the solver to reveal the electromagnetic result." action={!navigationOpen ? <Button className="empty-state-action" size="sm" type="button" onClick={openConfiguration}>Configure waveguide</Button> : undefined} />}
+          </div> : null}
         </section>
       </div>
       </section>
