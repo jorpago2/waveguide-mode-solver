@@ -17,7 +17,9 @@ export function MaterialExplorer() {
   const [materialId, setMaterialId] = useState<BuiltInMaterialId>("silicon");
   const definition = materialDefinition(materialId);
   const [wavelengthUm, setWavelengthUm] = useState(1.55);
-  const plotRef = useRef<HTMLDivElement>(null);
+  const refractiveIndexPlotRef = useRef<HTMLDivElement>(null);
+  const permittivityPlotRef = useRef<HTMLDivElement>(null);
+  const dispersionPlotRef = useRef<HTMLDivElement>(null);
   const data = useMemo(() => sampleMaterial(materialId), [materialId]);
   const current = useMemo(() => {
     const index = evaluateMaterialPrincipalIndices(materialId, wavelengthUm);
@@ -26,36 +28,58 @@ export function MaterialExplorer() {
   }, [materialId, wavelengthUm]);
 
   useEffect(() => {
-    if (!plotRef.current) return;
+    const refractiveIndexPlot = refractiveIndexPlotRef.current;
+    const permittivityPlot = permittivityPlotRef.current;
+    const dispersionPlot = dispersionPlotRef.current;
+    if (!refractiveIndexPlot || !permittivityPlot || !dispersionPlot) return;
+
     const axis = PLOT_AXIS;
-    const traces: Plotly.Data[] = [
+    const refractiveIndexTraces: Plotly.Data[] = [
       { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
       ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#009e73", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
       ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "k", x: data.wavelength, y: data.extinction, yaxis: "y2", line: { color: "#cc79a7", width: 2 }, hovertemplate: "λ = %{x:.4g} µm<br>k = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
-      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, xaxis: "x2", yaxis: "y3", line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
-      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, xaxis: "x2", yaxis: "y3", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
-      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, xaxis: "x3", yaxis: "y4", line: { color: "#009e73", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" },
-      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, xaxis: "x3", yaxis: "y4", line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" } as Plotly.Data] : []),
     ];
-    void Plotly.react(plotRef.current, traces, {
-      margin: { l: 64, r: 64, t: 38, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+    const permittivityTraces: Plotly.Data[] = [
+      { type: "scatter", mode: "lines", name: "Re(ε)", x: data.wavelength, y: data.epsilonReal, line: { color: "#0072b2", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>Re(ε) = %{y:.6g}<extra></extra>" },
+      ...(definition.metallic || definition.lossRanges ? [{ type: "scatter", mode: "lines", name: "Im(ε)", x: data.wavelength, y: data.epsilonImaginary, line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>Im(ε) = %{y:.4g}<extra></extra>" } as Plotly.Data] : []),
+    ];
+    const dispersionTraces: Plotly.Data[] = [
+      { type: "scatter", mode: "lines", name: "dn<sub>o</sub>/dλ", x: data.wavelength, y: data.derivativeOrdinary, line: { color: "#009e73", width: 2.5 }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>o</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" },
+      ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "dn<sub>e</sub>/dλ", x: data.wavelength, y: data.derivativeExtraordinary, line: { color: "#d55e00", width: 2, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>dn<sub>e</sub>/dλ = %{y:.5g} µm<sup>−1</sup><extra></extra>" } as Plotly.Data] : []),
+    ];
+
+    const commonLayout: Partial<Plotly.Layout> = {
+      autosize: true,
+      margin: { l: 64, r: 64, t: 84, b: 56 },
+      paper_bgcolor: "transparent",
+      plot_bgcolor: "transparent",
       font: PLOT_FONT,
       legend: { orientation: "h", x: 0, y: 1.08 },
-      xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
-      yaxis: { ...axis, domain: [0.7, 1], title: { text: "Refractive index" } },
-      yaxis2: { ...axis, domain: [0.7, 1], title: { text: "k" }, overlaying: "y", side: "right", type: "log", showgrid: false },
-      xaxis2: { ...axis, domain: [0, 1], anchor: "y3", matches: "x", showticklabels: false },
-      yaxis3: { ...axis, domain: [0.35, 0.58], title: { text: "Permittivity" } },
-      xaxis3: { ...axis, domain: [0, 1], anchor: "y4", matches: "x", title: { text: "Wavelength (µm)" } },
-      yaxis4: { ...axis, domain: [0, 0.21], title: { text: "dn/dλ (µm<sup>−1</sup>)" } },
-      shapes: (["x", "x2", "x3"] as const).map((xref, index) => ({
-        type: "line", xref, yref: "paper", x0: wavelengthUm, x1: wavelengthUm,
-        y0: index === 0 ? 0.7 : index === 1 ? 0.35 : 0, y1: index === 0 ? 1 : index === 1 ? 0.58 : 0.21,
-        line: { color: "rgba(25,49,58,0.35)", width: 1, dash: "dot" },
-      })),
-    }, PLOT_CONFIG);
-    return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
+      uirevision: materialId,
+      xaxis: { ...axis, title: { text: "Wavelength (µm)" } },
+      shapes: [probeWavelengthShape(wavelengthUm)],
+    };
+
+    void Plotly.react(refractiveIndexPlot, refractiveIndexTraces, {
+      ...commonLayout,
+      yaxis: { ...axis, title: { text: "Refractive index" } },
+      yaxis2: { ...axis, title: { text: "k" }, overlaying: "y", side: "right", type: "log", showgrid: false },
+    }, plotConfig("material-refractive-index"));
+    void Plotly.react(permittivityPlot, permittivityTraces, {
+      ...commonLayout,
+      yaxis: { ...axis, title: { text: "Permittivity" } },
+    }, plotConfig("material-permittivity"));
+    void Plotly.react(dispersionPlot, dispersionTraces, {
+      ...commonLayout,
+      yaxis: { ...axis, title: { text: "dn/dλ (µm<sup>−1</sup>)" } },
+    }, plotConfig("material-dispersion"));
+
   }, [data, definition, wavelengthUm]);
+
+  useEffect(() => {
+    const plots = [refractiveIndexPlotRef.current, permittivityPlotRef.current, dispersionPlotRef.current];
+    return () => plots.forEach((plot) => { if (plot) Plotly.purge(plot); });
+  }, []);
 
   const selectMaterial = (id: BuiltInMaterialId) => {
     const next = materialDefinition(id);
@@ -74,7 +98,20 @@ export function MaterialExplorer() {
         <div><dt>ε</dt><dd>{format(current.epsilonReal)}{current.epsilonImaginary === undefined ? "" : ` + ${format(current.epsilonImaginary)}i`}</dd></div>
       </dl>
     </aside>
-    <div ref={plotRef} className="material-plot" aria-label="Material refractive index, extinction, permittivity and dispersion plots" />
+    <div className="material-plots">
+      <figure className="material-figure">
+        <figcaption>Refractive index and extinction</figcaption>
+        <div ref={refractiveIndexPlotRef} className="material-plot" aria-label="Material refractive index and extinction plot" />
+      </figure>
+      <figure className="material-figure">
+        <figcaption>Complex permittivity</figcaption>
+        <div ref={permittivityPlotRef} className="material-plot" aria-label="Material complex permittivity plot" />
+      </figure>
+      <figure className="material-figure">
+        <figcaption>Material dispersion</figcaption>
+        <div ref={dispersionPlotRef} className="material-plot" aria-label="Material refractive-index dispersion plot" />
+      </figure>
+    </div>
     <Tile className="material-model-note">
       <strong>{definition.formula}</strong>
       <span>Validity: {definition.minimumWavelengthUm}–{definition.maximumWavelengthUm} µm</span>
@@ -106,4 +143,28 @@ function sampleMaterial(materialId: BuiltInMaterialId) {
 
 function format(value: number): string {
   return Math.abs(value) < 1e-3 && value !== 0 ? value.toExponential(3) : value.toPrecision(6);
+}
+
+function probeWavelengthShape(wavelengthUm: number): Partial<Plotly.Shape> {
+  return {
+    type: "line",
+    xref: "x",
+    yref: "paper",
+    x0: wavelengthUm,
+    x1: wavelengthUm,
+    y0: 0,
+    y1: 1,
+    line: { color: "rgba(25,49,58,0.35)", width: 1, dash: "dot" },
+  };
+}
+
+function plotConfig(filename: string): Partial<Plotly.Config> {
+  return {
+    ...PLOT_CONFIG,
+    modeBarButtonsToRemove: [...(PLOT_CONFIG.modeBarButtonsToRemove ?? []), "zoomIn2d", "zoomOut2d"],
+    toImageButtonOptions: {
+      ...PLOT_CONFIG.toImageButtonOptions,
+      filename,
+    },
+  };
 }
