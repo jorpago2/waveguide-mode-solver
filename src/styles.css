@@ -150,8 +150,7 @@ a { color: inherit; }
 .material-model-note a { color: var(--color-accent); font-weight: 700; }
 .material-source-links { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .material-plots { grid-area: plot; min-width: 0; display: grid; gap: var(--space-sm); }
-.material-figure { min-width: 0; margin: 0; border-block-start: 1px solid var(--color-rule); background: var(--color-surface); }
-.material-figure figcaption { padding: var(--space-xs) 0 var(--space-2xs); color: var(--color-ink); font: 600 var(--text-sm)/1.3 var(--font-display); }
+.material-figure { min-width: 0; }
 .material-plot { width: 100%; min-height: 22rem; height: clamp(22rem, 30vw, 26rem); }
 .section-intro { margin: var(--space-2xs) 0 var(--space-sm); max-width: 48rem; color: var(--color-ink-2); font-size: var(--text-sm); line-height: 1.5; }
 .analysis-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end; }
@@ -171,8 +170,6 @@ a { color: inherit; }
 .analysis-plot { width: 100%; min-height: 370px; }
 .convergence-plot { min-height: 340px; }
 .mode-map-plot { min-height: 440px; }
-body.plot-fullscreen-open { overflow: hidden; }
-.js-plotly-plot.plot-fullscreen { position: fixed; inset: 0; z-index: 1000; width: 100%; height: 100%; padding: var(--space-sm); box-sizing: border-box; background: var(--color-paper); }
 .analysis-cancel { margin-top: var(--space-xs); display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
 .comparison-scroll { margin-top: 20px; overflow-x: auto; }
 .comparison-scroll strong, td strong, td small { display: block; }
@@ -224,8 +221,6 @@ body.plot-fullscreen-open { overflow: hidden; }
   .geometry-plot { min-height: 360px; }
   .sweep-section { padding: 16px; }
   .validation-section .checks-card { order: -1; }
-  .js-plotly-plot .modebar { display: flex; max-width: 100%; flex-wrap: wrap; justify-content: center; }
-  .js-plotly-plot .modebar-btn { min-width: var(--scientific-ui-target-size); min-height: var(--scientific-ui-target-size); display: inline-flex; align-items: center; justify-content: center; }
 }
 
 @media (max-width: 671.98px) {

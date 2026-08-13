@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
 import type { GeometrySweepResult } from "./solver";
 
 const parameterLabels = { widthUm: "Core width", heightUm: "Core height", slotGapUm: "Slot gap", couplerGapUm: "Coupler gap", bendRadiusUm: "Bend radius" };
@@ -27,8 +27,8 @@ export function GeometrySweepPlot({ result }: { result: GeometrySweepResult }) {
       xaxis2: { ...axis, domain: [0, 1], anchor: "y3", matches: "x", title: { text: `${parameterLabels[result.parameter]} (µm)` } },
       yaxis3: { ...axis, domain: [0, 0.38], title: { text: bendSweep ? "Loss (dB/cm)" : "A<sub>eff</sub> (µm²)" }, type: bendSweep ? "log" : "linear" },
       yaxis4: { ...axis, domain: [0, 0.38], title: { text: "Subspace overlap" }, range: [0, 1.05], overlaying: "y3", side: "right", showgrid: false },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
-  return <div ref={plotRef} className="sweep-plot" aria-label={`${parameterLabels[result.parameter]} modal sweep`} />;
+  return <div ref={plotRef} className="sweep-plot scientific-plot-surface" role="img" aria-label={`${parameterLabels[result.parameter]} modal sweep`} />;
 }

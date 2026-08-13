@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Tile } from "@carbon/react";
+import { ScientificPlotFrame } from "@jorpago2/scientific-ui";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { CarbonNumberField, CarbonSelectField } from "./CarbonControls";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
 import {
   MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
   type BuiltInMaterialId,
@@ -64,15 +65,15 @@ export function MaterialExplorer() {
       ...commonLayout,
       yaxis: { ...axis, title: { text: "Refractive index" } },
       yaxis2: { ...axis, title: { text: "k" }, overlaying: "y", side: "right", type: "log", showgrid: false },
-    }, plotConfig("material-refractive-index"));
+    }, plotConfig("material-refractive-index")).then(preparePlotlyToolbar);
     void Plotly.react(permittivityPlot, permittivityTraces, {
       ...commonLayout,
       yaxis: { ...axis, title: { text: "Permittivity" } },
-    }, plotConfig("material-permittivity"));
+    }, plotConfig("material-permittivity")).then(preparePlotlyToolbar);
     void Plotly.react(dispersionPlot, dispersionTraces, {
       ...commonLayout,
       yaxis: { ...axis, title: { text: "dn/dλ (µm<sup>−1</sup>)" } },
-    }, plotConfig("material-dispersion"));
+    }, plotConfig("material-dispersion")).then(preparePlotlyToolbar);
 
   }, [data, definition, wavelengthUm]);
 
@@ -99,18 +100,15 @@ export function MaterialExplorer() {
       </dl>
     </aside>
     <div className="material-plots">
-      <figure className="material-figure">
-        <figcaption>Refractive index and extinction</figcaption>
-        <div ref={refractiveIndexPlotRef} className="material-plot" aria-label="Material refractive index and extinction plot" />
-      </figure>
-      <figure className="material-figure">
-        <figcaption>Complex permittivity</figcaption>
-        <div ref={permittivityPlotRef} className="material-plot" aria-label="Material complex permittivity plot" />
-      </figure>
-      <figure className="material-figure">
-        <figcaption>Material dispersion</figcaption>
-        <div ref={dispersionPlotRef} className="material-plot" aria-label="Material refractive-index dispersion plot" />
-      </figure>
+      <ScientificPlotFrame title="Refractive index and extinction" className="material-figure">
+        <div ref={refractiveIndexPlotRef} className="material-plot scientific-plot-surface" role="img" aria-label="Material refractive index and extinction plot" />
+      </ScientificPlotFrame>
+      <ScientificPlotFrame title="Complex permittivity" className="material-figure">
+        <div ref={permittivityPlotRef} className="material-plot scientific-plot-surface" role="img" aria-label="Material complex permittivity plot" />
+      </ScientificPlotFrame>
+      <ScientificPlotFrame title="Material dispersion" className="material-figure">
+        <div ref={dispersionPlotRef} className="material-plot scientific-plot-surface" role="img" aria-label="Material refractive-index dispersion plot" />
+      </ScientificPlotFrame>
     </div>
     <Tile className="material-model-note">
       <strong>{definition.formula}</strong>

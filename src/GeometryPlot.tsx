@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { CarbonCheckboxField, CarbonSelectField, CarbonSwitcher } from "./CarbonControls";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
@@ -100,7 +100,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       xaxis: { title: { text: "x (µm)" }, color: PLOT_AXIS.color, ticks: "outside", constrain: "domain" },
       yaxis: { title: { text: "y (µm)" }, color: PLOT_AXIS.color, ticks: "outside", scaleanchor: "x", scaleratio: 1 },
       shapes: [...meshShapes, ...pmlShapes, ...periodicShapes],
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [axis, config, mode, quantity, result, showMesh, showMode]);
 
@@ -112,7 +112,7 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       <CarbonCheckboxField label="Mode |E|²" checked={showMode} disabled={!mode} onChange={setShowMode} />
       <small>{result.nx} × {result.ny} cells</small>
     </div>
-    <div ref={plotRef} className="geometry-plot" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} />
+    <div ref={plotRef} className="geometry-plot scientific-plot-surface" role="img" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} />
     <p className="plot-note">Cell-centred material values after subpixel averaging. The complex index uses the passive branch of n² = ε, with Im(n) = κ ≥ 0. Contours show normalized modal |E|²; dashed orange lines mark PML onset and dotted blue boundary pairs are Bloch-periodic.</p>
   </>;
 }

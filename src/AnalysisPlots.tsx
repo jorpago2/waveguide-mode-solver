@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import type { ConvergenceResult, ModeMapResult, ToleranceResult } from "./analysis";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
 import type { TopologySweepResult } from "./solver";
 
 const axis = PLOT_AXIS;
@@ -26,10 +26,10 @@ export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
       xaxis: { ...axis, title: { text: "Nominal grid resolution (cells)" } },
       yaxis: { ...axis, title: { text: "Effective index" }, tickformat: ".7f" },
       yaxis2: { ...axis, overlaying: "y", side: "right", title: { text: "Loss (dB/cm)" }, type: result.levels.every((level) => level.lossDbPerCm > 0) ? "log" : "linear", showgrid: false },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
-  return <div ref={plotRef} className="analysis-plot convergence-plot" aria-label="Effective-index and loss convergence with grid refinement" />;
+  return <div ref={plotRef} className="analysis-plot convergence-plot scientific-plot-surface" role="img" aria-label="Effective-index and loss convergence with grid refinement" />;
 }
 
 export function TolerancePlot({ result }: { result: ToleranceResult }) {
@@ -48,10 +48,10 @@ export function TolerancePlot({ result }: { result: ToleranceResult }) {
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Samples" } },
       xaxis2: { ...axis, domain: narrow ? [0, 1] : [0.55, 1], anchor: "y2", title: { text: "Width (µm)" } },
       yaxis2: { ...axis, domain: narrow ? [0, 0.38] : [0, 1], anchor: "x2", title: { text: "Effective index" } },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
-  return <div ref={plotRef} className="analysis-plot" aria-label="Monte Carlo effective-index distribution and width sensitivity" />;
+  return <div ref={plotRef} className="analysis-plot scientific-plot-surface" role="img" aria-label="Monte Carlo effective-index distribution and width sensitivity" />;
 }
 
 export function ModeMapPlot({ result }: { result: ModeMapResult }) {
@@ -70,10 +70,10 @@ export function ModeMapPlot({ result }: { result: ModeMapResult }) {
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Wavelength (µm)" } },
       xaxis2: { ...axis, domain: narrow ? [0, 1] : [0.58, 1], anchor: "y2", title: { text: `${parameterLabels[result.parameter]} (µm)` } },
       yaxis2: { ...axis, domain: narrow ? [0, 0.38] : [0, 1], anchor: "x2", title: { text: "Wavelength (µm)" } },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
-  return <div ref={plotRef} className="analysis-plot mode-map-plot" aria-label="Guided-mode count and effective-index maps" />;
+  return <div ref={plotRef} className="analysis-plot mode-map-plot scientific-plot-surface" role="img" aria-label="Guided-mode count and effective-index maps" />;
 }
 
 export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
@@ -127,8 +127,8 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Re(neff)" }, tickformat: ".7f" },
       xaxis2: { ...axis, domain: narrow ? [0, 1] : [0.58, 1], anchor: "y2", title: { text: "Re(neff)" } },
       yaxis2: { ...axis, domain: narrow ? [0, 0.38] : [0, 1], anchor: "x2", title: { text: "Im(neff)" }, exponentformat: "power" },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
-  return <div ref={plotRef} className="analysis-plot mode-map-plot" aria-label="Tracked modal branches and complex effective-index trajectories" />;
+  return <div ref={plotRef} className="analysis-plot mode-map-plot scientific-plot-surface" role="img" aria-label="Tracked modal branches and complex effective-index trajectories" />;
 }

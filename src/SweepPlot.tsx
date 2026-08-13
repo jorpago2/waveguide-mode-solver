@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
 import type { SweepResult } from "./solver";
 
 export function SweepPlot({ result }: { result: SweepResult }) {
@@ -51,9 +51,9 @@ export function SweepPlot({ result }: { result: SweepResult }) {
       yaxis3: { ...axis, domain: [0.35, 0.58], title: { text: "β₂ (ps²/km)" }, overlaying: "y2", side: "right", showgrid: false },
       xaxis3: { ...axis, domain: [0, 1], anchor: "y4", matches: "x", title: { text: "Wavelength (µm)" } },
       yaxis4: { ...axis, domain: [0, 0.2], title: { text: "Loss (dB/cm)" } },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
   }, [result]);
 
-  return <div ref={plotRef} className="sweep-plot" aria-label="Effective index, group index, D, beta two and loss wavelength sweep" />;
+  return <div ref={plotRef} className="sweep-plot scientific-plot-surface" role="img" aria-label="Effective index, group index, D, beta two and loss wavelength sweep" />;
 }

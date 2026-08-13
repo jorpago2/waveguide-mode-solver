@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT } from "./plotConfig";
+import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, preparePlotlyToolbar } from "./plotConfig";
 import { interpolateFieldMatrix, type ComplexFieldMatrix, type FieldComponent, type PhysicalFieldComponent, type WaveguideConfig, type WaveguideMode } from "./solver";
 
 export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
@@ -95,7 +95,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       xaxis: { ...axisStyle, title: { text: "x (µm)" }, constrain: "domain" },
       yaxis: { ...axisStyle, title: { text: "y (µm)" }, scaleanchor: "x", scaleratio: 1 },
       shapes: geometryShapes(config),
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
 
     const centerRow = Math.floor(plotYUm.length / 2);
     const centerColumn = Math.floor(plotXUm.length / 2);
@@ -126,7 +126,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
       yaxis: { ...axisStyle, title: { text: componentLabel }, range: phaseField ? [-180, 180] : signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
-    }, PLOT_CONFIG);
+    }, PLOT_CONFIG).then(preparePlotlyToolbar);
 
     return () => {
       if (fieldRef.current) Plotly.purge(fieldRef.current);
@@ -137,8 +137,8 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
   return (
     <>
       <div className="plots" role="group" aria-label={`${plainLabels[component]} profile and central transverse cuts for ${mode.polarization} mode ${mode.order + 1}`}>
-        <div ref={fieldRef} className="field-plot" />
-        <div ref={cutRef} className="cut-plot" />
+        <div ref={fieldRef} className="field-plot scientific-plot-surface" role="img" aria-label={`${plainLabels[component]} field profile`} />
+        <div ref={cutRef} className="cut-plot scientific-plot-surface" role="img" aria-label={`${plainLabels[component]} transverse cuts`} />
       </div>
       {displayInterpolation > 1 && <p className="plot-note">Display grid: {(xUm.length - 1) * displayInterpolation + 1} × {(yUm.length - 1) * displayInterpolation + 1} bilinearly interpolated samples. Solver accuracy and CSV export remain tied to the original {xUm.length} × {yUm.length} Yee grid.</p>}
     </>
