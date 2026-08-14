@@ -28,6 +28,7 @@ import {
   StopOutline,
 } from "@carbon/react/icons";
 import { CarbonCheckboxField, CarbonNumberField, CarbonSelectField, CarbonSwitcher, CarbonTable } from "./CarbonControls";
+import { CrossSectionPreview } from "./CrossSectionPreview";
 import { ScientificAppShell, ScientificAutosaveStatus, ScientificEmptyState, ScientificHeader, ScientificHeaderAction, ScientificModelScope, ScientificOutcomeSummary, ScientificRecoveryNotice, ScientificRunControl, ScientificStatusBar, ScientificTaskPanel, ScientificToolRail, ScientificValidationSummary, useScientificAutosave, useScientificResultTransition, useScientificShortcut } from "@jorpago2/scientific-ui";
 import type { DisplayInterpolation, FieldPart } from "./ModePlot";
 import { cancelSolverWorker, isSolverWorkerCancellation, runSolverWorker } from "./workerClient";
@@ -689,6 +690,7 @@ export function App() {
           <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
             <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <p className="configuration-summary">{draft.geometry ?? "channel"} · {draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · {materialDefinition(draft.coreMaterial ?? "custom").name} · λ {draft.wavelengthUm.toFixed(3)} µm · {draft.gridResolution} cells</p>
+            <CrossSectionPreview config={draft} />
             <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Shape" }, { value: "materials", label: "Media" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
             <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3></div>
