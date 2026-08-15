@@ -73,4 +73,24 @@ describe("solver worker client", () => {
     await expect(request).rejects.toMatchObject({ name: "AbortError", message: "Calculation cancelled." });
     expect(terminated).toBe(true);
   });
+
+  it("cleans the request and timer when postMessage throws", async () => {
+    const cleared: number[] = [];
+    let messageHandler: ((event: { data: unknown }) => void) | undefined;
+    vi.stubGlobal("setTimeout", () => 73);
+    vi.stubGlobal("clearTimeout", (timer: number) => { cleared.push(timer); });
+    vi.stubGlobal("Worker", class {
+      set onmessage(handler: ((event: { data: unknown }) => void) | undefined) { messageHandler = handler; }
+      onerror?: (event: { message: string }) => void;
+      onmessageerror?: () => void;
+      postMessage() { throw new DOMException("Cannot clone", "DataCloneError"); }
+      terminate() {}
+    });
+    await expect(runSolverWorker({
+      kind: "solve",
+      config: { wavelengthUm: 1.55, widthUm: 1, heightUm: 0.4, coreIndex: 2, claddingIndex: 1.444, paddingUm: 1.2, gridResolution: 24, modeCount: 1 },
+    })).rejects.toMatchObject({ name: "DataCloneError" });
+    expect(cleared).toContain(73);
+    expect(messageHandler).toBeTypeOf("function");
+  });
 });

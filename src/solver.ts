@@ -467,11 +467,11 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
   if (!Number.isFinite(config.paddingUm) || config.paddingUm < 0.2 || config.paddingUm > PARAMETER_MAXIMUMS.dimensionUm) {
     errors.push(`Cladding padding must be between 0.2 and ${PARAMETER_MAXIMUMS.dimensionUm} µm.`);
   }
-  if (!Number.isFinite(config.claddingIndex) || config.claddingIndex < 0 || config.claddingIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
-    errors.push(`Cladding index must be between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
+  if (!Number.isFinite(config.claddingIndex) || config.claddingIndex <= 0 || config.claddingIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
+    errors.push(`Cladding index must be greater than 0 and no larger than ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
-  if (!Number.isFinite(config.coreIndex) || config.coreIndex < 0 || config.coreIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
-    errors.push(`Core index must be between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
+  if (!Number.isFinite(config.coreIndex) || config.coreIndex <= 0 || config.coreIndex > PARAMETER_MAXIMUMS.refractiveIndex) {
+    errors.push(`Core index must be greater than 0 and no larger than ${PARAMETER_MAXIMUMS.refractiveIndex}.`);
   }
   if (!Number.isInteger(config.gridResolution) || config.gridResolution < 24 || config.gridResolution > PARAMETER_MAXIMUMS.gridResolution) {
     errors.push(`Grid resolution must be an integer between 24 and ${PARAMETER_MAXIMUMS.gridResolution}.`);
@@ -562,7 +562,7 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
         errors.push(`${region.name || "Polygon region"} vertices must be finite and lie inside the geometry span.`);
       }
       if (!isConvexPolygon(region.vertices)) errors.push(`${region.name || "Polygon region"} must be a non-degenerate convex polygon.`);
-      if (!Number.isFinite(region.index) || region.index < 0 || region.index > PARAMETER_MAXIMUMS.refractiveIndex
+      if (!Number.isFinite(region.index) || region.index <= 0 || region.index > PARAMETER_MAXIMUMS.refractiveIndex
         || !Number.isFinite(region.extinction ?? 0) || (region.extinction ?? 0) < 0 || (region.extinction ?? 0) > PARAMETER_MAXIMUMS.extinction) {
         errors.push(`${region.name || "Polygon region"} needs a valid refractive index and non-negative extinction.`);
       }
@@ -647,6 +647,12 @@ export function validateWaveguide(config: WaveguideConfig): string[] {
       : [materials.core, materials.cladding, ...(substrateActive ? [materials.substrate, ...materials.layers] : [])];
     const indices = materialList.flatMap((material) => [material.nx, material.ny, material.nz]);
     if (indices.some((value) => value < 0 || value > PARAMETER_MAXIMUMS.refractiveIndex)) errors.push(`Dispersive material indices must remain between 0 and ${PARAMETER_MAXIMUMS.refractiveIndex} at the solved wavelength.`);
+    const zeroPrincipalPermittivity = materialList.some((material) => [
+      [material.epsilonReal.xx, material.epsilonImaginary.xx],
+      [material.epsilonReal.yy, material.epsilonImaginary.yy],
+      [material.epsilonReal.zz, material.epsilonImaginary.zz],
+    ].some(([real, imaginary]) => !Number.isFinite(real) || !Number.isFinite(imaginary) || Math.hypot(real, imaginary) < 1e-12));
+    if (zeroPrincipalPermittivity) errors.push("Principal permittivity components must be finite and nonzero; ENZ materials require a dedicated formulation.");
     const hasMetal = materialList.some((material) => material.metallic);
     if (hasMetal && materialList.every((material) => material.metallic)) errors.push("A plasmonic mode requires an interface between a negative-permittivity material and a dielectric.");
     const coreMaximum = polygonActive

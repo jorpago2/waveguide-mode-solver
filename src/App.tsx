@@ -454,7 +454,7 @@ export function App() {
         ? `Solving a high-resolution ${draft.gridResolution}-cell eigenproblem; this can take tens of seconds…`
         : "Solving the vector eigenproblem…");
     try {
-        const next = await runSolverWorker<SolverResult>({ kind: "solve", config: draft });
+        const next = await runSolverWorker<SolverResult>({ kind: "solve", config: draft }, ({ phase, progress }) => setMessage(`${phase} · ${Math.round(100 * progress)}%`));
         setConfig(draft);
         setResult(next);
         setSelectedMode(0);
@@ -989,7 +989,7 @@ export function App() {
           limits={["Metallic bends and longitudinal periodicity are outside scope", "Nonlocal nanoscale response is excluded", "Quantitative use requires mesh and domain convergence"]}
         />
         {result && <div className="checks-card"><ScientificValidationSummary
-          status={{ state: validation.every((check) => check.pass) && result.warnings.length === 0 ? "validated" : "warning", label: validation.every((check) => check.pass) && result.warnings.length === 0 ? "Numerically validated" : "Review validation evidence" }}
+          status={{ state: "warning", label: validation.every((check) => check.pass) && result.warnings.length === 0 ? "Single-run checks passed · convergence pending" : `${validation.filter((check) => !check.pass).length} failed checks · ${result.warnings.length} solver warnings` }}
           checks={validation.map((check, index) => ({ id: `mode-check-${index}`, label: check.label, state: check.pass ? "passed" : "warning" }))}
         />{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
       </section>

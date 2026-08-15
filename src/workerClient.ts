@@ -5,6 +5,14 @@ interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason: Error) => void;
   timeout: number;
+  timeoutMs: number;
+  kind: SolverWorkerRequest["kind"];
+  onProgress?: (progress: SolverProgress) => void;
+}
+
+export interface SolverProgress {
+  phase: string;
+  progress: number;
 }
 
 let worker: Worker | undefined;
@@ -31,9 +39,15 @@ export function isSolverWorkerCancellation(error: unknown): boolean {
 function solverWorker(): Worker {
   if (worker) return worker;
   worker = new Worker(new URL("./solver.worker.ts", import.meta.url), { type: "module" });
-  worker.onmessage = ({ data }: MessageEvent<{ id: number; result?: unknown; error?: string; packed?: boolean }>) => {
+  worker.onmessage = ({ data }: MessageEvent<{ id: number; result?: unknown; error?: string; packed?: boolean; type?: "progress"; phase?: string; progress?: number }>) => {
     const request = pending.get(data.id);
     if (!request) return;
+    if (data.type === "progress") {
+      globalThis.clearTimeout(request.timeout);
+      request.timeout = scheduleTimeout(data.id, request.kind, request.timeoutMs);
+      request.onProgress?.({ phase: data.phase ?? "Working", progress: Math.max(0, Math.min(1, data.progress ?? 0)) });
+      return;
+    }
     globalThis.clearTimeout(request.timeout);
     pending.delete(data.id);
     if (data.error) request.reject(new Error(data.error));
@@ -44,7 +58,14 @@ function solverWorker(): Worker {
   return worker;
 }
 
-export function runSolverWorker<T>(request: SolverWorkerRequest): Promise<T> {
+function scheduleTimeout(id: number, kind: SolverWorkerRequest["kind"], timeoutMs: number): number {
+  return globalThis.setTimeout(() => {
+    if (!pending.has(id)) return;
+    stopWorker(new Error(`The ${kind === "solve" ? "mode solve" : "analysis"} timed out without a worker heartbeat. Reduce the mesh resolution, requested modes or sweep samples and try again.`));
+  }, timeoutMs);
+}
+
+export function runSolverWorker<T>(request: SolverWorkerRequest, onProgress?: (progress: SolverProgress) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     let activeWorker: Worker;
     try {
@@ -56,10 +77,14 @@ export function runSolverWorker<T>(request: SolverWorkerRequest): Promise<T> {
     const id = nextRequestId++;
     const bentSolve = request.kind === "solve" && (request.config.bendRadiusUm ?? 0) > 0;
     const timeoutMs = bentSolve ? 900_000 : request.kind === "solve" && request.config.gridResolution <= 96 ? 60_000 : 300_000;
-    const timeout = globalThis.setTimeout(() => {
-      stopWorker(new Error(`The ${request.kind === "solve" ? "mode solve" : "analysis"} timed out. Reduce the mesh resolution, requested modes or sweep samples and try again.`));
-    }, timeoutMs);
-    pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timeout });
-    activeWorker.postMessage({ id, request });
+    const timeout = scheduleTimeout(id, request.kind, timeoutMs);
+    pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timeout, timeoutMs, kind: request.kind, ...(onProgress ? { onProgress } : {}) });
+    try {
+      activeWorker.postMessage({ id, request });
+    } catch (caught) {
+      globalThis.clearTimeout(timeout);
+      pending.delete(id);
+      reject(caught instanceof Error ? caught : new Error("The solver request could not be sent to the worker."));
+    }
   });
 }

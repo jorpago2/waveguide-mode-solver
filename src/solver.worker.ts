@@ -17,9 +17,11 @@ export type SolverWorkerRequest =
 
 self.onmessage = async ({ data: { id, request } }: MessageEvent<{ id: number; request: SolverWorkerRequest }>) => {
   try {
+    self.postMessage({ id, type: "progress", phase: "Loading numerical kernels", progress: 0.02 });
     const [{ analyzeModeTopology, solveWaveguide, sweepBlochPhase, sweepGeometry, sweepWaveguide }, { analyzeConvergence, analyzeDirectionalCoupler, analyzeGaussianCoupling, analyzeTolerances, calculateModeMap, compareWaveguides }] = await Promise.all([
       import("./solver"), import("./analysis"),
     ]);
+    self.postMessage({ id, type: "progress", phase: request.kind === "solve" ? "Assembling and solving eigenproblem" : "Running analysis", progress: 0.08 });
     const result = request.kind === "solve" ? solveWaveguide(request.config)
       : request.kind === "wavelengthSweep" ? sweepWaveguide(request.config, request.settings)
         : request.kind === "geometrySweep" ? sweepGeometry(request.config, request.settings)
@@ -33,8 +35,12 @@ self.onmessage = async ({ data: { id, request } }: MessageEvent<{ id: number; re
                     : calculateModeMap(request.config, request.settings);
     if (request.kind === "solve") {
       const packed = packSolverResult(result as import("./solver").SolverResult);
+      self.postMessage({ id, type: "progress", phase: "Transferring reconstructed fields", progress: 0.95 });
       self.postMessage({ id, result: packed.result, packed: true }, { transfer: packed.transfer });
-    } else self.postMessage({ id, result });
+    } else {
+      self.postMessage({ id, type: "progress", phase: "Finalizing analysis", progress: 0.95 });
+      self.postMessage({ id, result });
+    }
   } catch (error) {
     self.postMessage({ id, error: error instanceof Error ? error.message : "The solver failed." });
   }

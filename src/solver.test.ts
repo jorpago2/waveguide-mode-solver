@@ -185,6 +185,7 @@ describe("full-vector finite-difference mode solver", () => {
 
   it("rejects a non-guiding index profile", () => {
     expect(validateWaveguide({ ...benchmark, coreIndex: 1.4, claddingIndex: 1.5 })).not.toHaveLength(0);
+    expect(validateWaveguide({ ...benchmark, claddingIndex: 0 }).join(" ")).toMatch(/greater than 0/);
     expect(validateWaveguide({ ...benchmark, bendRadiusUm: 1 })).toContain("Bend radius must exceed the radial half-domain so the cylindrical metric remains positive.");
   });
 
