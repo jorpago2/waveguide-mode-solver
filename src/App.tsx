@@ -627,10 +627,12 @@ export function App() {
 
   return <ScientificAppShell
     className="waveguide-app"
+    previewStageWhenPanelOpen
     recovery={autosave.recovery && <ScientificRecoveryNotice savedAt={autosave.recovery.savedAt} onRestore={autosave.restore} onDiscard={autosave.discard} />}
     header={<ScientificHeader
       aria-label="Waveguide Mode Solver"
       product="Waveguide Solver"
+      compactProduct="Modes"
       productIcon="waveguide"
       descriptor="Mode analysis"
       href="./"

@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 async function solveDefault(page: Page) {
   await page.goto('./')
-  await page.getByRole('button', { name: 'Solve modes' }).click()
+  await page.locator('#mode-solver-form').getByRole('button', { name: 'Solve modes' }).click()
   const outcome = page.getByRole('region', { name: /mode outcome/i })
   await expect(outcome.getByText(/Solved · \d+ failed checks · \d+ solver warnings/)).toBeVisible({ timeout: 30_000 })
   return outcome
