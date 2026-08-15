@@ -28,8 +28,12 @@ test("reveals results and reports solver state after an explicit solve", async (
   const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(app, /setResult\(next\);[\s\S]*closeConfiguration\(\);/);
   for (const label of ["Not solved", "Solving", "Solved", "Stale"]) assert.match(app, new RegExp(label));
-  assert.match(app, /<ScientificHeader[\s\S]*status=\{\{ state: solveState === "solved"/);
-  assert.match(app, /<ScientificStatusBar[\s\S]*state: solveState === "solved"/);
+  assert.match(app, /const failedCheckCount =/);
+  assert.match(app, /const solverWarningCount =/);
+  assert.match(app, /const solveStateLabel =/);
+  assert.match(app, /<ScientificHeader[\s\S]*label: solveStateLabel/);
+  assert.match(app, /<ScientificStatusBar[\s\S]*label: solveStateLabel/);
+  assert.doesNotMatch(app, /validation issue\(s\)|convergence pending/);
 });
 
 test("keeps the scientific result ahead of introductory chrome", async () => {

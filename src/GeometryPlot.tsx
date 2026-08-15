@@ -29,8 +29,8 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
     const [xMinimum, xMaximum] = [result.xEdgesUm[0], result.xEdgesUm.at(-1) as number];
     const [yMinimum, yMaximum] = [result.yEdgesUm[0], result.yEdgesUm.at(-1) as number];
     const meshShapes = showMesh ? [
-      ...result.xEdgesUm.map((x) => ({ type: "line" as const, x0: x, x1: x, y0: yMinimum, y1: yMaximum, line: { color: "rgba(18,43,52,0.18)", width: 0.5 } })),
-      ...result.yEdgesUm.map((y) => ({ type: "line" as const, x0: xMinimum, x1: xMaximum, y0: y, y1: y, line: { color: "rgba(18,43,52,0.18)", width: 0.5 } })),
+      ...result.xEdgesUm.map((x) => ({ type: "line" as const, x0: x, x1: x, y0: yMinimum, y1: yMaximum, line: { color: PLOT_AXIS.gridcolor as string, width: 0.5 } })),
+      ...result.yEdgesUm.map((y) => ({ type: "line" as const, x0: xMinimum, x1: xMaximum, y0: y, y1: y, line: { color: PLOT_AXIS.gridcolor as string, width: 0.5 } })),
     ] : [];
     const pmlThickness = (config.boundary ?? "hard") === "pml" ? (config.pmlThicknessUm ?? config.paddingUm * 0.6) : 0;
     const pmlShapes = pmlThickness > 0 ? [

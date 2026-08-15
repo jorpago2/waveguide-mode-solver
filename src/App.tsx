@@ -8,9 +8,6 @@ import {
   InlineNotification,
   Link,
   SkipToContent,
-  Tab,
-  TabList,
-  Tabs,
   TextInput,
   Tile,
   preview__IconIndicator as IconIndicator,
@@ -224,14 +221,6 @@ export function App() {
   const selectedPreset = presets[presetName];
   const presetModified = Boolean(selectedPreset && draftFingerprint !== JSON.stringify(selectedPreset));
   const resultIsStale = Boolean(result && draftFingerprint !== solvedFingerprint);
-  const solveState = busy ? "solving" : resultIsStale ? "stale" : result ? "solved" : "not-solved";
-  const solveStateLabel = busy ? "Solving" : resultIsStale ? "Stale" : result ? "Solved" : "Not solved";
-  useScientificResultTransition({
-    state: busy ? "running" : resultIsStale ? "modified" : result?.warnings.length ? "warning" : result ? "up-to-date" : "ready",
-    resultRef: outcomeHeading,
-    completionKey: result ? message : null,
-    onReveal: () => { setActiveView("solver"); setNavigationOpen(false); },
-  });
   const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.guidanceMargin > 0 && !mode.nearCutoff },
     { label: "Eigenpair residual", pass: mode.residual < 2e-3 },
@@ -246,6 +235,18 @@ export function App() {
       : []),
     ...((config.bendRadiusUm ?? 0) > 0 ? [{ label: "Open radial boundary", pass: (config.boundary ?? "hard") === "pml" }] : []),
   ] : [], [config, mode, result]);
+  const failedCheckCount = validation.filter((check) => !check.pass).length;
+  const solverWarningCount = result?.warnings.length ?? 0;
+  const evidenceSummary = `${failedCheckCount} failed checks · ${solverWarningCount} solver warnings`;
+  const resultHasIssues = failedCheckCount > 0 || solverWarningCount > 0;
+  const solveStateLabel = busy ? "Solving" : resultIsStale ? `Stale · ${evidenceSummary}` : result ? `Solved · ${evidenceSummary}` : "Not solved";
+  const evidenceState = busy ? "running" : resultIsStale ? "modified" : resultHasIssues ? "warning" : result ? "up-to-date" : "ready";
+  useScientificResultTransition({
+    state: evidenceState,
+    resultRef: outcomeHeading,
+    completionKey: result ? message : null,
+    onReveal: () => { setActiveView("solver"); setNavigationOpen(false); },
+  });
   const geometrySweepMaximum = geometrySweep.parameter === "bendRadiusUm" ? PARAMETER_MAXIMUMS.bendRadiusUm : PARAMETER_MAXIMUMS.dimensionUm;
   const session = useMemo<WaveguideSession>(() => ({
     presetName,
@@ -637,7 +638,7 @@ export function App() {
       contextLabel="Current configuration"
       context={`${presetName}${presetModified ? " · Modified" : ""}`}
       contextDetail={`${draft.widthUm.toFixed(2)} × ${draft.heightUm.toFixed(2)} µm · λ ${draft.wavelengthUm.toFixed(3)} µm`}
-      status={{ state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input", label: solveStateLabel }}
+      status={{ state: evidenceState, label: solveStateLabel }}
       help={{
         summary: "Configure and solve the mode first. Use Sweeps and Analysis for sensitivity, then verify mesh and boundary convergence.",
         footer: <><Link href="https://jorpago2.github.io/">All tools</Link> · <Link href="https://github.com/jorpago2/waveguide-mode-solver" target="_blank" rel="noreferrer">Source code on GitHub</Link></>,
@@ -645,7 +646,7 @@ export function App() {
       primaryAction={<ScientificRunControl
         size="lg"
         execution={{
-          state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "ready",
+          state: evidenceState,
           label: solveStateLabel,
           onRun: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit(),
           onStop: cancelSolverWorker,
@@ -841,14 +842,11 @@ export function App() {
             <InlineNotification className="status" kind="info" title="Solver status" subtitle={message} hideCloseButton lowContrast />{error && <InlineNotification kind="error" title="Solver error" subtitle={error} hideCloseButton lowContrast />}
           </form>
         </ScientificTaskPanel>}
-    statusBar={<ScientificStatusBar aria-label="Scientific status" status={{
-      state: solveState === "solved" ? "up-to-date" : solveState === "solving" ? "running" : solveState === "stale" ? "modified" : "needs-input",
-      label: solveState === "solved" ? `${solveStateLabel} · review validation evidence` : solveStateLabel,
-    }} metadata={<>
+    statusBar={<ScientificStatusBar aria-label="Scientific status" status={{ state: evidenceState, label: solveStateLabel }} metadata={<>
       <ScientificAutosaveStatus status={autosave.status} savedAt={autosave.lastSavedAt} />
       <span>{config.geometry ?? "channel"}</span>
       <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
-      {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{validation.filter((check) => !check.pass).length} validation issue(s)</span></>}
+      {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{failedCheckCount} failed checks</span><span>{solverWarningCount} solver warnings</span></>}
     </>} />}
   >
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
@@ -861,15 +859,7 @@ export function App() {
             className="waveguide-outcome"
             title={mode ? `${mode.label} mode outcome` : "Mode solve outcome"}
             headingRef={outcomeHeading}
-            status={busy
-              ? { state: "running", label: "Solving eigenproblem", detail: message }
-              : resultIsStale
-                ? { state: "modified", label: "Result uses an earlier configuration" }
-                : result?.warnings.length
-                  ? { state: "warning", label: "Solved with warnings" }
-                  : result
-                    ? { state: "up-to-date", label: "Result current" }
-                    : { state: "needs-input", label: "Not solved" }}
+            status={{ state: evidenceState, label: solveStateLabel, detail: busy ? message : undefined }}
             summary={mode
               ? resultIsStale
                 ? "The displayed mode, sweeps and exports still use the last solved configuration. Solve again before quantitative interpretation."
@@ -894,14 +884,10 @@ export function App() {
           />
           {result ? <div className="result-stage">
             <div className="result-command-bar">
-              <div className="result-view-switcher"><Tabs selectedIndex={resultView === "mode" ? 0 : 1} onChange={({ selectedIndex }) => setResultView(selectedIndex === 0 ? "mode" : "geometry")}>
-                <TabList contained aria-label="Scientific result"><Tab>Mode fields</Tab><Tab>Structure &amp; mesh</Tab></TabList>
-              </Tabs></div>
+              <div className="result-view-switcher"><CarbonSwitcher label="Scientific result" value={resultView} options={[{ value: "mode", label: "Mode fields" }, { value: "geometry", label: "Structure & mesh" }]} onChange={(value) => setResultView(value as "mode" | "geometry")} /></div>
             </div>
             {resultView === "geometry" ? activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><GeometryPlot config={config} result={result} mode={mode} /></Suspense> : mode ? <>
-            <Tabs selectedIndex={selectedMode} onChange={({ selectedIndex }) => setSelectedMode(selectedIndex)}>
-              <TabList className="mode-tabs" aria-label="Guided modes">{result.modes.map((item) => <Tab key={item.id}>{item.label} · {item.polarization} · n<sub>eff</sub> {item.effectiveIndex.toFixed(5)}{item.nearCutoff ? " · near cutoff" : ""}</Tab>)}</TabList>
-            </Tabs>
+            <div className="mode-tabs"><CarbonSwitcher label="Guided modes" value={String(selectedMode)} options={result.modes.map((item, index) => ({ value: String(index), label: `${item.label} · ${item.polarization} · neff ${item.effectiveIndex.toFixed(5)}${item.nearCutoff ? " · near cutoff" : ""}` }))} onChange={(value) => setSelectedMode(Number(value))} /></div>
             <div className="field-control-bar">
               <div className="field-toolbar field-component-toolbar"><CarbonSelectField id="field-component" label="Field component" value={component} inline options={fieldComponents.map((field) => ({ value: field, label: (config.bendRadiusUm ?? 0) > 0 && field === "Ez" ? "Eθ" : (config.bendRadiusUm ?? 0) > 0 && field === "Hz" ? "Hθ" : field === "poynting" ? (config.bendRadiusUm ?? 0) > 0 ? "Sθ" : "Sz" : field === "intensity" ? "|E|²" : field }))} onChange={(value) => setComponent(value as FieldComponent)} /></div>
               <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
@@ -989,7 +975,7 @@ export function App() {
           limits={["Metallic bends and longitudinal periodicity are outside scope", "Nonlocal nanoscale response is excluded", "Quantitative use requires mesh and domain convergence"]}
         />
         {result && <div className="checks-card"><ScientificValidationSummary
-          status={{ state: "warning", label: validation.every((check) => check.pass) && result.warnings.length === 0 ? "Single-run checks passed · convergence pending" : `${validation.filter((check) => !check.pass).length} failed checks · ${result.warnings.length} solver warnings` }}
+          status={{ state: resultHasIssues ? "warning" : "up-to-date", label: solveStateLabel }}
           checks={validation.map((check, index) => ({ id: `mode-check-${index}`, label: check.label, state: check.pass ? "passed" : "warning" }))}
         />{mode && <dl className="solver-details"><div><dt>Numerical backend</dt><dd>{result.backend}</dd></div><div><dt>Mode classification</dt><dd>{mode.label} · {mode.physicalClass}</dd></div><div><dt>x/y field symmetry</dt><dd>{mode.symmetryX.toFixed(3)} / {mode.symmetryY.toFixed(3)}</dd></div><div><dt>Symmetry state reduction</dt><dd>{result.symmetryReductionFactor.toFixed(2)}×</dd></div>{(config.periodicX || config.periodicY) && <div><dt>Bloch cell / phase</dt><dd>{config.periodicX ? `x ${(result.xEdgesUm.at(-1)! - result.xEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseXRad ?? 0).toFixed(3)}` : ""}{config.periodicX && config.periodicY ? " · " : ""}{config.periodicY ? `y ${(result.yEdgesUm.at(-1)! - result.yEdgesUm[0]).toFixed(3)} µm, θ=${(config.blochPhaseYRad ?? 0).toFixed(3)}` : ""}</dd></div>}<div><dt>Relative residual</dt><dd>{mode.residual.toExponential(2)}</dd></div><div><dt>Grid spacing range</dt><dd>{result.dxUm.toFixed(3)}–{result.dxMaxUm.toFixed(3)} µm</dd></div><div><dt>Longitudinal E fraction</dt><dd>{(mode.longitudinalElectricFraction * 100).toFixed(2)}%</dd></div><div><dt>Eₓ transverse fraction</dt><dd>{(mode.xPolarizedElectricFraction * 100).toFixed(2)}%</dd></div></dl>}<WarningMessages warnings={result.warnings} /></div>}
       </section>

@@ -19,8 +19,14 @@ export const PLOT_FONT: Partial<Plotly.Font> = {
 
 export const PLOT_AXIS = createScientificPlotlyAxis(theme) as Partial<Plotly.LayoutAxis>;
 
+function updateSharedPlotTheme(next = readScientificPlotTheme()) {
+  Object.assign(PLOT_FONT, { family: SCIENTIFIC_PLOT_FONT, color: next.textSecondary, size: 12 });
+  Object.assign(PLOT_AXIS, createScientificPlotlyAxis(next));
+  return next;
+}
+
 function synchronizeRenderedPlots() {
-  const next = readScientificPlotTheme();
+  const next = updateSharedPlotTheme();
   document.querySelectorAll<HTMLElement>(".scientific-plot-surface.js-plotly-plot").forEach((plot) => {
     const update: Record<string, unknown> = {
       "font.family": SCIENTIFIC_PLOT_FONT,
