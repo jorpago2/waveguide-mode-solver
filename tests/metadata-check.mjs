@@ -43,3 +43,21 @@ test("keeps the scientific result ahead of introductory chrome", async () => {
   assert.match(app, /id="solver"[^>]+aria-label="Mode solver"/);
   assert.doesNotMatch(app, /view-heading"><div className="view-title">\{icon\}<h1 id=\{id\}>\{title\}<\/h1><\/div><p>/);
 });
+
+test("keeps React as the sole owner of the application UI root", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const main = await readFile(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const plotConfig = await readFile(new URL("../src/plotConfig.ts", import.meta.url), "utf8");
+
+  assert.equal((main.match(/\bcreateRoot\s*\(/g) ?? []).length, 1);
+  assert.match(main, /createRoot\(document\.getElementById\(["']root["']\)!\)/);
+
+  const body = html.match(/<body>([\s\S]*?)<\/body>/i)?.[1] ?? "";
+  const bodyWithoutRuntime = body.replace(/<div\s+id=["']root["']\s*>\s*<\/div>/i, "").replace(/<script\b[\s\S]*?<\/script>/gi, "").trim();
+  assert.equal(bodyWithoutRuntime, "");
+
+  assert.doesNotMatch(app, /document\.querySelector(?:<[^>]+>)?\(\s*["']#mode-solver-form["']\s*\)[\s\S]{0,80}requestSubmit\s*\(/);
+  assert.doesNotMatch(plotConfig, /addEventListener\s*\(/);
+  assert.doesNotMatch(plotConfig, /querySelectorAll\s*\(/);
+});

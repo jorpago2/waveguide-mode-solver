@@ -1,15 +1,18 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
+import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
+import { createPlotAxis, createPlotFont, PLOT_CONFIG, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { SweepResult } from "./solver";
 
 export function SweepPlot({ result }: { result: SweepResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
 
   useEffect(() => {
     if (!plotRef.current) return;
     const wavelength = result.points.map((point) => point.wavelengthUm);
-    const axis = PLOT_AXIS;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     void Plotly.react(plotRef.current, [
       {
         type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: wavelength,
@@ -42,7 +45,7 @@ export function SweepPlot({ result }: { result: SweepResult }) {
       },
     ] as Plotly.Data[], {
       margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.69, 1], title: { text: "Modal index" } },
@@ -53,7 +56,7 @@ export function SweepPlot({ result }: { result: SweepResult }) {
       yaxis4: { ...axis, domain: [0, 0.2], title: { text: "Loss (dB/cm)" } },
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [result]);
+  }, [result, theme]);
 
   return <div ref={plotRef} className="sweep-plot scientific-plot-surface" role="img" aria-label="Effective index, group index, D, beta two and loss wavelength sweep" />;
 }

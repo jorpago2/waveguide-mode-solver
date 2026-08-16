@@ -213,13 +213,16 @@ export function App() {
   const [navigationOpen, setNavigationOpen] = useState(() => typeof window === "undefined" || viewFromHash() === "solver");
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
   const configurationPanelRef = useRef<HTMLElement>(null);
+  const platformPresetRef = useRef<HTMLSelectElement>(null);
   const projectImportRef = useRef<HTMLInputElement>(null);
   const outcomeHeading = useRef<HTMLHeadingElement>(null);
+  const viewRefs = useRef<Partial<Record<AppView, HTMLElement | null>>>({});
   const mode = result ? (result.modes[selectedMode] ?? result.modes[0]) : undefined;
   const draftFingerprint = useMemo(() => JSON.stringify(draft), [draft]);
   const solvedFingerprint = useMemo(() => JSON.stringify(config), [config]);
   const selectedPreset = presets[presetName];
   const presetModified = Boolean(selectedPreset && draftFingerprint !== JSON.stringify(selectedPreset));
+  const customConfiguration = selectedPreset === undefined;
   const resultIsStale = Boolean(result && draftFingerprint !== solvedFingerprint);
   const validation = useMemo(() => mode && result ? [
     { label: "Guided solution", pass: mode.guidanceMargin > 0 && !mode.nearCutoff },
@@ -326,7 +329,7 @@ export function App() {
     else {
       setActiveView(view);
       setNavigationOpen(view === "solver");
-      window.requestAnimationFrame(() => document.getElementById(view)?.focus());
+      window.requestAnimationFrame(() => viewRefs.current[view]?.focus());
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -338,7 +341,7 @@ export function App() {
 
   function openConfiguration() {
     setNavigationOpen(true);
-    window.requestAnimationFrame(() => document.getElementById("platform-preset")?.focus());
+    window.requestAnimationFrame(() => platformPresetRef.current?.focus());
   }
 
   function updateNumber(key: keyof WaveguideConfig, value: number) {
@@ -443,8 +446,8 @@ export function App() {
     }
   }
 
-  async function solve(event: FormEvent) {
-    event.preventDefault();
+  async function runSolve() {
+    if (busy) return;
     const errors = validateWaveguide(draft);
     if (errors.length > 0) { setError(errors.join(" ")); return; }
     setError("");
@@ -650,7 +653,7 @@ export function App() {
         execution={{
           state: evidenceState,
           label: solveStateLabel,
-          onRun: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit(),
+          onRun: runSolve,
           onStop: cancelSolverWorker,
           runLabel: "Solve",
           stopLabel: "Cancel",
@@ -688,14 +691,18 @@ export function App() {
           eyebrow="Mode solver"
           closeLabel="Close"
           onClose={closeConfiguration}
-          actions={presetModified ? <><IconIndicator kind="caution-minor" label="Modified" /><Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button></> : undefined}
+          actions={customConfiguration
+            ? <IconIndicator kind="caution-minor" label="Custom" />
+            : presetModified
+              ? <><IconIndicator kind="caution-minor" label="Modified" /><Button type="button" kind="ghost" size="sm" onClick={resetPreset}>Reset preset</Button></>
+              : undefined}
         >
-          <form id="mode-solver-form" onSubmit={solve} noValidate aria-busy={busy}>
-            <CarbonSelectField id="platform-preset" label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
+          <form id="mode-solver-form" onSubmit={(event) => { event.preventDefault(); void runSolve(); }} noValidate aria-busy={busy}>
+            <CarbonSelectField id="platform-preset" inputRef={platformPresetRef} label="Platform preset" value={presetName} options={Object.keys(presets).map((name) => ({ value: name, label: name }))} onChange={applyPreset} />
             <p className="configuration-summary">{draft.geometry ?? "channel"} · {draft.widthUm.toFixed(2)} × {draft.heightUm.toFixed(2)} µm · {materialDefinition(draft.coreMaterial ?? "custom").name} · λ {draft.wavelengthUm.toFixed(3)} µm · {draft.gridResolution} cells</p>
             <CrossSectionPreview config={draft} />
-            <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Shape" }, { value: "materials", label: "Media" }, { value: "solver", label: "Solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
-            <section id="configuration-geometry" className="configuration-section" role="tabpanel" hidden={configurationTab !== "geometry"}>
+            <div className="configuration-tabs"><CarbonSwitcher label="Configuration sections" value={configurationTab} options={[{ value: "geometry", label: "Shape", id: "configuration-tab-geometry", controlsId: "configuration-geometry" }, { value: "materials", label: "Media", id: "configuration-tab-materials", controlsId: "configuration-materials" }, { value: "solver", label: "Solver", id: "configuration-tab-solver", controlsId: "configuration-solver" }]} onChange={(value) => setConfigurationTab(value as ConfigurationTab)} /></div>
+            <section id="configuration-geometry" className="configuration-section" role="tabpanel" aria-labelledby="configuration-tab-geometry" hidden={configurationTab !== "geometry"}>
               <div className="configuration-heading"><h3>Cross-section</h3></div>
               <CarbonSelectField id="geometry" label="Geometry" value={draft.geometry ?? "channel"} options={[{ value: "channel", label: "Channel" }, { value: "rib", label: "Rib" }, { value: "slot", label: "Slot" }, { value: "coupler", label: "Two-guide coupler" }, { value: "multilayer", label: "Multilayer ridge" }, { value: "polygon", label: "Polygon regions" }]} onChange={(value) => setDraft((current) => {
                 const geometry = value as GeometryType;
@@ -758,7 +765,7 @@ export function App() {
               </AccordionItem></Accordion>}
             </section>
 
-            <section id="configuration-materials" className="configuration-section" role="tabpanel" hidden={configurationTab !== "materials"}>
+            <section id="configuration-materials" className="configuration-section" role="tabpanel" aria-labelledby="configuration-tab-materials" hidden={configurationTab !== "materials"}>
               <div className="configuration-heading"><h3>Optical materials</h3></div>
               <div className="material-selectors">
                 {(draft.geometry ?? "channel") !== "polygon" && <MaterialSelect label="Core material" value={draft.coreMaterial ?? "custom"} onChange={(value) => updateMaterial("coreMaterial", "coreIndex", value)} />}
@@ -803,7 +810,7 @@ export function App() {
               </AccordionItem></Accordion>
             </section>
 
-            <section id="configuration-solver" className="configuration-section" role="tabpanel" hidden={configurationTab !== "solver"}>
+            <section id="configuration-solver" className="configuration-section" role="tabpanel" aria-labelledby="configuration-tab-solver" hidden={configurationTab !== "solver"}>
               <div className="configuration-heading"><h3>Numerical setup</h3></div>
               <div className="form-grid">
                 <NumberField label="Wavelength" unit="µm" value={draft.wavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(v) => updateNumber("wavelengthUm", v)} />
@@ -854,7 +861,7 @@ export function App() {
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
     <div id="scientific-workspace" className="scientific-content" tabIndex={-1}>
       <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
-      <section className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
+      <section ref={(node) => { viewRefs.current.solver = node; }} className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" tabIndex={-1}>
         <section className="results-panel scientific-stage" id="results-panel" aria-label="Mode result">
           <ScientificOutcomeSummary
@@ -877,11 +884,11 @@ export function App() {
             ] : []}
             actions={mode ? [
               { id: "export-field", label: "Export field CSV", emphasis: "primary", disabled: busy, onClick: exportField },
-              { id: "solve-current", label: resultIsStale ? "Solve current setup" : "Solve again", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit() },
+              { id: "solve-current", label: resultIsStale ? "Solve current setup" : "Solve again", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: runSolve },
               { id: "export-project", label: "Export project", emphasis: "tertiary", overflowOnly: true, disabled: busy, onClick: exportProject },
             ] : [
               { id: "configure", label: "Review configuration", emphasis: "primary", onClick: openConfiguration },
-              { id: "solve", label: "Solve modes", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: () => document.querySelector<HTMLFormElement>("#mode-solver-form")?.requestSubmit() },
+              { id: "solve", label: "Solve modes", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: runSolve },
             ]}
           />
           {result ? <div className="result-stage">
@@ -914,12 +921,12 @@ export function App() {
       </div>
       </section>
 
-      <section className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title" tabIndex={-1}>
+      <section ref={(node) => { viewRefs.current.materials = node; }} className="app-view" id="materials" hidden={activeView !== "materials"} aria-labelledby="materials-title" tabIndex={-1}>
         <ViewHeading title="Material Explorer" id="materials-title" icon={<Chemistry size={20} aria-hidden={true} />} />
         {activeView === "materials" && <Suspense fallback={<VisualizationFallback />}><MaterialExplorer /></Suspense>}
       </section>
 
-      <section className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
+      <section ref={(node) => { viewRefs.current.sweeps = node; }} className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
       <ViewHeading title="Studies" id="sweeps-title" icon={<ChartLine size={20} aria-hidden={true} />} />
       <div className="section-tabs"><CarbonSwitcher label="Study type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength" }, { value: "geometry", label: "Geometry" }, { value: "bloch", label: "Bloch phase" }, { value: "analysis", label: "Advanced" }]} onChange={(value) => setSweepPane(value as StudyPane)} /></div>
       <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
@@ -968,7 +975,7 @@ export function App() {
       </section>
       </section>
 
-      <section className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title" tabIndex={-1}>
+      <section ref={(node) => { viewRefs.current.validation = node; }} className="app-view" id="validation" hidden={activeView !== "validation"} aria-labelledby="validation-title" tabIndex={-1}>
       <ViewHeading title="Validation" id="validation-title" icon={<CheckmarkOutline size={20} aria-hidden={true} />} />
       <section className={`validation-section${result ? "" : " validation-section-single"}`}>
         <ScientificModelScope

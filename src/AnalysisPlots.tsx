@@ -1,15 +1,17 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
 import type { ConvergenceResult, ModeMapResult, ToleranceResult } from "./analysis";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
+import { createPlotAxis, createPlotFont, PLOT_CONFIG, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { TopologySweepResult } from "./solver";
-
-const axis = PLOT_AXIS;
 
 export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   useEffect(() => {
     if (!plotRef.current) return;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const resolutions = result.levels.map((level) => level.resolution);
     const data: Plotly.Data[] = [
       { type: "scatter", mode: "lines+markers", name: "n<sub>eff</sub>", x: resolutions, y: result.levels.map((level) => level.effectiveIndex), line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis }, marker: { size: 8 } },
@@ -21,28 +23,31 @@ export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
     });
     void Plotly.react(plotRef.current, data, {
       margin: { l: 68, r: 76, t: 38, b: 58 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       legend: { orientation: "h", x: 0, y: 1.12 },
       xaxis: { ...axis, title: { text: "Nominal grid resolution (cells)" } },
       yaxis: { ...axis, title: { text: "Effective index" }, tickformat: ".7f" },
       yaxis2: { ...axis, overlaying: "y", side: "right", title: { text: "Loss (dB/cm)" }, type: result.levels.every((level) => level.lossDbPerCm > 0) ? "log" : "linear", showgrid: false },
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [result]);
+  }, [result, theme]);
   return <div ref={plotRef} className="analysis-plot convergence-plot scientific-plot-surface" role="img" aria-label="Effective-index and loss convergence with grid refinement" />;
 }
 
 export function TolerancePlot({ result }: { result: ToleranceResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   useEffect(() => {
     if (!plotRef.current) return;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const narrow = window.matchMedia("(max-width: 600px)").matches;
     void Plotly.react(plotRef.current, [
       { type: "histogram", name: "n<sub>eff</sub>", x: result.samples.map((sample) => sample.effectiveIndex), marker: { color: "#0072b2" }, opacity: 0.82 },
       { type: "scatter", mode: "markers", name: "Width response", x: result.samples.map((sample) => sample.widthUm), y: result.samples.map((sample) => sample.effectiveIndex), xaxis: "x2", yaxis: "y2", marker: { color: result.samples.map((sample) => sample.heightUm), colorscale: "Viridis", size: 7, colorbar: { title: { text: "Height (µm)" }, thickness: 11, ...(narrow ? { y: 0.19, len: 0.38 } : {}) } } },
     ] as Plotly.Data[], {
       margin: { l: 58, r: 70, t: 30, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       showlegend: false,
       xaxis: { ...axis, domain: narrow ? [0, 1] : [0, 0.43], anchor: "y", title: { text: "Effective index" } },
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Samples" } },
@@ -50,14 +55,17 @@ export function TolerancePlot({ result }: { result: ToleranceResult }) {
       yaxis2: { ...axis, domain: narrow ? [0, 0.38] : [0, 1], anchor: "x2", title: { text: "Effective index" } },
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [result]);
+  }, [result, theme]);
   return <div ref={plotRef} className="analysis-plot scientific-plot-surface" role="img" aria-label="Monte Carlo effective-index distribution and width sensitivity" />;
 }
 
 export function ModeMapPlot({ result }: { result: ModeMapResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   useEffect(() => {
     if (!plotRef.current) return;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const narrow = window.matchMedia("(max-width: 600px)").matches;
     const parameterLabels = { widthUm: "Width", heightUm: "Height", slotGapUm: "Slot gap", couplerGapUm: "Coupler gap", bendRadiusUm: "Bend radius" };
     void Plotly.react(plotRef.current, [
@@ -65,21 +73,24 @@ export function ModeMapPlot({ result }: { result: ModeMapResult }) {
       { type: "heatmap", name: "Effective index", x: result.valuesUm, y: result.wavelengthsUm, z: result.effectiveIndex, xaxis: "x2", yaxis: "y2", colorscale: "Cividis", colorbar: { title: { text: "n<sub>eff</sub>" }, thickness: 11, ...(narrow ? { y: 0.19, len: 0.38 } : {}) }, hovertemplate: "value = %{x:.3f} µm<br>λ = %{y:.3f} µm<br>n<sub>eff</sub> = %{z:.5f}<extra></extra>" },
     ] as Plotly.Data[], {
       margin: { l: 62, r: 72, t: 30, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       xaxis: { ...axis, domain: narrow ? [0, 1] : [0, 0.4], anchor: "y", title: { text: `${parameterLabels[result.parameter]} (µm)` } },
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Wavelength (µm)" } },
       xaxis2: { ...axis, domain: narrow ? [0, 1] : [0.58, 1], anchor: "y2", title: { text: `${parameterLabels[result.parameter]} (µm)` } },
       yaxis2: { ...axis, domain: narrow ? [0, 0.38] : [0, 1], anchor: "x2", title: { text: "Wavelength (µm)" } },
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [result]);
+  }, [result, theme]);
   return <div ref={plotRef} className="analysis-plot mode-map-plot scientific-plot-surface" role="img" aria-label="Guided-mode count and effective-index maps" />;
 }
 
 export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   useEffect(() => {
     if (!plotRef.current) return;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const narrow = window.matchMedia("(max-width: 600px)").matches;
     const branches = [...new Set(result.points.flatMap((point) => point.modes.map((mode) => mode.branch)))];
     const maximumLogK = Math.max(1e-9, ...result.points.flatMap((point) => point.modes
@@ -121,7 +132,7 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
     const label = result.parameter === "wavelengthUm" ? "Wavelength (µm)" : result.parameter === "coreExtinction" ? "Core extinction κ" : `${result.parameter.replace("Um", "")} (µm)`;
     void Plotly.react(plotRef.current, data, {
       margin: { l: 68, r: 72, t: 42, b: 58 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       legend: { orientation: "h", x: 0, y: 1.12 },
       xaxis: { ...axis, domain: narrow ? [0, 1] : [0, 0.44], anchor: "y", title: { text: label } },
       yaxis: { ...axis, domain: narrow ? [0.58, 1] : [0, 1], title: { text: "Re(neff)" }, tickformat: ".7f" },
@@ -129,6 +140,6 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
       yaxis2: { ...axis, domain: narrow ? [0, 0.38] : [0, 1], anchor: "x2", title: { text: "Im(neff)" }, exponentformat: "power" },
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [result]);
+  }, [result, theme]);
   return <div ref={plotRef} className="analysis-plot mode-map-plot scientific-plot-surface" role="img" aria-label="Tracked modal branches and complex effective-index trajectories" />;
 }

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
 import { CarbonCheckboxField, CarbonSelectField, CarbonSwitcher } from "./CarbonControls";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
+import { createPlotAxis, createPlotFont, PLOT_CONFIG, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { SolverResult, WaveguideConfig, WaveguideMode } from "./solver";
 
 type PrincipalAxis = "x" | "y" | "z";
@@ -19,6 +20,7 @@ const quantities: Array<{ id: MaterialQuantity; label: string }> = [
 
 export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig; result: SolverResult; mode?: WaveguideMode }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   const [axis, setAxis] = useState<PrincipalAxis>("x");
   const [quantity, setQuantity] = useState<MaterialQuantity>("n-real");
   const [showMesh, setShowMesh] = useState(true);
@@ -26,11 +28,13 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
 
   useEffect(() => {
     if (!plotRef.current) return;
+    const plotAxis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const [xMinimum, xMaximum] = [result.xEdgesUm[0], result.xEdgesUm.at(-1) as number];
     const [yMinimum, yMaximum] = [result.yEdgesUm[0], result.yEdgesUm.at(-1) as number];
     const meshShapes = showMesh ? [
-      ...result.xEdgesUm.map((x) => ({ type: "line" as const, x0: x, x1: x, y0: yMinimum, y1: yMaximum, line: { color: PLOT_AXIS.gridcolor as string, width: 0.5 } })),
-      ...result.yEdgesUm.map((y) => ({ type: "line" as const, x0: xMinimum, x1: xMaximum, y0: y, y1: y, line: { color: PLOT_AXIS.gridcolor as string, width: 0.5 } })),
+      ...result.xEdgesUm.map((x) => ({ type: "line" as const, x0: x, x1: x, y0: yMinimum, y1: yMaximum, line: { color: plotAxis.gridcolor as string, width: 0.5 } })),
+      ...result.yEdgesUm.map((y) => ({ type: "line" as const, x0: xMinimum, x1: xMaximum, y0: y, y1: y, line: { color: plotAxis.gridcolor as string, width: 0.5 } })),
     ] : [];
     const pmlThickness = (config.boundary ?? "hard") === "pml" ? (config.pmlThicknessUm ?? config.paddingUm * 0.6) : 0;
     const pmlShapes = pmlThickness > 0 ? [
@@ -96,13 +100,13 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       margin: { l: 58, r: 42, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: PLOT_FONT,
-      xaxis: { title: { text: "x (µm)" }, color: PLOT_AXIS.color, ticks: "outside", constrain: "domain" },
-      yaxis: { title: { text: "y (µm)" }, color: PLOT_AXIS.color, ticks: "outside", scaleanchor: "x", scaleratio: 1 },
+      font,
+      xaxis: { title: { text: "x (µm)" }, color: plotAxis.color, ticks: "outside", constrain: "domain" },
+      yaxis: { title: { text: "y (µm)" }, color: plotAxis.color, ticks: "outside", scaleanchor: "x", scaleratio: 1 },
       shapes: [...meshShapes, ...pmlShapes, ...periodicShapes],
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [axis, config, mode, quantity, result, showMesh, showMode]);
+  }, [axis, config, mode, quantity, result, showMesh, showMode, theme]);
 
   return <>
     <div className="field-toolbar geometry-toolbar" aria-label="Material quantity and tensor component">

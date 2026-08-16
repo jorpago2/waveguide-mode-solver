@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
+import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
+import { createPlotAxis, createPlotFont, PLOT_CONFIG, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import { interpolateFieldMatrix, type ComplexFieldMatrix, type FieldComponent, type PhysicalFieldComponent, type WaveguideConfig, type WaveguideMode } from "./solver";
 
 export type FieldPart = "real" | "imaginary" | "magnitude" | "phase";
@@ -48,9 +49,12 @@ const units: Record<FieldComponent, string> = {
 export function ModePlot({ component, part, config, mode, xUm, yUm, displayInterpolation }: Props) {
   const fieldRef = useRef<HTMLDivElement>(null);
   const cutRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
 
   useEffect(() => {
     if (!fieldRef.current || !cutRef.current) return;
+    const plotAxis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const physical = isPhysicalField(component);
     const activePart = physical ? part : "real";
     const display = buildDisplayField(mode, component, activePart, xUm, yUm, displayInterpolation);
@@ -65,8 +69,8 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
     let maximum = Number.EPSILON;
     for (const row of z) for (const value of row) maximum = Math.max(maximum, Math.abs(value));
     const axisStyle = {
-      color: PLOT_AXIS.color,
-      gridcolor: PLOT_AXIS.gridcolor,
+      color: plotAxis.color,
+      gridcolor: plotAxis.gridcolor,
       zerolinecolor: "#b7c6ca",
       ticks: "outside" as const,
     };
@@ -91,7 +95,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       margin: { l: 58, r: 36, t: 18, b: 52 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       xaxis: { ...axisStyle, title: { text: "x (µm)" }, constrain: "domain" },
       yaxis: { ...axisStyle, title: { text: "y (µm)" }, scaleanchor: "x", scaleratio: 1 },
       shapes: geometryShapes(config),
@@ -122,7 +126,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       margin: { l: 56, r: 20, t: 18, b: 50 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
       yaxis: { ...axisStyle, title: { text: componentLabel }, range: phaseField ? [-180, 180] : signedField ? [-1.08 * maximum, 1.08 * maximum] : [0, 1.04 * maximum] },
@@ -132,7 +136,7 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       if (fieldRef.current) Plotly.purge(fieldRef.current);
       if (cutRef.current) Plotly.purge(cutRef.current);
     };
-  }, [component, part, config, mode, xUm, yUm, displayInterpolation]);
+  }, [component, part, config, mode, xUm, yUm, displayInterpolation, theme]);
 
   return (
     <>

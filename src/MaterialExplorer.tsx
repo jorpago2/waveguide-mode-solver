@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Tile } from "@carbon/react";
-import { ScientificPlotFrame } from "@jorpago2/scientific-ui";
+import { ScientificPlotFrame, useScientificPlotTheme } from "@jorpago2/scientific-ui";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { CarbonNumberField, CarbonSelectField } from "./CarbonControls";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
+import { createPlotAxis, createPlotFont, PLOT_CONFIG, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import {
   MATERIALS, evaluateMaterialExtinction, evaluateMaterialPrincipalIndices, materialDefinition,
   type BuiltInMaterialId,
@@ -21,6 +21,7 @@ export function MaterialExplorer() {
   const refractiveIndexPlotRef = useRef<HTMLDivElement>(null);
   const permittivityPlotRef = useRef<HTMLDivElement>(null);
   const dispersionPlotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   const data = useMemo(() => sampleMaterial(materialId), [materialId]);
   const current = useMemo(() => {
     const index = evaluateMaterialPrincipalIndices(materialId, wavelengthUm);
@@ -34,7 +35,8 @@ export function MaterialExplorer() {
     const dispersionPlot = dispersionPlotRef.current;
     if (!refractiveIndexPlot || !permittivityPlot || !dispersionPlot) return;
 
-    const axis = PLOT_AXIS;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     const refractiveIndexTraces: Plotly.Data[] = [
       { type: "scatter", mode: "lines", name: "n<sub>o</sub>", x: data.wavelength, y: data.ordinary, line: { color: "#0072b2", width: PLOT_LINE_WIDTHS.emphasis }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>o</sub> = %{y:.6g}<extra></extra>" },
       ...(definition.anisotropic ? [{ type: "scatter", mode: "lines", name: "n<sub>e</sub>", x: data.wavelength, y: data.extraordinary, line: { color: "#009e73", width: PLOT_LINE_WIDTHS.primary, dash: "dash" }, hovertemplate: "λ = %{x:.4g} µm<br>n<sub>e</sub> = %{y:.6g}<extra></extra>" } as Plotly.Data] : []),
@@ -54,7 +56,7 @@ export function MaterialExplorer() {
       margin: { l: 64, r: 64, t: 84, b: 56 },
       paper_bgcolor: "transparent",
       plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       legend: { orientation: "h", x: 0, y: 1.08 },
       uirevision: materialId,
       xaxis: { ...axis, title: { text: "Wavelength (µm)" } },
@@ -75,7 +77,7 @@ export function MaterialExplorer() {
       yaxis: { ...axis, title: { text: "dn/dλ (µm<sup>−1</sup>)" } },
     }, plotConfig("material-dispersion")).then(preparePlotlyToolbar);
 
-  }, [data, definition, wavelengthUm]);
+  }, [data, definition, theme, wavelengthUm]);
 
   useEffect(() => {
     const plots = [refractiveIndexPlotRef.current, permittivityPlotRef.current, dispersionPlotRef.current];

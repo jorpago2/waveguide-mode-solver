@@ -1,51 +1,23 @@
 import type Plotly from "plotly.js-cartesian-dist-min";
-import PlotlyRuntime from "plotly.js-cartesian-dist-min";
 import {
   SCIENTIFIC_PLOT_FONT,
   SCIENTIFIC_PLOT_LINE_WIDTHS,
   createScientificPlotlyAxis,
   createScientificPlotlyConfig,
   prepareScientificPlotlyToolbar,
-  readScientificPlotTheme,
+  type ScientificPlotTheme,
 } from "@jorpago2/scientific-ui";
 
-const theme = readScientificPlotTheme();
-
-export const PLOT_FONT: Partial<Plotly.Font> = {
-  family: SCIENTIFIC_PLOT_FONT,
-  color: theme.textSecondary,
-  size: 12,
-};
-
-export const PLOT_AXIS = createScientificPlotlyAxis(theme) as Partial<Plotly.LayoutAxis>;
-
-function updateSharedPlotTheme(next = readScientificPlotTheme()) {
-  Object.assign(PLOT_FONT, { family: SCIENTIFIC_PLOT_FONT, color: next.textSecondary, size: 12 });
-  Object.assign(PLOT_AXIS, createScientificPlotlyAxis(next));
-  return next;
+export function createPlotFont(theme: ScientificPlotTheme): Partial<Plotly.Font> {
+  return {
+    family: SCIENTIFIC_PLOT_FONT,
+    color: theme.textSecondary,
+    size: 12,
+  };
 }
 
-function synchronizeRenderedPlots() {
-  const next = updateSharedPlotTheme();
-  document.querySelectorAll<HTMLElement>(".scientific-plot-surface.js-plotly-plot").forEach((plot) => {
-    const update: Record<string, unknown> = {
-      "font.family": SCIENTIFIC_PLOT_FONT,
-      "font.color": next.textSecondary,
-      paper_bgcolor: "rgba(0,0,0,0)",
-      plot_bgcolor: "rgba(0,0,0,0)",
-      ...Object.fromEntries(["xaxis", "xaxis2", "yaxis", "yaxis2"].flatMap((axis) => [
-        [`${axis}.color`, next.textSecondary],
-        [`${axis}.gridcolor`, next.grid],
-        [`${axis}.linecolor`, next.axis],
-        [`${axis}.zerolinecolor`, next.axis],
-      ])),
-    };
-    void PlotlyRuntime.relayout(plot, update as Partial<Plotly.Layout>);
-  });
-}
-
-if (typeof window !== "undefined") {
-  window.addEventListener("scientific-ui:theme-applied", synchronizeRenderedPlots);
+export function createPlotAxis(theme: ScientificPlotTheme): Partial<Plotly.LayoutAxis> {
+  return createScientificPlotlyAxis(theme) as Partial<Plotly.LayoutAxis>;
 }
 
 export const PLOT_CONFIG = createScientificPlotlyConfig({

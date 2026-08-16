@@ -1,16 +1,19 @@
 import { useEffect, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
-import { PLOT_AXIS, PLOT_CONFIG, PLOT_FONT, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
+import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
+import { createPlotAxis, createPlotFont, PLOT_CONFIG, PLOT_LINE_WIDTHS, preparePlotlyToolbar } from "./plotConfig";
 import type { BlochSweepResult } from "./solver";
 
 export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
   const plotRef = useRef<HTMLDivElement>(null);
+  const theme = useScientificPlotTheme();
   useEffect(() => {
     if (!plotRef.current) return;
     const phase = result.points.map((point) => point.phaseRad / Math.PI);
     const candidatePhase = result.points.flatMap((point) => point.candidates.map(() => point.phaseRad / Math.PI));
     const candidates = result.points.flatMap((point) => point.candidates);
-    const axis = PLOT_AXIS;
+    const axis = createPlotAxis(theme);
+    const font = createPlotFont(theme);
     void Plotly.react(plotRef.current, [
       {
         type: "scatter", mode: "markers", name: "Calculated modes", x: candidatePhase,
@@ -32,7 +35,7 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
       },
     ] as Plotly.Data[], {
       margin: { l: 62, r: 24, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
-      font: PLOT_FONT,
+      font,
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.4, 1], title: { text: "Effective index" } },
@@ -40,6 +43,6 @@ export function BlochSweepPlot({ result }: { result: BlochSweepResult }) {
       yaxis2: { ...axis, domain: [0, 0.25], title: { text: "Loss (dB/cm)" } },
     }, PLOT_CONFIG).then(preparePlotlyToolbar);
     return () => { if (plotRef.current) Plotly.purge(plotRef.current); };
-  }, [result]);
+  }, [result, theme]);
   return <div ref={plotRef} className="sweep-plot scientific-plot-surface" role="img" aria-label={`Transverse Bloch dispersion along ${result.axis}`} />;
 }

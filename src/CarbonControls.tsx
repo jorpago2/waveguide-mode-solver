@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type Ref } from "react";
 import {
   Checkbox,
   ContentSwitcher,
@@ -19,6 +19,8 @@ export interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  id?: string;
+  controlsId?: string;
 }
 
 export function CarbonNumberField({
@@ -71,6 +73,7 @@ export function CarbonSelectField({
   options,
   disabled = false,
   inline = false,
+  inputRef,
   onChange,
 }: {
   id?: string;
@@ -79,11 +82,13 @@ export function CarbonSelectField({
   options: SelectOption[];
   disabled?: boolean;
   inline?: boolean;
+  inputRef?: Ref<HTMLSelectElement>;
   onChange: (value: string) => void;
 }) {
   const generatedId = useId();
   return <Select
     id={id ?? generatedId}
+    ref={inputRef}
     className="carbon-field"
     labelText={label}
     value={value}
@@ -140,7 +145,7 @@ export function CarbonSwitcher({
     size="sm"
     onChange={({ index }) => index !== undefined && onChange(options[index].value)}
   >
-    {options.map((option) => <Switch key={option.value} name={option.value} disabled={option.disabled}>{option.label}</Switch>)}
+    {options.map((option) => <Switch key={option.value} id={option.id} aria-controls={option.controlsId} name={option.value} disabled={option.disabled}>{option.label}</Switch>)}
   </ContentSwitcher>;
 }
 

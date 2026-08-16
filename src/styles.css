@@ -36,13 +36,6 @@ a { color: inherit; }
 .view-title { display: flex; align-items: center; gap: var(--space-xs); color: var(--color-accent-strong); }
 .view-heading h1 { min-width: 0; margin: 0; color: var(--color-ink); font: 600 var(--text-md)/1.2 var(--font-display); letter-spacing: -0.015em; overflow-wrap: anywhere; }
 
-.method-card, .checks-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-rule);
-  border-radius: var(--radius-card);
-  box-shadow: none;
-}
-
 .control-panel { height: 100%; min-height: 0; }
 .results-panel { min-width: 0; height: 100%; min-height: 0; padding: var(--space-md); overflow-y: auto; overscroll-behavior: contain; background: var(--color-paper); }
 .panel-heading {
@@ -55,7 +48,6 @@ a { color: inherit; }
 
 .panel-heading > div { display: flex; align-items: center; gap: 12px; }
 .panel-heading h2 { margin: 0; font: 650 var(--text-lg)/1.1 var(--font-display); letter-spacing: -0.02em; }
-.panel-title-icon { color: var(--color-accent-strong); }
 .form-grid { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 8px; }
 .carbon-field { min-width: 0; }
 .field-unit { color: var(--color-ink-2); font-weight: 400; }
@@ -115,8 +107,6 @@ a { color: inherit; }
 .metric { min-width: 0; padding: var(--space-2xs) var(--space-xs); display: grid; gap: var(--space-3xs); border: 1px solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-paper-2); }
 .metric span { color: var(--color-ink-2); font-size: var(--text-xs); line-height: 1.25; overflow-wrap: anywhere; }
 .metric strong { overflow: hidden; color: var(--color-ink); font: 600 clamp(0.9rem, 1.4vw, 1.08rem)/1.2 var(--font-mono); text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.primary-metrics > .metric:first-child { border-top: 2px solid var(--color-accent); background: var(--color-surface); }
-.primary-metrics > .metric:first-child strong { color: var(--color-accent-strong); font-size: clamp(1.05rem, 1.7vw, 1.25rem); }
 .result-details { margin: var(--space-xs) 0 0; border-top: 1px solid var(--color-rule); }
 .result-details .secondary-metrics { margin: 0 0 12px; }
 
@@ -218,37 +208,24 @@ a { color: inherit; }
 .validation-section { margin: var(--space-sm) 0 var(--space-lg); display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 0.7fr); gap: var(--space-sm); }
 .validation-section-single { grid-template-columns: minmax(0, 1fr); }
 .result-stage, .result-empty-state, .section-tabs, .sweep-section, .validation-section { width: 100%; max-width: var(--content-max); min-width: 0; margin-inline: auto; }
-.method-card, .checks-card { padding: clamp(var(--space-sm), 2vw, var(--space-md)); }
 .validation-section h2 { margin: 0 0 var(--space-xs); color: var(--color-ink); font: 650 clamp(1.1rem, 1.6vw, 1.4rem)/1.2 var(--font-display); letter-spacing: -0.025em; }
-.method-card > p:not(.limitation) { max-width: 48rem; color: var(--color-ink-2); line-height: 1.65; }
-.equation { margin: var(--space-sm) 0; padding: var(--space-xs); color: var(--color-accent-strong); background: var(--color-accent-soft); border-radius: var(--radius-input); font-family: var(--font-equation); font-size: clamp(1.2rem, 2.2vw, 1.65rem); text-align: center; }
-.equation > * { margin-inline: 0.1em; }
-.equation sub { vertical-align: sub; font-size: 0.7em; }
-.equation sup { vertical-align: super; font-size: 0.7em; }
 .limitation { margin: 0; padding-top: 16px; color: var(--color-ink-2); border-top: 1px solid var(--color-rule); font-size: 0.78rem; line-height: 1.55; }
-.checks { display: grid; gap: 8px; }
-.checks > div { padding: 12px 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--color-rule); }
-.checks strong { font-size: var(--text-sm); }
 .solver-details { margin: 20px 0 0; display: grid; gap: 8px; }
 .solver-details div { display: flex; justify-content: space-between; gap: 16px; }
 .solver-details dt, .solver-details dd { margin: 0; font-size: var(--text-xs); }
 .solver-details dt { color: var(--color-ink-2); }
 .solver-details dd { color: var(--color-ink); font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; }
 
-@media (min-width: 1056px) {
+@media (min-width: 66rem) {
   .field-control-bar { grid-template-columns: minmax(12rem, 18rem) minmax(28rem, 1fr); }
 }
 
-@media (min-width: 901px) and (max-width: 1055.98px) {
+@media (min-width: 42rem) and (max-width: 65.99rem) {
   .field-control-bar { grid-template-columns: minmax(12rem, 18rem) minmax(24rem, 1fr); }
   .field-plot, .cut-plot { min-height: 16rem; }
 }
 
-@media (min-width: 901px) {
-  .primary-metrics { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-}
-
-@media (max-width: 1055.98px) {
+@media (max-width: 65.99rem) {
   .validation-section { grid-template-columns: 1fr; }
   .control-panel { width: 100%; background: var(--cds-layer); border-right: 0; }
   .results-panel { padding: var(--space-sm); }
@@ -258,7 +235,7 @@ a { color: inherit; }
   .validation-section .checks-card { order: -1; }
 }
 
-@media (max-width: 671.98px) {
+@media (max-width: 41.99rem) {
   .field-control-bar { grid-template-columns: 1fr; }
   .field-component-toolbar .carbon-field, .geometry-toolbar .carbon-field { width: 100%; flex-basis: 100%; }
   .plots { grid-template-columns: 1fr; }
@@ -268,7 +245,7 @@ a { color: inherit; }
   .material-explorer-controls { padding: 0 0 16px; border-right: 0; border-bottom: 1px solid var(--color-rule); }
 }
 
-@media (min-width: 672px) and (max-width: 1055.98px) {
+@media (min-width: 42rem) and (max-width: 65.99rem) {
   .field-plot, .cut-plot { min-height: 22.5rem; }
 }
 
@@ -278,7 +255,6 @@ a { color: inherit; }
   .cross-section-preview__legend { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: 1fr 1fr; }
-  .primary-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row; overflow-x: visible; }
   .result-command-bar { align-items: stretch; flex-direction: column; gap: var(--space-2xs); }
   .result-view-switcher { width: 100%; }
   .result-command-bar > button { align-self: flex-end; }
