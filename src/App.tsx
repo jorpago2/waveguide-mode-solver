@@ -158,6 +158,14 @@ const initialConfig = presets["SiN · channel"];
 const initialSweep: SweepSettings = { startWavelengthUm: 1.45, stopWavelengthUm: 1.65, points: 9, modeIndex: 0 };
 const initialGeometrySweep: GeometrySweepSettings = { parameter: "widthUm", startValueUm: 0.7, stopValueUm: 1.3, points: 7, modeIndex: 0 };
 const initialBlochSweep: BlochSweepSettings = { axis: "x", startPhaseRad: -Math.PI, stopPhaseRad: Math.PI, points: 9, modeIndex: 0 };
+const studyPaneTabs = [
+  { value: "wavelength", label: "Wavelength", id: "study-tab-wavelength", controlsId: "study-panel-wavelength" },
+  { value: "geometry", label: "Geometry", id: "study-tab-geometry", controlsId: "study-panel-geometry" },
+  { value: "bloch", label: "Bloch phase", id: "study-tab-bloch", controlsId: "study-panel-bloch" },
+  { value: "analysis", label: "Advanced", id: "study-tab-analysis", controlsId: "study-panel-analysis" },
+];
+const BLOCH_PHASE_DISPLAY_DIGITS = 15;
+const BLOCH_PHASE_STEP = Math.PI / 60;
 const fieldComponents: FieldComponent[] = ["Ex", "Ey", "Ez", "intensity", "Hx", "Hy", "Hz", "poynting"];
 type AppView = "solver" | "materials" | "sweeps" | "validation";
 type ConfigurationTab = "geometry" | "materials" | "solver";
@@ -210,6 +218,7 @@ export function App() {
   const [blochSweepMessage, setBlochSweepMessage] = useState("Enable a periodic boundary to calculate transverse-array dispersion.");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [primarySolveBusy, setPrimarySolveBusy] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(() => typeof window === "undefined" || viewFromHash() === "solver");
   const configureTriggerRef = useRef<HTMLButtonElement>(null);
   const configurationPanelRef = useRef<HTMLElement>(null);
@@ -243,9 +252,10 @@ export function App() {
   const evidenceSummary = `${failedCheckCount} failed checks · ${solverWarningCount} solver warnings`;
   const resultHasIssues = failedCheckCount > 0 || solverWarningCount > 0;
   const solveStateLabel = busy ? "Solving" : resultIsStale ? `Stale · ${evidenceSummary}` : result ? `Solved · ${evidenceSummary}` : "Not solved";
-  const evidenceState = busy ? "running" : resultIsStale ? "modified" : resultHasIssues ? "warning" : result ? "up-to-date" : "ready";
+  const settledEvidenceState = resultIsStale ? "modified" : resultHasIssues ? "warning" : result ? "up-to-date" : "ready";
+  const evidenceState = busy ? "running" : settledEvidenceState;
   useScientificResultTransition({
-    state: evidenceState,
+    state: primarySolveBusy ? "running" : settledEvidenceState,
     resultRef: outcomeHeading,
     completionKey: result ? message : null,
     onReveal: () => { setActiveView("solver"); setNavigationOpen(false); },
@@ -452,6 +462,7 @@ export function App() {
     if (errors.length > 0) { setError(errors.join(" ")); return; }
     setError("");
     setBusy(true);
+    setPrimarySolveBusy(true);
     setMessage((draft.bendRadiusUm ?? 0) > 0
       ? `Solving a ${draft.gridResolution}-cell bent-waveguide eigenproblem with PML; fine meshes or several modes can take longer…`
       : draft.gridResolution > 96
@@ -480,7 +491,10 @@ export function App() {
           setError(caught instanceof Error ? caught.message : "The mode solve failed.");
           setMessage("Solve failed.");
         }
-    } finally { setBusy(false); }
+    } finally {
+      setPrimarySolveBusy(false);
+      setBusy(false);
+    }
   }
 
   async function runSweep(event: FormEvent) {
@@ -632,7 +646,9 @@ export function App() {
     className="waveguide-app"
     previewStageWhenPanelOpen
     recovery={autosave.recovery && <ScientificRecoveryNotice savedAt={autosave.recovery.savedAt} onRestore={autosave.restore} onDiscard={autosave.discard} />}
-    header={<ScientificHeader
+    header={<>
+      <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
+      <ScientificHeader
       aria-label="Waveguide Mode Solver"
       product="Waveguide Solver"
       compactProduct="Modes"
@@ -664,7 +680,8 @@ export function App() {
         <ScientificHeaderAction type="button" label="Import project" onClick={() => projectImportRef.current?.click()}><DocumentImport size={20} aria-hidden={true} /></ScientificHeaderAction>
         <input ref={projectImportRef} hidden aria-label="Import project JSON" type="file" accept=".json,application/json" onChange={importProject} />
       </>}
-    />}
+      />
+    </>}
     navigation={<ScientificToolRail
             className="tool-rail"
             label="Scientific workflow"
@@ -840,8 +857,8 @@ export function App() {
                 <div className="form-grid">
                   <CarbonCheckboxField id="periodic-x" label="Periodic x pair" checked={draft.periodicX ?? false} onChange={(checked) => setDraft((current) => ({ ...current, periodicX: checked, ...(!checked ? { blochPhaseXRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((checked && current.periodicY && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} />
                   <CarbonCheckboxField id="periodic-y" label="Periodic y pair" checked={draft.periodicY ?? false} onChange={(checked) => setDraft((current) => ({ ...current, periodicY: checked, ...(!checked ? { blochPhaseYRad: 0 } : {}), symmetryX: "none", symmetryY: "none", ...((checked && current.periodicX && current.boundary === "pml") ? { boundary: "hard" as const } : {}) }))} />
-                  {draft.periodicX && <NumberField label="Bloch phase x" unit="rad" value={draft.blochPhaseXRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => updateNumber("blochPhaseXRad", value)} />}
-                  {draft.periodicY && <NumberField label="Bloch phase y" unit="rad" value={draft.blochPhaseYRad ?? 0} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => updateNumber("blochPhaseYRad", value)} />}
+                  {draft.periodicX && <NumberField label="Bloch phase x" unit="rad" value={draft.blochPhaseXRad ?? 0} min={-Math.PI} max={Math.PI} step={BLOCH_PHASE_STEP} displayDigits={BLOCH_PHASE_DISPLAY_DIGITS} onChange={(value) => updateNumber("blochPhaseXRad", value)} />}
+                  {draft.periodicY && <NumberField label="Bloch phase y" unit="rad" value={draft.blochPhaseYRad ?? 0} min={-Math.PI} max={Math.PI} step={BLOCH_PHASE_STEP} displayDigits={BLOCH_PHASE_DISPLAY_DIGITS} onChange={(value) => updateNumber("blochPhaseYRad", value)} />}
                 </div>
                 <p>Opposite faces satisfy F(r + L) = F(r)e<sup>iθ</sup>. A zero phase is ordinary periodicity; PML remains active only along non-periodic axes. The full computational span is the lattice period, so Padding controls the separation between neighboring copies.</p>
               </AccordionItem></Accordion>
@@ -860,10 +877,10 @@ export function App() {
   >
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
     <div id="scientific-workspace" className="scientific-content" tabIndex={-1}>
-      <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
       <section ref={(node) => { viewRefs.current.solver = node; }} className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
       <div id="mode-solver-workspace" className="workspace" tabIndex={-1}>
         <section className="results-panel scientific-stage" id="results-panel" aria-label="Mode result">
+          <div className="result-stage">
           <ScientificOutcomeSummary
             className="waveguide-outcome"
             title={mode ? `${mode.label} mode outcome` : "Mode solve outcome"}
@@ -891,6 +908,7 @@ export function App() {
               { id: "solve", label: "Solve modes", emphasis: "secondary", collapseAt: "sm", disabled: busy, onClick: runSolve },
             ]}
           />
+          </div>
           {result ? <div className="result-stage">
             <div className="result-command-bar">
               <div className="result-view-switcher"><CarbonSwitcher label="Scientific result" value={resultView} options={[{ value: "mode", label: "Mode fields" }, { value: "geometry", label: "Structure & mesh" }]} onChange={(value) => setResultView(value as "mode" | "geometry")} /></div>
@@ -928,10 +946,10 @@ export function App() {
 
       <section ref={(node) => { viewRefs.current.sweeps = node; }} className="app-view" id="sweeps" hidden={activeView !== "sweeps"} aria-labelledby="sweeps-title" tabIndex={-1}>
       <ViewHeading title="Studies" id="sweeps-title" icon={<ChartLine size={20} aria-hidden={true} />} />
-      <div className="section-tabs"><CarbonSwitcher label="Study type" value={sweepPane} options={[{ value: "wavelength", label: "Wavelength" }, { value: "geometry", label: "Geometry" }, { value: "bloch", label: "Bloch phase" }, { value: "analysis", label: "Advanced" }]} onChange={(value) => setSweepPane(value as StudyPane)} /></div>
-      <section className="sweep-section tabbed-section" hidden={sweepPane !== "wavelength"}>
+      <div className="section-tabs"><CarbonSwitcher label="Study type" value={sweepPane} options={studyPaneTabs} onChange={(value) => setSweepPane(value as StudyPane)} /></div>
+      <section id="study-panel-wavelength" className="sweep-section tabbed-section" role="tabpanel" aria-labelledby="study-tab-wavelength" hidden={sweepPane !== "wavelength"}>
         <div className="panel-heading"><div><h2>Wavelength sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!sweepResult} onClick={exportSweep}>Export CSV</Button></div>
-        <form className="sweep-controls" onSubmit={runSweep} aria-busy={busy}>
+          <form className="sweep-controls" onSubmit={runSweep} noValidate aria-busy={busy}>
           <NumberField label="Start wavelength" unit="µm" value={sweepSettings.startWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, startWavelengthUm: value }))} />
           <NumberField label="Stop wavelength" unit="µm" value={sweepSettings.stopWavelengthUm} min={0.2} max={PARAMETER_MAXIMUMS.wavelengthUm} step={0.01} onChange={(value) => setSweepSettings((current) => ({ ...current, stopWavelengthUm: value }))} />
           <NumberField label="Samples" unit="points" value={sweepSettings.points} min={5} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setSweepSettings((current) => ({ ...current, points: value }))} />
@@ -942,9 +960,9 @@ export function App() {
         {activeView === "sweeps" && sweepResult && <><Suspense fallback={<VisualizationFallback />}><SweepPlot result={sweepResult} /></Suspense><WarningMessages warnings={sweepResult.warnings} /></>}
       </section>
 
-      <section className="sweep-section tabbed-section" hidden={sweepPane !== "geometry"}>
+      <section id="study-panel-geometry" className="sweep-section tabbed-section" role="tabpanel" aria-labelledby="study-tab-geometry" hidden={sweepPane !== "geometry"}>
         <div className="panel-heading"><div><h2>Geometry sweep</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!geometrySweepResult} onClick={exportGeometrySweep}>Export CSV</Button></div>
-        <form className="sweep-controls" onSubmit={runGeometrySweep} aria-busy={busy}>
+          <form className="sweep-controls" onSubmit={runGeometrySweep} noValidate aria-busy={busy}>
           <CarbonSelectField id="geometry-sweep-parameter" label="Parameter" value={geometrySweep.parameter} options={[{ value: "widthUm", label: "Core width" }, { value: "heightUm", label: "Core height" }, ...((config.geometry ?? "channel") === "slot" ? [{ value: "slotGapUm", label: "Slot gap" }] : []), ...((config.geometry ?? "channel") === "coupler" ? [{ value: "couplerGapUm", label: "Coupler gap" }] : []), ...((config.bendRadiusUm ?? 0) > 0 ? [{ value: "bendRadiusUm", label: "Bend radius" }] : [])]} onChange={(value) => setGeometrySweep((current) => value === "bendRadiusUm" ? { ...current, parameter: "bendRadiusUm", startValueUm: 0.75 * (config.bendRadiusUm ?? 10), stopValueUm: 1.25 * (config.bendRadiusUm ?? 10) } : { ...current, parameter: value as GeometrySweepParameter })} />
           <NumberField label="Start value" unit="µm" value={geometrySweep.startValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, startValueUm: value }))} />
           <NumberField label="Stop value" unit="µm" value={geometrySweep.stopValueUm} min={0.01} max={geometrySweepMaximum} step={0.01} onChange={(value) => setGeometrySweep((current) => ({ ...current, stopValueUm: value }))} />
@@ -956,13 +974,23 @@ export function App() {
         {activeView === "sweeps" && geometrySweepResult && <><Suspense fallback={<VisualizationFallback />}><GeometrySweepPlot result={geometrySweepResult} /></Suspense><WarningMessages warnings={geometrySweepResult.warnings} /></>}
       </section>
 
-      <section className="sweep-section tabbed-section" hidden={sweepPane !== "bloch"}>
+      <section id="study-panel-bloch" className="sweep-section tabbed-section" role="tabpanel" aria-labelledby="study-tab-bloch" hidden={sweepPane !== "bloch"}>
         <div className="panel-heading"><div><h2>Transverse Bloch dispersion</h2></div><Button kind="tertiary" size="sm" type="button" renderIcon={Download} disabled={!blochSweepResult} onClick={exportBlochSweep}>Export CSV</Button></div>
         <p className="section-intro">Sweep the transverse Bloch phase of an infinite periodic array. All calculated eigenvalues are shown; the selected branch uses degenerate-subspace tracking.</p>
-        <form className="sweep-controls" onSubmit={runBlochSweep} aria-busy={busy}>
-          <CarbonSelectField id="bloch-axis" label="Periodic axis" value={blochSweep.axis} options={[{ value: "x", label: "x boundary pair", disabled: !config.periodicX }, { value: "y", label: "y boundary pair", disabled: !config.periodicY }]} onChange={(value) => setBlochSweep((current) => ({ ...current, axis: value as BlochSweepAxis }))} />
-          <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
-          <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={0.05} displayDigits={3} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
+        <form className="sweep-controls" onSubmit={runBlochSweep} noValidate aria-busy={busy}>
+          <CarbonSelectField
+            id="bloch-axis"
+            label="Periodic axis"
+            value={blochSweep.axis}
+            disabled={!config.periodicX && !config.periodicY}
+            options={[
+              { value: "x", label: "x boundary pair", disabled: !config.periodicX && config.periodicY },
+              { value: "y", label: "y boundary pair", disabled: !config.periodicY && config.periodicX },
+            ]}
+            onChange={(value) => setBlochSweep((current) => ({ ...current, axis: value as BlochSweepAxis }))}
+          />
+          <NumberField label="Start phase" unit="rad" value={blochSweep.startPhaseRad} min={-Math.PI} max={Math.PI} step={BLOCH_PHASE_STEP} displayDigits={BLOCH_PHASE_DISPLAY_DIGITS} onChange={(value) => setBlochSweep((current) => ({ ...current, startPhaseRad: value }))} />
+          <NumberField label="Stop phase" unit="rad" value={blochSweep.stopPhaseRad} min={-Math.PI} max={Math.PI} step={BLOCH_PHASE_STEP} displayDigits={BLOCH_PHASE_DISPLAY_DIGITS} onChange={(value) => setBlochSweep((current) => ({ ...current, stopPhaseRad: value }))} />
           <NumberField label="Samples" unit="points" value={blochSweep.points} min={3} max={PARAMETER_MAXIMUMS.sweepPoints} step={2} onChange={(value) => setBlochSweep((current) => ({ ...current, points: value }))} />
           <Button className="solve-button" kind={busy ? "danger" : "primary"} renderIcon={busy ? StopOutline : Play} type={busy ? "button" : "submit"} disabled={!busy && (!mode || (!config.periodicX && !config.periodicY))} onClick={busy ? cancelSolverWorker : undefined}>{busy ? "Cancel calculation" : "Run Bloch sweep"}</Button>
         </form>
@@ -970,7 +998,7 @@ export function App() {
         {!blochSweepResult && <div className="tool-empty-state">Enable a periodic boundary to inspect the tracked Bloch branches.</div>}
         {activeView === "sweeps" && blochSweepResult && <><div className="analysis-metrics"><Metric label={<>Reciprocity max |n<sub>eff</sub>(θ) − n<sub>eff</sub>(−θ)|</>} value={blochSweepResult.reciprocityError === undefined ? "Not evaluated" : blochSweepResult.reciprocityError.toExponential(3)} /><Metric label="Tracked subspace" value={`${Math.max(...blochSweepResult.points.map((point) => point.degenerateSubspaceSize))} mode(s)`} /></div><Suspense fallback={<VisualizationFallback />}><BlochSweepPlot result={blochSweepResult} /></Suspense><WarningMessages warnings={blochSweepResult.warnings} /></>}
       </section>
-      <section className="sweep-section tabbed-section" hidden={sweepPane !== "analysis"}>
+      <section id="study-panel-analysis" className="sweep-section tabbed-section" role="tabpanel" aria-labelledby="study-tab-analysis" hidden={sweepPane !== "analysis"}>
         {activeView === "sweeps" && sweepPane === "analysis" && <Suspense fallback={<VisualizationFallback />}><AdvancedAnalyses key={JSON.stringify(config)} config={config} result={result} selectedMode={selectedMode} presets={presets} /></Suspense>}
       </section>
       </section>
