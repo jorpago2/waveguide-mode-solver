@@ -138,7 +138,7 @@ export function CarbonSwitcher({
 }) {
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
   return <ContentSwitcher
-    className="carbon-switcher"
+    className="carbon-switcher scientific-content-switcher scientific-content-switcher--sm"
     data-option-count={options.length}
     aria-label={label}
     selectedIndex={selectedIndex}
