@@ -644,7 +644,6 @@ export function App() {
 
   return <ScientificAppShell
     className="waveguide-app"
-    previewStageWhenPanelOpen
     recovery={autosave.recovery && <ScientificRecoveryNotice savedAt={autosave.recovery.savedAt} onRestore={autosave.restore} onDiscard={autosave.discard} />}
     header={<>
       <h1 className="scientific-visually-hidden">Waveguide Mode Solver</h1>
