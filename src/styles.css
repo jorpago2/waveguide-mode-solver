@@ -268,6 +268,16 @@ a { color: inherit; }
   .field-toolbar .carbon-switcher[aria-label="Tensor component"] {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .field-part-toolbar .carbon-switcher[aria-label="Field display"] {
+    min-block-size: 5.5rem;
+    block-size: auto;
+    grid-auto-rows: minmax(2.75rem, auto);
+  }
+  .field-part-toolbar .carbon-switcher[aria-label="Field display"] > button {
+    min-block-size: 2.75rem;
+    block-size: auto;
+  }
+  .field-part-toolbar .carbon-field { width: 100%; flex: 1 1 100%; }
   .plots { grid-template-columns: 1fr; }
   .cut-plot { min-height: 230px; }
   .analysis-columns { grid-template-columns: 1fr; }

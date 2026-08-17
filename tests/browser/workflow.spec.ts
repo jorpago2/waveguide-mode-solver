@@ -190,6 +190,27 @@ test('keeps the mobile preview outcome and heading accessible when configuration
   expect(mobilePreview.clipsOutcome).toBe(false)
 })
 
+test('keeps every mobile field-display target at least 44 px high', async ({ page }, testInfo: TestInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-light', 'fixed viewport regression runs once')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await solveDefault(page)
+  const fieldDisplay = page.locator('.field-part-toolbar [aria-label="Field display"]')
+  await expect(fieldDisplay).toBeVisible()
+  const layout = await fieldDisplay.evaluate((switcher) => {
+    const targets = [...switcher.querySelectorAll<HTMLElement>('button')].map((button) => button.getBoundingClientRect())
+    return {
+      heights: targets.map(({ height }) => height),
+      rows: new Set(targets.map(({ top }) => Math.round(top))).size,
+      horizontalOverflow: switcher.scrollWidth - switcher.clientWidth,
+    }
+  })
+  expect(layout.heights).toHaveLength(4)
+  expect(layout.heights.every((height) => height >= 44)).toBe(true)
+  expect(layout.rows).toBe(2)
+  expect(layout.horizontalOverflow).toBeLessThanOrEqual(1)
+})
+
 test('uses custom validation without duplicate browser-native form errors', async ({ page }, testInfo: TestInfo) => {
   test.skip(testInfo.project.name !== 'desktop-light', 'fixed viewport regression runs once')
 
