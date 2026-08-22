@@ -35,7 +35,7 @@ test('solve exposes one consistent evidence summary without runtime errors', asy
 
 test('plot keeps paper styling across Carbon themes and remains accessible', async ({ page }) => {
   await page.goto('./')
-  await page.getByRole('button', { name: 'Solve modes' }).click()
+  await page.locator('#mode-solver-form').getByRole('button', { name: 'Solve modes' }).click()
   const plot = page.getByRole('img', { name: /field profile/i })
   await expect(plot).toBeVisible({ timeout: 30_000 })
   const paperStyle = await plot.evaluate((node: any) => ({

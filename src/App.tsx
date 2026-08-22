@@ -7,6 +7,8 @@ import {
   InlineLoading,
   InlineNotification,
   Link,
+  ProgressIndicator,
+  ProgressStep,
   SkipToContent,
   TextInput,
   Tile,
@@ -53,6 +55,7 @@ import {
   type SweepResult,
   type SweepSettings,
   type VerticalLayer,
+  type WaveguideMode,
   type WaveguideConfig,
 } from "./solver";
 
@@ -186,6 +189,47 @@ const appViews = [
   { id: "sweeps", label: "Studies", hint: "Track parameters", icon: ChartLine },
   { id: "validation", label: "Validation", hint: "Numerical confidence", icon: CheckmarkOutline },
 ] as const;
+
+function WorkflowProgress({ activeView, busy, result, stale, hasIssues, error }: { activeView: AppView; busy: boolean; result?: SolverResult; stale: boolean; hasIssues: boolean; error: boolean }) {
+  const currentIndex = error || busy
+    ? 1
+    : stale
+      ? 2
+      : result && (hasIssues || activeView === "validation")
+        ? 3
+        : result
+          ? 2
+          : 0;
+  return <div className="workflow-progress">
+    <ProgressIndicator aria-label="Waveguide solver workflow" currentIndex={currentIndex} spaceEqually>
+      <ProgressStep label="Configure" description={result ? "Configuration retained" : "Cross-section and solver"} />
+      <ProgressStep label="Execute" description={busy ? "Solving eigenproblem" : result ? "Solve complete" : "Select Solve modes"} invalid={error} />
+      <ProgressStep label="Results" description={stale ? "Outdated · solve again" : result ? "Mode fields available" : "Awaiting solve"} invalid={stale} />
+      <ProgressStep label="Validate" description={!result ? "Review after solve" : hasIssues ? "Warnings need review" : activeView === "validation" ? "Checks current" : "Numerical checks"} invalid={hasIssues} />
+    </ProgressIndicator>
+  </div>;
+}
+
+function ModeEvidence({ mode, result, validation }: { mode: WaveguideMode; result: SolverResult; validation: Array<{ label: string; pass: boolean }> }) {
+  const degenerateCount = result.modes.filter((candidate) => Math.abs(candidate.effectiveIndex - mode.effectiveIndex) <= 1e-4).length;
+  const checksPass = validation.every((check) => check.pass);
+  const confidence = checksPass && !mode.nearCutoff && mode.residual < 2e-3 ? "High · checks passed" : "Review before quantitative use";
+  return <section className={`solver-evidence-card${checksPass ? " solver-evidence-card--pass" : " solver-evidence-card--warning"}`} aria-labelledby="solver-evidence-title">
+    <header className="solver-evidence-card__header">
+      <div><span className="eyebrow">Scientific evidence</span><h3 id="solver-evidence-title">Selected mode confidence</h3></div>
+      <strong>{confidence}</strong>
+    </header>
+    <dl className="solver-evidence-grid">
+      <div><dt>Normalization</dt><dd>Modal power = 1.000 mW</dd></div>
+      <div><dt>Mode</dt><dd>{mode.label} · {mode.polarization}</dd></div>
+      <div><dt>Degenerate subspace</dt><dd>{degenerateCount} mode{degenerateCount === 1 ? "" : "s"} within Δn<sub>eff</sub> ≤ 10⁻⁴</dd></div>
+      <div><dt>Eigenpair residual</dt><dd>{mode.residual.toExponential(2)}</dd></div>
+      <div><dt>Condition estimate</dt><dd>{Number.isFinite(mode.eigenvalueConditionEstimate) ? mode.eigenvalueConditionEstimate.toExponential(2) : "—"}</dd></div>
+      <div><dt>Energy metric</dt><dd>{mode.energyMetricValidity}</dd></div>
+    </dl>
+    <p className="solver-evidence-card__note">A near-degenerate subspace has a continuous span, but individual eigenvectors inside it are not unique. Near-cutoff, leaky and plasmonic modes require mesh, padding and boundary sensitivity checks.</p>
+  </section>;
+}
 
 function viewFromHash(): AppView {
   const hash = window.location.hash.slice(1);
@@ -883,13 +927,14 @@ export function App() {
             <InlineNotification className="status" kind="info" title="Solver status" subtitle={message} hideCloseButton lowContrast />{error && <InlineNotification kind="error" title="Solver error" subtitle={error} hideCloseButton lowContrast />}
           </form>
         </ScientificTaskPanel>}
-    statusBar={<ScientificStatusBar aria-label="Scientific status" status={{ state: evidenceState, label: solveStateLabel }} metadata={<>
+    statusBar={<ScientificStatusBar className="waveguide-status" aria-label="Scientific status" status={{ state: evidenceState, label: solveStateLabel }} metadata={<>
       <ScientificAutosaveStatus status={autosave.status} savedAt={autosave.lastSavedAt} />
       <span>{config.geometry ?? "channel"}</span>
       <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
       {result && <><span>{result.modes.length} {result.modes.length === 1 ? "mode" : "modes"}</span><span>{result.nx} × {result.ny}</span>{failedCheckCount > 0 && <span>{failedCheckCount} failed</span>}{solverWarningCount > 0 && <span>{solverWarningCount} {solverWarningCount === 1 ? "warning" : "warnings"}</span>}</>}
     </>} />}
   >
+    <WorkflowProgress activeView={activeView} busy={busy} result={result} stale={resultIsStale} hasIssues={resultHasIssues} error={Boolean(error)} />
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}
     <div id="scientific-workspace" className="scientific-content" tabIndex={-1}>
       <section ref={(node) => { viewRefs.current.solver = node; }} className="app-view" id="solver" hidden={activeView !== "solver"} aria-label="Mode solver" tabIndex={-1}>
@@ -925,6 +970,7 @@ export function App() {
           />
           </div>
           {result ? <div className="result-stage">
+            {mode && <ModeEvidence mode={mode} result={result} validation={validation} />}
             <div className="result-command-bar">
               <div className="result-view-switcher"><CarbonSwitcher label="Scientific result" value={resultView} options={[{ value: "mode", label: "Mode fields" }, { value: "geometry", label: "Structure & mesh" }]} onChange={(value) => setResultView(value as "mode" | "geometry")} /></div>
             </div>
@@ -935,6 +981,7 @@ export function App() {
               <div className="field-toolbar field-part-toolbar">{component !== "intensity" && component !== "poynting" && <CarbonSwitcher label="Field display" value={fieldPart} options={[{ value: "real", label: "Re" }, { value: "imaginary", label: "Im" }, { value: "magnitude", label: "|·|" }, { value: "phase", label: "Phase" }]} onChange={(value) => setFieldPart(value as FieldPart)} />}<CarbonSelectField id="display-mesh" label="Mesh" value={String(displayInterpolation)} inline options={[{ value: "1", label: "Solver grid" }, { value: "2", label: "2× interpolated" }, { value: "4", label: "4× interpolated" }]} onChange={(value) => setDisplayInterpolation(Number(value) as DisplayInterpolation)} /></div>
             </div>
             {activeView === "solver" && <Suspense fallback={<VisualizationFallback />}><ModePlot component={component} part={fieldPart} config={config} mode={mode} xUm={result.xUm} yUm={result.yUm} displayInterpolation={displayInterpolation} /></Suspense>}
+            <p className="plot-note">Field amplitudes are normalized to a modal power of 1 mW; they are not an absolute launched field. Use the displayed units and residual before comparing values across configurations.</p>
             <Accordion className="result-details"><AccordionItem title="Additional modal quantities">
               <div className="metrics secondary-metrics">
               <Metric label="Energy group index" value={`${mode.energyGroupIndex.toFixed(4)} · ${mode.energyMetricValidity}`} />

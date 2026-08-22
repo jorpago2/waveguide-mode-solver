@@ -11,7 +11,6 @@
 * { box-sizing: border-box; }
 #root { height: 100dvh; }
 .waveguide-app {
-  --scientific-ui-rail-inline-size: 12rem;
   --content-max: 72rem;
 }
 .scientific-content, .workspace { width: 100%; min-width: 0; min-height: 100%; overflow: visible; }
@@ -105,10 +104,19 @@ a { color: inherit; }
 
 .result-command-bar { margin-bottom: var(--space-xs); display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .result-view-switcher { width: min(34rem, 100%); min-width: 0; }
-.waveguide-outcome .scientific-outcome-summary__grid { row-gap: var(--space-xs); padding-block: var(--space-xs); }
-.waveguide-outcome .scientific-outcome-summary__metrics { padding-block: var(--space-2xs); }
-.waveguide-outcome .scientific-metric { min-block-size: 4.5rem; padding-block: var(--space-xs); }
-
+.workflow-progress { width: min(calc(100% - 2 * var(--space-md)), var(--content-max)); margin: var(--space-sm) auto 0; }
+.solver-evidence-card { min-width: 0; margin: var(--space-sm) 0; padding: var(--space-sm); border: 1px solid var(--color-rule); border-inline-start: 3px solid var(--color-accent); background: var(--color-paper-2); }
+.solver-evidence-card--warning { border-inline-start-color: var(--cds-support-warning, #f1c21b); }
+.solver-evidence-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-sm); }
+.solver-evidence-card__header h3 { margin: 2px 0 0; color: var(--color-ink); font: 600 var(--text-md)/1.2 var(--font-display); }
+.solver-evidence-card__header > strong { color: var(--color-accent-strong); font-size: var(--text-xs); text-align: right; }
+.solver-evidence-card--warning .solver-evidence-card__header > strong { color: var(--cds-text-primary, #161616); }
+.solver-evidence-grid { margin: var(--space-sm) 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--color-rule); }
+.solver-evidence-grid > div { min-width: 0; padding: var(--space-2xs) var(--space-xs); background: var(--color-surface); }
+.solver-evidence-grid dt { color: var(--color-ink-2); font-size: var(--text-xs); }
+.solver-evidence-grid dd { margin: 3px 0 0; overflow-wrap: anywhere; color: var(--color-ink); font: 600 var(--text-xs)/1.3 var(--font-mono); font-variant-numeric: tabular-nums; }
+.solver-evidence-card__note { margin: var(--space-sm) 0 0; color: var(--color-ink-2); font-size: var(--text-xs); line-height: 1.5; }
+.eyebrow { color: var(--color-ink-2); text-transform: uppercase; letter-spacing: .08em; font-size: var(--text-xs); }
 .metrics { margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 8px; }
 .metric { min-width: 0; padding: var(--space-2xs) var(--space-xs); display: grid; gap: var(--space-3xs); border: 1px solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-paper-2); }
 .metric span { color: var(--color-ink-2); font-size: var(--text-xs); line-height: 1.25; overflow-wrap: anywhere; }
@@ -236,17 +244,9 @@ a { color: inherit; }
   .geometry-toolbar .carbon-field { width: 14rem; flex-basis: 14rem; }
   .geometry-toolbar .carbon-switcher { flex-basis: 12rem; }
   .metrics, .analysis-metrics { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
-  .waveguide-outcome .scientific-metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .waveguide-outcome .scientific-metric { grid-column: auto; }
 }
 
 @media (max-width: 65.99rem) {
-  .waveguide-app > .scientific-status-bar { display: none; }
-  .waveguide-app:not([data-panel-open]) .scientific-workbench {
-    block-size: calc(100dvh - var(--scientific-ui-header-block-size) - var(--scientific-ui-mobile-nav-total-block-size));
-    min-block-size: calc(100dvh - var(--scientific-ui-header-block-size) - var(--scientific-ui-mobile-nav-total-block-size));
-    max-block-size: calc(100dvh - var(--scientific-ui-header-block-size) - var(--scientific-ui-mobile-nav-total-block-size));
-  }
   .control-panel { width: 100%; background: var(--cds-layer); border-right: 0; }
   .results-panel { padding: var(--space-sm); }
   .field-plot { min-height: 340px; }
@@ -256,6 +256,9 @@ a { color: inherit; }
 }
 
 @media (max-width: 41.99rem) {
+  .waveguide-status { display: none; }
+  .workflow-progress { width: calc(100% - 2 * var(--space-sm)); }
+  .solver-evidence-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .field-control-bar { grid-template-columns: 1fr; }
   .field-component-toolbar .carbon-field, .geometry-toolbar .carbon-field { width: 100%; flex-basis: 100%; }
   .solve-button { width: 100%; min-width: 0; justify-self: stretch; }
@@ -298,7 +301,6 @@ a { color: inherit; }
     block-size: auto;
   }
   .field-part-toolbar .carbon-field { width: 100%; flex: 1 1 100%; }
-  .waveguide-outcome .scientific-metric { grid-template-rows: auto auto; }
   .plots { grid-template-columns: 1fr; }
   .cut-plot { min-height: 230px; }
   .analysis-columns { grid-template-columns: 1fr; }
