@@ -5,7 +5,7 @@ async function solveDefault(page: Page) {
   await page.goto('./')
   await page.locator('#mode-solver-form').getByRole('button', { name: 'Solve modes' }).click()
   const outcome = page.getByRole('region', { name: /mode outcome/i })
-  await expect(outcome.getByText(/Solved · \d+ failed checks · \d+ solver warnings/)).toBeVisible({ timeout: 30_000 })
+  await expect(outcome.getByText(/Solved(?: · \d+ failed checks?)?(?: · \d+ solver warnings?)?/)).toBeVisible({ timeout: 30_000 })
   return outcome
 }
 
@@ -14,12 +14,11 @@ test('solve exposes one consistent evidence summary without runtime errors', asy
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   const outcome = await solveDefault(page)
-  const summary = (await outcome.getByText(/Solved · \d+ failed checks · \d+ solver warnings/).textContent())?.trim()
+  const summary = (await outcome.getByText(/Solved(?: · \d+ failed checks?)?(?: · \d+ solver warnings?)?/).textContent())?.trim()
   expect(summary).toBeTruthy()
   const matchingSurfaces = page.getByText(summary!, { exact: true })
   expect(await matchingSurfaces.count()).toBeGreaterThanOrEqual(3)
-  await expect(page.getByRole('region', { name: /mode outcome/i }).getByText(/\d+ failed checks/)).toBeVisible()
-  await expect(page.getByRole('region', { name: /mode outcome/i }).getByText(/\d+ solver warnings/)).toBeVisible()
+  await expect(page.getByRole('region', { name: /mode outcome/i }).getByText(/Solved/)).toBeVisible()
   await expect(page.getByText(/validation issue\(s\)/i)).toHaveCount(0)
   const resultWidths = await page.evaluate(() => {
     const outcome = document.querySelector<HTMLElement>('.waveguide-outcome')
@@ -182,6 +181,21 @@ test('keeps the compact shell clear of status and navigation collisions', async 
   }
 })
 
+test('uses one scroll owner and hides the redundant phone status bar', async ({ page }, testInfo: TestInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-light', 'fixed viewport regression runs once')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await solveDefault(page)
+  const layout = await page.evaluate(() => ({
+    statusVisible: getComputedStyle(document.querySelector<HTMLElement>('.scientific-status-bar')!).display !== 'none',
+    scrollOwners: [...document.querySelectorAll<HTMLElement>('.scientific-workbench__stage, .app-view, .results-panel')]
+      .filter((element) => ['auto', 'scroll'].includes(getComputedStyle(element).overflowY) && element.scrollHeight > element.clientHeight + 1)
+      .map((element) => element.className),
+  }))
+  expect(layout.statusVisible).toBe(false)
+  expect(layout.scrollOwners).toEqual([expect.stringContaining('scientific-workbench__stage')])
+})
+
 test('keeps the mobile preview outcome and heading accessible when configuration is open', async ({ page }, testInfo: TestInfo) => {
   test.skip(testInfo.project.name !== 'desktop-light', 'fixed viewport regression runs once')
 
@@ -208,7 +222,7 @@ test('keeps the mobile preview outcome and heading accessible when configuration
   expect(mobilePreview.clipsOutcome).toBe(false)
 })
 
-test('keeps every mobile field-display target at least 44 px high', async ({ page }, testInfo: TestInfo) => {
+test('keeps every mobile field-display target at least 44 px high in one compact row', async ({ page }, testInfo: TestInfo) => {
   test.skip(testInfo.project.name !== 'desktop-light', 'fixed viewport regression runs once')
 
   await page.setViewportSize({ width: 390, height: 844 })
@@ -225,7 +239,7 @@ test('keeps every mobile field-display target at least 44 px high', async ({ pag
   })
   expect(layout.heights).toHaveLength(4)
   expect(layout.heights.every((height) => height >= 44)).toBe(true)
-  expect(layout.rows).toBe(2)
+  expect(layout.rows).toBe(1)
   expect(layout.horizontalOverflow).toBeLessThanOrEqual(1)
 })
 

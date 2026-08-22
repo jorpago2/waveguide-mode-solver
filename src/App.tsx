@@ -249,9 +249,12 @@ export function App() {
   ] : [], [config, mode, result]);
   const failedCheckCount = validation.filter((check) => !check.pass).length;
   const solverWarningCount = result?.warnings.length ?? 0;
-  const evidenceSummary = `${failedCheckCount} failed checks · ${solverWarningCount} solver warnings`;
+  const evidenceSummary = [
+    failedCheckCount > 0 ? `${failedCheckCount} failed ${failedCheckCount === 1 ? "check" : "checks"}` : "",
+    solverWarningCount > 0 ? `${solverWarningCount} solver ${solverWarningCount === 1 ? "warning" : "warnings"}` : "",
+  ].filter(Boolean).join(" · ");
   const resultHasIssues = failedCheckCount > 0 || solverWarningCount > 0;
-  const solveStateLabel = busy ? "Solving" : resultIsStale ? `Stale · ${evidenceSummary}` : result ? `Solved · ${evidenceSummary}` : "Not solved";
+  const solveStateLabel = busy ? "Solving" : resultIsStale ? `Stale${evidenceSummary ? ` · ${evidenceSummary}` : ""}` : result ? `Solved${evidenceSummary ? ` · ${evidenceSummary}` : ""}` : "Not solved";
   const settledEvidenceState = resultIsStale ? "modified" : resultHasIssues ? "warning" : result ? "up-to-date" : "ready";
   const evidenceState = busy ? "running" : settledEvidenceState;
   useScientificResultTransition({
@@ -884,7 +887,7 @@ export function App() {
       <ScientificAutosaveStatus status={autosave.status} savedAt={autosave.lastSavedAt} />
       <span>{config.geometry ?? "channel"}</span>
       <span>λ = {config.wavelengthUm.toFixed(3)} µm</span>
-      {result && <><span>{result.modes.length} mode(s)</span><span>{result.nx} × {result.ny} cells</span><span>{failedCheckCount} failed checks</span><span>{solverWarningCount} solver warnings</span></>}
+      {result && <><span>{result.modes.length} {result.modes.length === 1 ? "mode" : "modes"}</span><span>{result.nx} × {result.ny}</span>{failedCheckCount > 0 && <span>{failedCheckCount} failed</span>}{solverWarningCount > 0 && <span>{solverWarningCount} {solverWarningCount === 1 ? "warning" : "warnings"}</span>}</>}
     </>} />}
   >
     {resultIsStale && <InlineNotification kind="warning" title="Configuration changed" subtitle="Results, sweeps, validation and exports still use the last solved configuration." hideCloseButton lowContrast />}

@@ -44,9 +44,9 @@ export function SweepPlot({ result }: { result: SweepResult }) {
         hovertemplate: "λ = %{x:.4f} µm<br>loss = %{y:.3g} dB/cm<extra></extra>",
       },
     ] as Plotly.Data[], {
-      margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+      margin: { l: 58, r: 68, t: 72, b: 54 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
       font,
-      legend: { orientation: "h", x: 0, y: 1.1 },
+      legend: { orientation: "h", x: 0, y: 1.04 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
       yaxis: { ...axis, domain: [0.69, 1], title: { text: "Modal index" } },
       xaxis2: { ...axis, domain: [0, 1], anchor: "y2", matches: "x", showticklabels: false },
