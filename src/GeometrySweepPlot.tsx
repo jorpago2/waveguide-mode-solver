@@ -21,7 +21,7 @@ export function GeometrySweepPlot({ result }: { result: GeometrySweepResult }) {
       { type: "scatter", mode: "lines", name: bendSweep ? "Loss" : "A<sub>eff</sub>", x, y: result.points.map((point) => bendSweep ? point.lossDbPerCm : point.effectiveAreaUm2), xaxis: "x2", yaxis: "y3", line: { color: "#009e73", width: PLOT_LINE_WIDTHS.primary } },
       { type: "scatter", mode: "lines", name: "Subspace overlap", x, y: result.points.map((point) => point.overlap), xaxis: "x2", yaxis: "y4", line: { color: "#cc79a7", width: PLOT_LINE_WIDTHS.primary, dash: "dot" } },
     ] as Plotly.Data[], {
-      margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+      margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
       font,
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },

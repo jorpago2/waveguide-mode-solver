@@ -54,8 +54,8 @@ export function MaterialExplorer() {
     const commonLayout: Partial<Plotly.Layout> = {
       autosize: true,
       margin: { l: 64, r: 64, t: 84, b: 56 },
-      paper_bgcolor: "transparent",
-      plot_bgcolor: "transparent",
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
       font,
       legend: { orientation: "h", x: 0, y: 1.08 },
       uirevision: materialId,

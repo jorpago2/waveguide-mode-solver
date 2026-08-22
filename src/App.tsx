@@ -300,9 +300,18 @@ export function App() {
   }, [blochSweep.axis, config.periodicX, config.periodicY]);
 
   useEffect(() => {
-    const syncView = () => setActiveView(viewFromHash());
+    const syncView = () => {
+      const hash = window.location.hash;
+      setActiveView(viewFromHash());
+      if (hash === "#analysis") setSweepPane("analysis");
+      else if (hash !== "#sweeps") setSweepPane("wavelength");
+    };
     window.addEventListener("popstate", syncView);
-    return () => window.removeEventListener("popstate", syncView);
+    window.addEventListener("hashchange", syncView);
+    return () => {
+      window.removeEventListener("popstate", syncView);
+      window.removeEventListener("hashchange", syncView);
+    };
   }, []);
 
   useEffect(() => {
@@ -605,19 +614,23 @@ export function App() {
   }
 
   function exportProject() {
+    const exportedResult = result && !resultIsStale ? result : null;
     const project = {
       schemaVersion: 1,
       solverVersion: packageJson.version,
       exportedAt: new Date().toISOString(),
-      config,
-      result,
-      wavelengthSweep: sweepResult,
-      geometrySweep: geometrySweepResult,
-      blochSweep: blochSweepResult,
+      config: draft,
+      result: exportedResult,
+      resultState: result ? resultIsStale ? "stale" : "current" : "not-solved",
+      wavelengthSweep: resultIsStale ? null : sweepResult,
+      geometrySweep: resultIsStale ? null : geometrySweepResult,
+      blochSweep: resultIsStale ? null : blochSweepResult,
     };
-    const filename = `waveguide-${config.geometry ?? "channel"}-${config.wavelengthUm.toFixed(3)}um-v${packageJson.version}.json`;
+    const filename = `waveguide-${draft.geometry ?? "channel"}-${draft.wavelengthUm.toFixed(3)}um-v${packageJson.version}.json`;
     download(JSON.stringify(project, null, 2), filename, "application/json;charset=utf-8");
-    setMessage(`Project exported as ${filename}.`);
+    setMessage(resultIsStale
+      ? `Project exported as ${filename} with the current draft. Stale solution and sweep results were not included.`
+      : `Project exported as ${filename}.`);
   }
 
   function exportMetadata(details: object) {

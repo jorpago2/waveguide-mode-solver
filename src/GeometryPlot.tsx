@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
 import { CarbonCheckboxField, CarbonSelectField, CarbonSwitcher } from "./CarbonControls";
@@ -25,6 +25,8 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
   const [quantity, setQuantity] = useState<MaterialQuantity>("n-real");
   const [showMesh, setShowMesh] = useState(true);
   const [showMode, setShowMode] = useState(true);
+  const descriptionId = `geometry-map-description-${useId().replace(/:/g, "")}`;
+  const mapSummary = useMemo(() => geometryMapSummary(result, axis, quantity, mode), [axis, mode, quantity, result]);
 
   useEffect(() => {
     if (!plotRef.current) return;
@@ -98,8 +100,8 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
 
     void Plotly.react(plotRef.current, data, {
       margin: { l: 58, r: 42, t: 18, b: 52 },
-      paper_bgcolor: "transparent",
-      plot_bgcolor: "transparent",
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
       font,
       xaxis: { title: { text: "x (µm)" }, color: plotAxis.color, ticks: "outside", constrain: "domain" },
       yaxis: { title: { text: "y (µm)" }, color: plotAxis.color, ticks: "outside", scaleanchor: "x", scaleratio: 1 },
@@ -116,7 +118,30 @@ export function GeometryPlot({ config, result, mode }: { config: WaveguideConfig
       <CarbonCheckboxField label="Mode |E|²" checked={showMode} disabled={!mode} onChange={setShowMode} />
       <small>{result.nx} × {result.ny} cells</small>
     </div>
-    <div ref={plotRef} className="geometry-plot scientific-plot-surface" role="img" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} />
+    <p id={descriptionId} className="scientific-visually-hidden">{mapSummary}</p>
+    <div ref={plotRef} className="geometry-plot scientific-plot-surface" role="img" aria-label={`Waveguide geometry, ${quantity} ${axis}${axis} material map and computational mesh`} aria-describedby={descriptionId} />
     <p className="plot-note">Cell-centred material values after subpixel averaging. The complex index uses the passive branch of n² = ε, with Im(n) = κ ≥ 0. Contours show normalized modal |E|²; dashed orange lines mark PML onset and dotted blue boundary pairs are Bloch-periodic.</p>
   </>;
+}
+
+function geometryMapSummary(result: SolverResult, axis: PrincipalAxis, quantity: MaterialQuantity, mode?: WaveguideMode): string {
+  const epsilonReal = result.permittivity.real[axis];
+  const epsilonImaginary = result.permittivity.imaginary[axis];
+  const values = epsilonReal.flatMap((row, rowIndex) => row.map((real, columnIndex) => {
+    const imaginary = epsilonImaginary[rowIndex][columnIndex];
+    const magnitude = Math.hypot(real, imaginary);
+    return quantity === "n-real" ? Math.sqrt(Math.max(0, (magnitude + real) / 2))
+      : quantity === "n-imaginary" ? Math.sqrt(Math.max(0, (magnitude - real) / 2))
+        : quantity === "n-magnitude" ? Math.sqrt(magnitude)
+          : quantity === "epsilon-real" ? real
+            : quantity === "epsilon-imaginary" ? imaginary : magnitude;
+  })).filter(Number.isFinite);
+  const minimum = values.length ? Math.min(...values) : Number.NaN;
+  const maximum = values.length ? Math.max(...values) : Number.NaN;
+  const label = quantities.find((candidate) => candidate.id === quantity)?.label ?? quantity;
+  return `Material ${label} map for tensor component ${axis}${axis}. ${result.nx} by ${result.ny} computational cells spanning x ${formatValue(result.xEdgesUm[0])} to ${formatValue(result.xEdgesUm.at(-1))} micrometres and y ${formatValue(result.yEdgesUm[0])} to ${formatValue(result.yEdgesUm.at(-1))} micrometres. Value range ${formatValue(minimum)} to ${formatValue(maximum)}. ${mode ? `The ${mode.label} modal intensity contour is overlaid.` : "No modal contour is overlaid."}`;
+}
+
+function formatValue(value: number | undefined): string {
+  return Number.isFinite(value) ? Number(value).toPrecision(5) : "unavailable";
 }

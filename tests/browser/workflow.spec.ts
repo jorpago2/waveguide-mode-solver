@@ -34,16 +34,34 @@ test('solve exposes one consistent evidence summary without runtime errors', asy
   expect(errors).toEqual([])
 })
 
-test('plot theme follows changes before and after solve and remains accessible', async ({ page }) => {
+test('plot keeps paper styling across Carbon themes and remains accessible', async ({ page }) => {
   await page.goto('./')
-  const darkToggle = page.getByRole('button', { name: 'Use dark theme' })
-  if (await darkToggle.isVisible()) await darkToggle.click()
   await page.getByRole('button', { name: 'Solve modes' }).click()
   const plot = page.getByRole('img', { name: /field profile/i })
   await expect(plot).toBeVisible({ timeout: 30_000 })
-  const darkColor = await plot.evaluate((node: any) => node._fullLayout?.font?.color)
-  await page.getByRole('button', { name: 'Use light theme' }).click()
-  await expect.poll(() => plot.evaluate((node: any) => node._fullLayout?.font?.color)).not.toBe(darkColor)
+  const paperStyle = await plot.evaluate((node: any) => ({
+    font: node._fullLayout?.font?.color,
+    axis: node._fullLayout?.xaxis?.color,
+    grid: node._fullLayout?.xaxis?.gridcolor,
+    paper: node._fullLayout?.paper_bgcolor,
+  }))
+  expect(paperStyle).toEqual({ font: '#1f2933', axis: '#1f2933', grid: '#d9dee4', paper: '#ffffff' })
+  const darkToggle = page.getByRole('button', { name: 'Use dark theme' })
+  if (await darkToggle.isVisible()) await darkToggle.click()
+  await expect.poll(() => plot.evaluate((node: any) => ({
+    font: node._fullLayout?.font?.color,
+    axis: node._fullLayout?.xaxis?.color,
+    grid: node._fullLayout?.xaxis?.gridcolor,
+    paper: node._fullLayout?.paper_bgcolor,
+  }))).toEqual(paperStyle)
+  const lightToggle = page.getByRole('button', { name: 'Use light theme' })
+  if (await lightToggle.isVisible()) await lightToggle.click()
+  await expect.poll(() => plot.evaluate((node: any) => ({
+    font: node._fullLayout?.font?.color,
+    axis: node._fullLayout?.xaxis?.color,
+    grid: node._fullLayout?.xaxis?.gridcolor,
+    paper: node._fullLayout?.paper_bgcolor,
+  }))).toEqual(paperStyle)
   const audit = await new AxeBuilder({ page }).exclude('.js-plotly-plot').analyze()
   expect(audit.violations.filter(({ impact }) => impact === 'serious' || impact === 'critical')).toEqual([])
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1)

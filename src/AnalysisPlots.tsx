@@ -66,8 +66,8 @@ export function ConvergencePlot({ result }: { result: ConvergenceResult }) {
       data,
       {
         margin: { l: 68, r: 76, t: 38, b: 58 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
         font,
         legend: { orientation: "h", x: 0, y: 1.12 },
         xaxis: { ...axis, title: { text: "Nominal grid resolution (cells)" } },
@@ -143,8 +143,8 @@ export function TolerancePlot({ result }: { result: ToleranceResult }) {
       ] as Plotly.Data[],
       {
         margin: { l: 58, r: 70, t: 30, b: 54 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
         font,
         showlegend: false,
         xaxis: {
@@ -242,8 +242,8 @@ export function ModeMapPlot({ result }: { result: ModeMapResult }) {
       ] as Plotly.Data[],
       {
         margin: { l: 62, r: 72, t: 30, b: 54 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
         font,
         xaxis: {
           ...axis,
@@ -408,8 +408,8 @@ export function ModeTopologyPlot({ result }: { result: TopologySweepResult }) {
       data,
       {
         margin: { l: 68, r: 72, t: 42, b: 58 },
-        paper_bgcolor: "transparent",
-        plot_bgcolor: "transparent",
+        paper_bgcolor: "#ffffff",
+        plot_bgcolor: "#ffffff",
         font,
         legend: { orientation: "h", x: 0, y: 1.12 },
         xaxis: {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import Plotly from "plotly.js-cartesian-dist-min";
 import { useScientificPlotTheme } from "@jorpago2/scientific-ui";
 import { MATPLOTLIB_RDBU_R } from "./plotColors";
@@ -50,6 +50,9 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
   const fieldRef = useRef<HTMLDivElement>(null);
   const cutRef = useRef<HTMLDivElement>(null);
   const theme = useScientificPlotTheme();
+  const display = useMemo(() => buildDisplayField(mode, component, isPhysicalField(component) ? part : "real", xUm, yUm, displayInterpolation), [component, displayInterpolation, mode, part, xUm, yUm]);
+  const descriptionId = `mode-map-description-${useId().replace(/:/g, "")}`;
+  const summary = modeMapSummary(component, part, mode, display.x, display.y, display.values);
 
   useEffect(() => {
     if (!fieldRef.current || !cutRef.current) return;
@@ -57,7 +60,6 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
     const font = createPlotFont(theme);
     const physical = isPhysicalField(component);
     const activePart = physical ? part : "real";
-    const display = buildDisplayField(mode, component, activePart, xUm, yUm, displayInterpolation);
     const plotXUm = display.x;
     const plotYUm = display.y;
     const z = display.values;
@@ -93,8 +95,8 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
     } as unknown as Plotly.Data;
     void Plotly.react(fieldRef.current, [heatmap], {
       margin: { l: 58, r: 36, t: 18, b: 52 },
-      paper_bgcolor: "transparent",
-      plot_bgcolor: "transparent",
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
       font,
       xaxis: { ...axisStyle, title: { text: "x (µm)" }, constrain: "domain" },
       yaxis: { ...axisStyle, title: { text: "y (µm)" }, scaleanchor: "x", scaleratio: 1 },
@@ -124,8 +126,8 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
       },
     ], {
       margin: { l: 56, r: 20, t: 18, b: 50 },
-      paper_bgcolor: "transparent",
-      plot_bgcolor: "transparent",
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
       font,
       legend: { orientation: "h", x: 0, y: 1.16 },
       xaxis: { ...axisStyle, title: { text: "Transverse position (µm)" } },
@@ -140,13 +142,28 @@ export function ModePlot({ component, part, config, mode, xUm, yUm, displayInter
 
   return (
     <>
+      <p id={descriptionId} className="scientific-visually-hidden">{summary}</p>
       <div className="plots" role="group" aria-label={`${plainLabels[component]} profile and central transverse cuts for ${mode.polarization} mode ${mode.order + 1}`}>
-        <div ref={fieldRef} className="field-plot scientific-plot-surface" role="img" aria-label={`${plainLabels[component]} field profile`} />
-        <div ref={cutRef} className="cut-plot scientific-plot-surface" role="img" aria-label={`${plainLabels[component]} transverse cuts`} />
+        <div ref={fieldRef} className="field-plot scientific-plot-surface" role="img" aria-label={`${plainLabels[component]} field profile`} aria-describedby={descriptionId} />
+        <div ref={cutRef} className="cut-plot scientific-plot-surface" role="img" aria-label={`${plainLabels[component]} transverse cuts`} aria-describedby={descriptionId} />
       </div>
-      {displayInterpolation > 1 && <p className="plot-note">Display grid: {(xUm.length - 1) * displayInterpolation + 1} × {(yUm.length - 1) * displayInterpolation + 1} bilinearly interpolated samples. Solver accuracy and CSV export remain tied to the original {xUm.length} × {yUm.length} Yee grid.</p>}
+      <p className="plot-note">{summary} {displayInterpolation > 1 && `Display grid is ${(xUm.length - 1) * displayInterpolation + 1} × ${(yUm.length - 1) * displayInterpolation + 1} bilinearly interpolated samples; solver accuracy and CSV export remain tied to the original ${xUm.length} × ${yUm.length} Yee grid.`}</p>
     </>
   );
+}
+
+function modeMapSummary(component: FieldComponent, part: FieldPart, mode: WaveguideMode, xUm: number[], yUm: number[], values: number[][]): string {
+  const finite = values.flat().filter(Number.isFinite);
+  const minimum = finite.length ? Math.min(...finite) : Number.NaN;
+  const maximum = finite.length ? Math.max(...finite) : Number.NaN;
+  const unit = part === "phase" && isPhysicalField(component) ? "degrees" : units[component];
+  const partText = isPhysicalField(component) ? `${partLabel(part)} of ${plainLabels[component]}` : plainLabels[component];
+  const range = finite.length ? `${formatPlotValue(minimum)} to ${formatPlotValue(maximum)} ${unit}` : "unavailable";
+  return `${partText} map for ${mode.polarization} mode ${mode.order + 1}. ${xUm.length} by ${yUm.length} samples spanning x ${formatPlotValue(xUm[0])} to ${formatPlotValue(xUm.at(-1))} micrometres and y ${formatPlotValue(yUm[0])} to ${formatPlotValue(yUm.at(-1))} micrometres. Value range: ${range}.`;
+}
+
+function formatPlotValue(value: number | undefined): string {
+  return Number.isFinite(value) ? Number(value).toPrecision(5) : "unavailable";
 }
 
 function isPhysicalField(component: FieldComponent): component is PhysicalFieldComponent {
@@ -218,7 +235,7 @@ function partLabel(part: FieldPart): string {
 }
 
 function geometryShapes(config: WaveguideConfig): Partial<Plotly.Shape>[] {
-  const line = { color: "rgba(255,255,255,0.9)", width: PLOT_LINE_WIDTHS.reference, dash: "dot" as const };
+  const line = { color: "#4b5563", width: PLOT_LINE_WIDTHS.reference, dash: "dot" as const };
   const rectangle = (x0: number, x1: number, y0: number, y1: number) => ({ type: "rect" as const, x0, x1, y0, y1, line });
   const trapezoid = (centerX: number, topWidth: number, bottomWidth: number, bottomY: number, topY: number) => ({
     type: "path" as const,

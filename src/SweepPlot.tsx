@@ -44,7 +44,7 @@ export function SweepPlot({ result }: { result: SweepResult }) {
         hovertemplate: "λ = %{x:.4f} µm<br>loss = %{y:.3g} dB/cm<extra></extra>",
       },
     ] as Plotly.Data[], {
-      margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "transparent", plot_bgcolor: "transparent",
+      margin: { l: 58, r: 68, t: 28, b: 54 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
       font,
       legend: { orientation: "h", x: 0, y: 1.1 },
       xaxis: { ...axis, domain: [0, 1], anchor: "y", showticklabels: false },
